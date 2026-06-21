@@ -98,6 +98,8 @@ ETA_COLUMN_WIDTH = 68
 SECTION_HEADER_HEIGHT = 26
 SECTION_GAP = 10
 TAB_BAR_HEIGHT = 34
+HEADER_BODY_HEIGHT = 64
+TOP_CONTENT_INSET = 43  # ~1.5 cm below screen top (iOS status bar / notch)
 
 LAN_DEBUG_ENABLED = True
 LAN_DEBUG_PORT = 8765
@@ -527,6 +529,13 @@ def main_cli():
 
 if HAS_UI:
 
+    def _schedule_safe_area_relayout(view, attempt=0):
+        """Re-layout after present; first layout pass often has width/height unset."""
+        view.set_needs_layout()
+        if attempt >= 3:
+            return
+        ui.delay(lambda: _schedule_safe_area_relayout(view, attempt + 1), 0.05)
+
     def make_label(text, font_size=16, bold=False, color=COLORS["text"], align=ui.ALIGN_LEFT):
         label = ui.Label()
         label.text = text
@@ -894,16 +903,16 @@ if HAS_UI:
             ui.delay(self._poll_remote_control, 1.0)
 
         def layout(self):
-            safe_top = self.safe_area_insets.top if hasattr(self, "safe_area_insets") else 0
+            top = TOP_CONTENT_INSET
             width = self.width
             height = self.height
-            header_h = 64 + safe_top
+            header_h = top + HEADER_BODY_HEIGHT
             tab_top = header_h + 2
             status_top = tab_top + TAB_BAR_HEIGHT + 2
 
             self.header.frame = (0, 0, width, header_h)
-            self.title_label.frame = (16, safe_top + 8, width - 120, 28)
-            self.refresh_btn.frame = (width - 96, safe_top + 8, 80, 30)
+            self.title_label.frame = (16, top + 8, width - 120, 28)
+            self.refresh_btn.frame = (width - 96, top + 8, 80, 30)
             self.tab_bar.frame = (0, tab_top, width, TAB_BAR_HEIGHT)
             tab_gap = 4
             tab_side = 6
@@ -1370,6 +1379,7 @@ if HAS_UI:
                 if handoff_to_ui_app():
                     return
             raise
+        _schedule_safe_area_relayout(view)
         view.start_remote_poll()
         view.refresh()
 
