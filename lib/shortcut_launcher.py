@@ -16,26 +16,24 @@ _STALE_LAUNCHER_NAMES = (
     "RunCitibikeRefresh.py",
     "citibike_refresh_pythonista.py",
 )
-LAUNCHER_VERSION = 7
+LAUNCHER_VERSION = 8
 URL_LAUNCH_ENV = "BIKE_TRAIN_TRANSIT_URL_LAUNCH"
 
 _LAUNCHER_TEMPLATE = '''#!/usr/bin/env python3
 """Launch Bike Train Transit app (auto-generated; do not edit)."""
 # launcher-version: {version}
 import os
+import runpy
 import sys
 
-_UI_SCRIPT = {ui_script_rel!r}
-_DEPLOYED_MAIN = os.path.join(
-    os.path.expanduser("~/Documents"), "bike_train_transit", "bike_train_transit.py"
-)
+_APP_DIR = os.path.join(os.path.expanduser("~/Documents"), "bike_train_transit")
+_DEPLOYED_MAIN = os.path.join(_APP_DIR, "bike_train_transit.py")
 
 
-def _handoff():
-    import shortcuts
-
-    url = shortcuts.pythonista_url(_UI_SCRIPT, action="run")
-    shortcuts.open_url(url)
+def _run_app():
+    if _APP_DIR not in sys.path:
+        sys.path.insert(0, _APP_DIR)
+    runpy.run_path(_DEPLOYED_MAIN, run_name="__main__")
 
 
 if __name__ == "__main__":
@@ -43,9 +41,9 @@ if __name__ == "__main__":
         print("Main script not found:", _DEPLOYED_MAIN, flush=True)
         print("Run bike_train_transit.py once in Pythonista to deploy.", flush=True)
         raise SystemExit(1)
-    print("Opening Bike Train Transit (full app)...", flush=True)
+    print("Starting Bike Train Transit from", _DEPLOYED_MAIN, flush=True)
     try:
-        _handoff()
+        _run_app()
     except Exception as exc:
         print("Bike Train Transit launcher error:", exc, flush=True)
         raise SystemExit(1)
@@ -132,10 +130,7 @@ def install_launcher(app_dir: str | None = None) -> str | None:
     _remove_stale_launchers()
     source_dir = os.path.abspath(app_dir or os.path.dirname(os.path.dirname(__file__)))
     _resolve_launcher_app_dir(source_dir)
-    body = _LAUNCHER_TEMPLATE.format(
-        version=LAUNCHER_VERSION,
-        ui_script_rel=UI_SCRIPT_REL,
-    )
+    body = _LAUNCHER_TEMPLATE.format(version=LAUNCHER_VERSION)
     path = _launcher_path()
     try:
         with open(path, "w", encoding="utf-8") as handle:

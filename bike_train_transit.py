@@ -105,8 +105,6 @@ SHORTCUT_URL = "pythonista3://RunBikeTrainTransit.py?action=run"
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BIKE_FETCH_TIMEOUT = 12
-_station_lookup_cache = None
 
 COLORS = {
     "bg": "#0f1419",
@@ -144,9 +142,6 @@ def print_shortcut_help():
         lines = launcher_help_lines(_SCRIPT_DIR, install=True)
         print("(lib/shortcut_launcher.py v%s)" % LAUNCHER_VERSION, flush=True)
         print("Shortcut runs from: %s" % local_app_dir(), flush=True)
-    except TypeError:
-        lines = launcher_help_lines(_SCRIPT_DIR)
-        print("(lib/shortcut_launcher.py — sync lib/ for latest launcher)", flush=True)
     except Exception as exc:
         print("lib/ shortcut help unavailable: %s" % exc, flush=True)
         print("Re-sync the whole bike_train_transit folder (include lib/).", flush=True)
@@ -226,15 +221,10 @@ def fetch_json(url, timeout=30, retries=2):
                 text = raw.decode("utf-8", errors="replace")
             payload = json.loads(text)
             if isinstance(payload, tuple):
-                for item in payload:
-                    if isinstance(item, dict):
-                        payload = item
-                        break
-                else:
-                    raise ValueError(
-                        "JSON decoder returned tuple without dict from %s (attempt %s)"
-                        % (url, attempt + 1)
-                    )
+                raise ValueError(
+                    "JSON decoder returned tuple from %s (attempt %s)"
+                    % (url, attempt + 1)
+                )
             if not isinstance(payload, dict):
                 raise ValueError(
                     "Expected JSON object from %s, got %s"
@@ -268,12 +258,7 @@ def _gbfs_stations(payload, label="GBFS"):
 
 
 def station_lookup():
-    global _station_lookup_cache
-    if _station_lookup_cache is not None:
-        return _station_lookup_cache
-    info = fetch_json(
-        GBFS_BASE + "/station_information.json", timeout=BIKE_FETCH_TIMEOUT
-    )
+    info = fetch_json(GBFS_BASE + "/station_information.json")
     by_id = {}
     by_name = {}
     for s in _gbfs_stations(info, "station_information"):
@@ -283,8 +268,7 @@ def station_lookup():
         by_name[name.casefold()] = sid
         if "legacy_id" in s:
             by_id[str(s["legacy_id"])] = name
-    _station_lookup_cache = (by_id, by_name)
-    return _station_lookup_cache
+    return by_id, by_name
 
 
 def fetch_transit_json(url):
@@ -324,7 +308,7 @@ def resolve_id(raw, by_id, by_name):
 
 def get_snapshots():
     by_id, by_name = station_lookup()
-    status = fetch_json(GBFS_BASE + "/station_status.json", timeout=BIKE_FETCH_TIMEOUT)
+    status = fetch_json(GBFS_BASE + "/station_status.json")
     status_by_id = {
         str(s["station_id"]): s for s in _gbfs_stations(status, "station_status")
     }
@@ -653,9 +637,6 @@ if HAS_UI:
             self._busy = False
             self._active_tab = "from_jc"
             self._cache = {"snapshots": []}
-            self._ui_lock = threading.Lock()
-            self._ui_queue = []
-            self._ui_pump_active = False
 
             self.header = ui.View()
             self.header.background_color = COLORS["bg"]
@@ -738,7 +719,7 @@ if HAS_UI:
                     self.refresh()
             except Exception:
                 pass
-            ui.delay(lambda: self._poll_remote_control(), 1.0)
+            ui.delay(self._poll_remote_control, 1.0)
 
         def layout(self):
             safe_top = self.safe_area_insets.top if hasattr(self, "safe_area_insets") else 0
@@ -758,38 +739,6 @@ if HAS_UI:
             self.status_label.frame = (16, status_top, width - 32, 16)
             self.scroll.frame = (0, status_top + 20, width, height - status_top - 20)
 
-        def _enqueue_ui(self, fn):
-            with self._ui_lock:
-                self._ui_queue.append(fn)
-
-        def _run_ui_callbacks(self):
-            import ui
-
-            with self._ui_lock:
-                batch = self._ui_queue[:]
-                self._ui_queue.clear()
-            for fn in batch:
-                try:
-                    fn()
-                except Exception as exc:
-                    log_event("UI callback failed: {}".format(exc))
-                    log_event(traceback.format_exc())
-            if self._busy or self._ui_queue:
-                ui.delay(lambda: self._run_ui_callbacks(), 0.05)
-
-        def _start_ui_pump(self):
-            import ui
-
-            if self._ui_pump_active:
-                return
-            self._ui_pump_active = True
-
-            def pump():
-                self._ui_pump_active = False
-                self._run_ui_callbacks()
-
-            ui.delay(pump, 0)
-
         def refresh_tapped(self, sender):
             self.refresh()
 
@@ -803,10 +752,7 @@ if HAS_UI:
             self.refresh_btn.enabled = False
             self.status_label.text = "Updating..."
             log_event("Refresh started")
-            self._start_ui_pump()
-            view = self
 
-            @ui.in_background
             def work():
                 error = None
                 snapshots = None
@@ -826,24 +772,27 @@ if HAS_UI:
                 if error:
 
                     def finish_error():
+                        import ui
                         from lib import app_state
 
                         try:
-                            view._busy = False
+                            self._busy = False
                             app_state.set_busy(False)
-                            view.refresh_btn.enabled = True
+                            self.refresh_btn.enabled = True
                             app_state.set_error(error)
-                            view.status_label.text = "Error: %s" % error
+                            self.status_label.text = "Error: %s" % error
                         except Exception as exc:
                             log_event("UI finish failed: {}".format(exc))
                             log_event(traceback.format_exc())
 
-                    view._enqueue_ui(finish_error)
+                    ui.delay(finish_error, 0)
                     return
 
                 def show_bikes():
+                    import ui
+
                     try:
-                        view.render_snapshots(
+                        self.render_snapshots(
                             snapshots,
                             path_boards=None,
                             path_33rd_boards=None,
@@ -852,12 +801,12 @@ if HAS_UI:
                             subway_to_jc_boards=None,
                             partial=True,
                         )
-                        view.status_label.text = "Loading transit..."
+                        self.status_label.text = "Loading transit..."
                     except Exception as exc:
                         log_event("UI bike render failed: {}".format(exc))
                         log_event(traceback.format_exc())
 
-                view._enqueue_ui(show_bikes)
+                ui.delay(show_bikes, 0)
 
                 try:
                     (
@@ -872,13 +821,14 @@ if HAS_UI:
                     log_event(traceback.format_exc())
 
                 def finish():
+                    import ui
                     from lib import app_state
 
                     try:
-                        view._busy = False
+                        self._busy = False
                         app_state.set_busy(False)
-                        view.refresh_btn.enabled = True
-                        view.render_snapshots(
+                        self.refresh_btn.enabled = True
+                        self.render_snapshots(
                             snapshots,
                             path_boards,
                             path_33rd_boards,
@@ -887,17 +837,17 @@ if HAS_UI:
                             subway_to_jc_boards,
                         )
                     except Exception as exc:
-                        view._busy = False
+                        self._busy = False
                         app_state.set_busy(False)
                         app_state.set_error(str(exc))
-                        view.refresh_btn.enabled = True
-                        view.status_label.text = "Error: %s" % exc
+                        self.refresh_btn.enabled = True
+                        self.status_label.text = "Error: %s" % exc
                         log_event("UI finish failed: {}".format(exc))
                         log_event(traceback.format_exc())
 
-                view._enqueue_ui(finish)
+                ui.delay(finish, 0)
 
-            work()
+            threading.Thread(target=work, daemon=True).start()
 
         def _log_transit_boards(self, prefix, boards):
             if not boards:

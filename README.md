@@ -40,7 +40,7 @@ Tap **From JC** or **To JC** in the tab bar below the header. One refresh loads 
 | **PATH → 33rd St** | Christopher St, 9th St | Next 33rd St-bound PATH trains |
 | **Subway → North / Queens** | Christopher St, West 4 St | Uptown/Queens departures **after PATH + walk** (note: “after PATH +5 min”) |
 
-Bike cards appear first; transit sections load in parallel afterward. Refresh uses a **main-thread UI queue** and **cached station lookup** so repeat taps work reliably on Pythonista.
+Bike cards appear first; transit sections load afterward. On the PC they fetch in parallel; on Pythonista they fetch one at a time (concurrent TLS across threads can hard-crash the app).
 
 ### To JC
 
@@ -63,7 +63,7 @@ bike_train_transit/
   lib/
     path_trains.py                # PATH NYC / 33rd / NJ (PANYNJ single-fetch)
     subway_trains.py              # Subway north and To JC boards
-    parallel.py                   # Pythonista-safe parallel fetch (not ThreadPoolExecutor)
+    parallel.py                   # Parallel on PC, sequential on Pythonista (avoids TLS-thread crash)
     app_state.py                  # Shared state for UI / LAN status.json
     shortcut_launcher.py          # Launcher v7 (Shortcuts two-hop handoff)
     local_deploy.py               # Incremental copy to On This iPhone
@@ -296,7 +296,6 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 | `ALERT_MIN_DOCKS` | `2` | Highlight when empty docks ≤ this |
 | `LAN_DEBUG_PORT` | `8765` | LAN debug server port |
 | `TRANSIT_FETCH_TIMEOUT` | `12` | Seconds per transit API call |
-| `BIKE_FETCH_TIMEOUT` | `12` | Seconds per GBFS call on refresh |
 
 ### Transit modules (`lib/`)
 
@@ -334,8 +333,7 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 | Safe mode shows empty log | Update to latest code — safe mode now preserves crash logs; check **Previous session** on dashboard |
 | Console errors not in LAN log | Update to latest code — stdout/stderr and thread errors are now captured |
 | UI stuck on “Updating…” / black screen | Transit fetch may be slow; bikes should appear first. Check log for errors; redeploy latest code |
-| App crashes on 2nd+ Refresh | Update to latest code (UI queue + `lib/parallel.py` closure fix). Run from **On This iPhone → Documents/bike_train_transit**, not iCloud Downloads |
-| `fetch_json retry … JSON decoder returned tuple` | Harmless on older builds; latest code coerces Pythonista tuple JSON automatically |
+| App drops to safe mode on 2nd+ Refresh | Native crash from concurrent TLS threads. Update to latest code — `lib/parallel.py` fetches sequentially on Pythonista so only one thread does SSL at a time |
 | Shortcut tap does nothing / Pythonista doesn’t open | Use **Pythonista wrench → Shortcuts → Add to Home Screen** (not Shortcuts app). Test URL in **Safari** first. |
 | Shortcut: “unable to locate file” | Run app once to install launcher; URL must be `pythonista3://RunBikeTrainTransit.py?action=run` |
 | Shortcuts: “problem communicating with app” | Normal for UI apps — use Pythonista wrench method; launcher defers UI for URL handoff |
