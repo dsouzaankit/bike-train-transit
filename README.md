@@ -65,7 +65,7 @@ bike_train_transit/
     subway_trains.py              # Subway north and To JC boards
     parallel.py                   # Parallel on PC, sequential on Pythonista (avoids TLS-thread crash)
     app_state.py                  # Shared state for UI / LAN status.json
-    shortcut_launcher.py          # Launcher v8 (runs app in-process via runpy)
+    shortcut_launcher.py          # Deploys app to Documents; Home Screen uses the direct UI-script URL
     local_deploy.py               # Incremental copy to On This iPhone
     file_logging.py, log_paths.py # Session logs + safe-mode preservation
     lan_debug_server.py           # LAN debug HTTP server
@@ -127,8 +127,8 @@ On first launch the app will:
 
 - Show the **From JC** tab with bike grid and refresh live data
 - Start the LAN debug server on port **8765**
-- Copy itself to **On This iPhone → Documents/bike_train_transit/** (for URL launch)
-- Install **`RunBikeTrainTransit.py`** on On This iPhone
+- Copy itself to **On This iPhone → Documents/bike_train_transit/** (for the Home Screen URL)
+- Install **`RunBikeTrainTransit.py`** on On This iPhone (legacy stub — not used for the Home Screen; see [iOS Home Screen](#ios-home-screen-one-tap-launch))
 - Log shortcut setup steps to the console and LAN log
 
 Launcher deploy runs in the background so the UI opens immediately. Only changed files are copied on redeploy.
@@ -164,45 +164,41 @@ In `bike_train_transit.py`, edit `STATIONS`, `STATION_LABELS`, `GRID_GROUPS`, an
 
 ## iOS Home Screen (one-tap launch)
 
-The shortcut must target the **launcher stub** on **On This iPhone**, not the iCloud copy directly.
+Point the Home Screen icon at the **UI script** (`bike_train_transit.py`) directly, so it runs as the **main** script — exactly like pressing Run.
 
-### Recommended: Pythonista wrench (most reliable)
+> **Do not use the `RunBikeTrainTransit.py` launcher stub for the Home Screen.** It runs the app nested via `runpy`, which breaks Pythonista’s UI run loop: `@ui.in_background` never fires and refresh hangs (you have to force-quit). A `ui.present` app must be the main script. (The `runpy` stub works for the SOCKS proxy only because that app is asyncio, not `ui`.)
 
-The **Shortcuts app “Open URLs” action often fails to open Pythonista**. Use Pythonista’s built-in Home Screen flow instead:
+### The URL
 
-1. Run `bike_train_transit.py` once in Pythonista (creates the launcher)
-2. In Pythonista’s file browser, open **On This iPhone** → **`RunBikeTrainTransit.py`**
-3. Tap the **wrench icon** → **Shortcuts…** → **Add to Home Screen**
-4. Safari opens → **Share** → **Add to Home Screen**
+```
+pythonista3://bike_train_transit/bike_train_transit.py?action=run
+```
+
+This targets the deployed copy at **On This iPhone → Documents/bike_train_transit/**. Run `bike_train_transit.py` once first so that copy exists. To get the URL from Pythonista: open that copy → **wrench** → **Pythonista URL** (older builds: **Add to Home Screen**).
+
+### Make the Home Screen icon (Shortcuts app — two actions)
+
+A single **Open URLs** action with the URL typed inline often does nothing for `pythonista3://` links. Use **two** actions so it is treated as a real URL:
+
+1. **Shortcuts** → **+**
+2. Add action **URL** → paste the URL above
+3. Add action **Open URLs** (it takes the URL from step 2)
+4. Settings (ⓘ) → turn **off** “Show in Share Sheet”
+5. **⋯** → **Add to Home Screen**
+
+Tapping the icon launches the app as the main script and refresh works. The first launch may prompt **“Open in Pythonista?” → Allow**.
 
 ### Test the URL first (Safari)
 
-Paste this in **Safari’s address bar** (not Shortcuts):
+Paste the URL in **Safari’s address bar**. If the app opens and refreshes, the two-action Shortcut will too. (Pasting in Safari works even when a single-action “Open URLs” shortcut does nothing — that’s why the **URL → Open URLs** two-action recipe is required.)
 
-```
-pythonista3://RunBikeTrainTransit.py?action=run
-```
-
-If iOS asks **“Open in Pythonista?”** → tap **Allow**. If that works, the wrench method above will work too.
-
-### Shortcuts app (fallback)
-
-Only use this if the wrench method is not an option:
-
-1. **Shortcuts** → **+** → **Open URLs** (not Text, not Get Contents of URL)
-2. URL: `pythonista3://RunBikeTrainTransit.py?action=run`
-3. Turn off **Show in Share Sheet** in shortcut settings
-4. **⋯** → **Add to Home Screen**
-
-If tapping the icon does nothing, switch to the **wrench method** above.
-
-### Alternative URLs
-
-If the launcher is not installed yet, use the iCloud path (adjust folder if needed):
+### Alternative: run the iCloud copy directly
 
 ```
 pythonista3://iCloud/Downloads/bike_train_transit/bike_train_transit.py?action=run&root=icloud
 ```
+
+Use this only for the iCloud/Downloads copy; the Documents URL above is preferred for the Home Screen.
 
 ### Shortcut help in logs
 
@@ -346,10 +342,9 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 | Console errors not in LAN log | Update to latest code — stdout/stderr and thread errors are now captured |
 | UI stuck on “Updating…” / black screen | Transit fetch may be slow; bikes should appear first. Check log for errors; redeploy latest code |
 | App drops to safe mode during Refresh | Native crash from background-thread TLS. Update to latest code — refresh runs via `@ui.in_background` (Pythonista-managed) and `lib/parallel.py` fetches sequentially on Pythonista, so TLS never runs on a raw thread or concurrently |
-| Shortcut tap does nothing / Pythonista doesn’t open | Use **Pythonista wrench → Shortcuts → Add to Home Screen** (not Shortcuts app). Test URL in **Safari** first. |
-| Shortcut: “unable to locate file” | Run app once to install launcher; URL must be `pythonista3://RunBikeTrainTransit.py?action=run` |
-| Shortcuts: “problem communicating with app” | Use the Pythonista wrench method instead of the Shortcuts app; the launcher runs the app in-process (`runpy`) once Pythonista opens |
-| Shortcut crashes Pythonista on launch | Re-run `bike_train_transit.py` once to install launcher **v8** (in-process `runpy`); old v7 used a two-hop URL re-launch that crashed |
+| Shortcut tap does nothing / Pythonista doesn’t open | In Shortcuts use the **two-action** recipe: **URL** action + **Open URLs** action (a single inline “Open URLs” often fails for `pythonista3://`). Test the URL in **Safari** first. |
+| Shortcut launches but refresh hangs / app freezes | The icon points at the `RunBikeTrainTransit.py` `runpy` stub, which breaks the UI loop. Point it at `pythonista3://bike_train_transit/bike_train_transit.py?action=run` instead (run as main script). |
+| Shortcut: “unable to locate file” | Run `bike_train_transit.py` once so it deploys to Documents; URL must be `pythonista3://bike_train_transit/bike_train_transit.py?action=run` |
 | Wrong IP in log (`10.115.x.x`) | That’s a VPN tunnel IP; use Wi‑Fi IP from Settings for PC access |
 | `ModuleNotFoundError: lib` | Copy the whole folder including `lib/` |
 | PC can’t reach debug URL | Same Wi‑Fi; check iPhone IP; app must be running (or safe mode after crash) |

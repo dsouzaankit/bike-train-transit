@@ -16,7 +16,7 @@ _STALE_LAUNCHER_NAMES = (
     "RunCitibikeRefresh.py",
     "citibike_refresh_pythonista.py",
 )
-LAUNCHER_VERSION = 8
+LAUNCHER_VERSION = 9
 URL_LAUNCH_ENV = "BIKE_TRAIN_TRANSIT_URL_LAUNCH"
 
 _LAUNCHER_TEMPLATE = '''#!/usr/bin/env python3
@@ -42,12 +42,11 @@ if __name__ == "__main__":
         print("Run bike_train_transit.py once in Pythonista to deploy.", flush=True)
         raise SystemExit(1)
     print("Starting Bike Train Transit from", _DEPLOYED_MAIN, flush=True)
-    try:
-        _run_app()
-    except Exception as exc:
-        print("Bike Train Transit launcher error:", exc, flush=True)
-        raise SystemExit(1)
-    raise SystemExit(0)
+    # Do NOT raise SystemExit after this: the app presents its UI non-blocking
+    # and schedules background work. Exiting the launcher script tears down the
+    # presented view and ui.in_background threads, crashing Pythonista. Letting
+    # the launcher fall through keeps the UI alive, same as a direct Run.
+    _run_app()
 '''
 
 

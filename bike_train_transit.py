@@ -105,6 +105,7 @@ SHORTCUT_URL = "pythonista3://RunBikeTrainTransit.py?action=run"
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
+BUILD_TAG = "diag-step-markers-1"
 
 COLORS = {
     "bg": "#0f1419",
@@ -169,7 +170,9 @@ def setup_debug(mode="full"):
     setup_file_logging()
     write_ok_probe(mode=mode)
     log_banner(
-        "Bike Train Transit app started mode={} stations={}".format(mode, len(STATIONS))
+        "Bike Train Transit app started mode={} stations={} build={}".format(
+            mode, len(STATIONS), BUILD_TAG
+        )
     )
 
 
@@ -381,8 +384,11 @@ def _fetch_transit_boards():
     from lib.parallel import run_parallel
 
     def _wrap(label, fn):
+        log_event("step: transit {} start".format(label))
         try:
-            return fn()
+            result = fn()
+            log_event("step: transit {} ok".format(label))
+            return result
         except Exception as exc:
             log_event("{} fetch failed: {}".format(label, exc))
             log_event(traceback.format_exc())
@@ -409,6 +415,7 @@ def _fetch_transit_boards():
     subway_boards = results.get("subway") or []
     subway_to_jc_boards = results.get("subwayToJc") or []
     try:
+        log_event("step: transit connections")
         from lib.subway_trains import apply_path_subway_connections
 
         subway_boards = apply_path_subway_connections(subway_boards, path_33rd_boards)
@@ -764,7 +771,9 @@ if HAS_UI:
                 subway_to_jc_boards = []
 
                 try:
+                    log_event("step: fetch bikes")
                     snapshots = get_snapshots()
+                    log_event("step: bikes ok ({})".format(len(snapshots or [])))
                 except Exception as exc:
                     error = str(exc)
                     log_event("Refresh failed: {}".format(error))
@@ -793,6 +802,7 @@ if HAS_UI:
                     import ui
 
                     try:
+                        log_event("step: paint bikes")
                         self.render_snapshots(
                             snapshots,
                             path_boards=None,
@@ -803,6 +813,7 @@ if HAS_UI:
                             partial=True,
                         )
                         self.status_label.text = "Loading transit..."
+                        log_event("step: bikes painted")
                     except Exception as exc:
                         log_event("UI bike render failed: {}".format(exc))
                         log_event(traceback.format_exc())
@@ -810,6 +821,7 @@ if HAS_UI:
                 ui.delay(show_bikes, 0)
 
                 try:
+                    log_event("step: fetch transit")
                     (
                         path_boards,
                         path_33rd_boards,
@@ -817,6 +829,7 @@ if HAS_UI:
                         path_nj_boards,
                         subway_to_jc_boards,
                     ) = _fetch_transit_boards()
+                    log_event("step: transit ok")
                 except Exception as exc:
                     log_event("Transit fetch failed: {}".format(exc))
                     log_event(traceback.format_exc())
