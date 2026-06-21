@@ -19,6 +19,7 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **PC deploy script** — `deploy.ps1` zips the project to iCloud Downloads for Pythonista sync
 - **PC email script** — optional Yahoo SMTP status/alert emails
 - **iOS Shortcut** — one-tap launch from Home Screen
+- **Fullscreen UI** — Pythonista script title bar hidden; header starts ~1.5 cm below the top so title/tabs clear the iOS status bar (notch). Auto-refresh ~0.5s after open.
 
 ## Jersey City stations (`JC`)
 
@@ -33,6 +34,8 @@ All stations are tagged `[JC]` in logs, email, and the **Cbike JC** tab.
 ## App tabs
 
 Tap **Cbike JC**, **From JC**, **To JC**, or **Tunnels** in the tab bar. One refresh loads all tabs; switching tabs uses cached data (no extra network calls).
+
+**Startup:** On open, the app schedules its first refresh **0.5s after** `present()` (Pythonista needs the UI run loop running before `@ui.in_background` fetch/paint works — especially with `hide_title_bar=True`). Bikes paint first; transit fills in on the default **From JC** tab. Tap **Refresh** anytime to reload.
 
 ### Cbike JC
 
@@ -336,6 +339,7 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `APP_TITLE` | `Bike Train Tunnel . JC` | Header title and view name in the UI |
+| `TOP_CONTENT_INSET` | `43` | Points (~1.5 cm) from screen top to title row — clears iOS status bar / notch without hiding it |
 | `REGION` | `JC` | Tag shown on bike cards and in logs |
 | `STATIONS` | JC names | GBFS station names or partial matches |
 | `STATION_LABELS` | Short names | Compact UI labels (same order) |
@@ -381,6 +385,8 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 | Safe mode shows empty log | Update to latest code — safe mode now preserves crash logs; check **Previous session** on dashboard |
 | Console errors not in LAN log | Update to latest code — stdout/stderr and thread errors are now captured |
 | UI stuck on “Updating…” / black screen | Transit fetch may be slow; bikes should appear first. Check log for errors; redeploy latest code |
+| Open shows empty data until Refresh tapped | Run as **main script** (Home Screen direct URL, not `RunBikeTrainTransit.py`). Update to latest code — startup refresh is deferred 0.5s via `ui.delay` before `present()` |
+| Title overlaps status bar / notch | Adjust `TOP_CONTENT_INSET` in `bike_train_transit.py` (default `43` ≈ 1.5 cm) |
 | App drops to safe mode during Refresh | Native crash from background-thread TLS. Update to latest code — refresh runs via `@ui.in_background` (Pythonista-managed) and `lib/parallel.py` fetches sequentially on Pythonista, so TLS never runs on a raw thread or concurrently |
 | Shortcut tap does nothing / Pythonista doesn’t open | In Shortcuts use the **two-action** recipe: **URL** action + **Open URLs** action (a single inline “Open URLs” often fails for `pythonista3://`). Test the URL in **Safari** first. |
 | Shortcut launches but refresh hangs / app freezes | The icon points at the `RunBikeTrainTransit.py` `runpy` stub, which breaks the UI loop. Point it at `pythonista3://bike_train_transit/bike_train_transit.py?action=run` instead (run as main script). |

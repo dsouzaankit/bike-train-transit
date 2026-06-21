@@ -900,7 +900,7 @@ if HAS_UI:
                     self.refresh()
             except Exception:
                 pass
-            ui.delay(self._poll_remote_control, 1.0)
+            ui.delay(lambda: self._poll_remote_control(), 1.0)
 
         def layout(self):
             top = TOP_CONTENT_INSET
@@ -1364,9 +1364,16 @@ if HAS_UI:
         except ImportError:
             return False
 
+    def _kickoff_ui(view):
+        """Start polling and first refresh once the UI run loop is active."""
+        _schedule_safe_area_relayout(view)
+        view.start_remote_poll()
+        view.refresh()
+
     def _present_ui():
         view = BikeTrainTransitView()
         try:
+            ui.delay(lambda: _kickoff_ui(view), 0.5)
             view.present("fullscreen", hide_title_bar=True)
         except Exception as exc:
             msg = str(exc).casefold()
@@ -1379,9 +1386,6 @@ if HAS_UI:
                 if handoff_to_ui_app():
                     return
             raise
-        _schedule_safe_area_relayout(view)
-        view.start_remote_poll()
-        view.refresh()
 
     def _setup_launcher_background():
         try:
