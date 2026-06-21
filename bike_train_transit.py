@@ -1358,7 +1358,7 @@ if HAS_UI:
     def _present_ui():
         view = BikeTrainTransitView()
         try:
-            view.present("fullscreen")
+            view.present("fullscreen", hide_title_bar=True)
         except Exception as exc:
             msg = str(exc).casefold()
             if "widgets and shortcuts" in msg or (
