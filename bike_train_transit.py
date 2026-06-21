@@ -98,6 +98,7 @@ ETA_COLUMN_WIDTH = 68
 SECTION_HEADER_HEIGHT = 26
 SECTION_GAP = 10
 TAB_BAR_HEIGHT = 34
+TOP_CONTENT_INSET = 43  # ~1.5 cm below screen top so chrome clears the iOS status bar / notch
 
 LAN_DEBUG_ENABLED = True
 LAN_DEBUG_PORT = 8765
@@ -894,16 +895,16 @@ if HAS_UI:
             ui.delay(self._poll_remote_control, 1.0)
 
         def layout(self):
-            safe_top = self.safe_area_insets.top if hasattr(self, "safe_area_insets") else 0
+            top = TOP_CONTENT_INSET
             width = self.width
             height = self.height
-            header_h = 64 + safe_top
+            header_h = 64 + top
             tab_top = header_h + 2
             status_top = tab_top + TAB_BAR_HEIGHT + 2
 
             self.header.frame = (0, 0, width, header_h)
-            self.title_label.frame = (16, safe_top + 8, width - 120, 28)
-            self.refresh_btn.frame = (width - 96, safe_top + 8, 80, 30)
+            self.title_label.frame = (16, top + 8, width - 120, 28)
+            self.refresh_btn.frame = (width - 96, top + 8, 80, 30)
             self.tab_bar.frame = (0, tab_top, width, TAB_BAR_HEIGHT)
             tab_gap = 4
             tab_side = 6
@@ -1355,10 +1356,20 @@ if HAS_UI:
         except ImportError:
             return False
 
+    def _kickoff_ui(view):
+        """Start polling and first refresh once the UI run loop is active."""
+        try:
+            log_event("kickoff: poll + first refresh")
+            view.start_remote_poll()
+            view.refresh()
+        except Exception as exc:
+            log_event("kickoff failed: {}".format(exc))
+            log_event(traceback.format_exc())
+
     def _present_ui():
         view = BikeTrainTransitView()
         try:
-            view.present("fullscreen")
+            view.present("fullscreen", hide_title_bar=True)
         except Exception as exc:
             msg = str(exc).casefold()
             if "widgets and shortcuts" in msg or (
@@ -1370,8 +1381,10 @@ if HAS_UI:
                 if handoff_to_ui_app():
                     return
             raise
-        view.start_remote_poll()
-        view.refresh()
+        # Present first so the UI run loop is active, then kick off via ui.delay.
+        # ui.delay timers registered before present() are unreliable on
+        # Pythonista and may never fire (auto-refresh would be skipped).
+        ui.delay(lambda: _kickoff_ui(view), 0.2)
 
     def _setup_launcher_background():
         try:
