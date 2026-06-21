@@ -65,7 +65,7 @@ bike_train_transit/
     subway_trains.py              # Subway north and To JC boards
     parallel.py                   # Parallel on PC, sequential on Pythonista (avoids TLS-thread crash)
     app_state.py                  # Shared state for UI / LAN status.json
-    shortcut_launcher.py          # Deploys app to Documents; Home Screen uses the direct UI-script URL
+    shortcut_launcher.py          # Deploys app to Documents; reports direct UI-script URL; removes obsolete stub
     local_deploy.py               # Incremental copy to On This iPhone
     file_logging.py, log_paths.py # Session logs + safe-mode preservation
     lan_debug_server.py           # LAN debug HTTP server
@@ -128,7 +128,7 @@ On first launch the app will:
 - Show the **From JC** tab with bike grid and refresh live data
 - Start the LAN debug server on port **8765**
 - Copy itself to **On This iPhone → Documents/bike_train_transit/** (for the Home Screen URL)
-- Install **`RunBikeTrainTransit.py`** on On This iPhone (legacy stub — not used for the Home Screen; see [iOS Home Screen](#ios-home-screen-one-tap-launch))
+- Remove the obsolete **`RunBikeTrainTransit.py`** stub if present (its `runpy` launch breaks the UI loop; the Home Screen uses the direct UI-script URL instead — see [iOS Home Screen](#ios-home-screen-one-tap-launch))
 - Log shortcut setup steps to the console and LAN log
 
 Launcher deploy runs in the background so the UI opens immediately. Only changed files are copied on redeploy.

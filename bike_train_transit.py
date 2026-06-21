@@ -99,8 +99,7 @@ TAB_BAR_HEIGHT = 34
 LAN_DEBUG_ENABLED = True
 LAN_DEBUG_PORT = 8765
 LISTEN_HOST = "0.0.0.0"
-SHORTCUT_SCRIPT = "RunBikeTrainTransit.py"
-SHORTCUT_URL = "pythonista3://RunBikeTrainTransit.py?action=run"
+SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=run"
 
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
@@ -133,9 +132,9 @@ def log_event(message):
 def print_shortcut_help():
     # Always print from main module — works even if lib/ on phone is stale.
     print("", flush=True)
-    print("=== iOS Shortcut URL ===", flush=True)
+    print("=== iOS Shortcut URL (run as main script) ===", flush=True)
     print(SHORTCUT_URL, flush=True)
-    print("Launcher: On This iPhone -> %s" % SHORTCUT_SCRIPT, flush=True)
+    print("Home Screen: Shortcuts -> URL action + Open URLs action (two actions)", flush=True)
     try:
         from lib.shortcut_launcher import LAUNCHER_VERSION, launcher_help_lines
         from lib.local_deploy import local_app_dir
@@ -1109,9 +1108,9 @@ if HAS_UI:
         setup_debug(mode="full")
         start_debug_server(safe_mode=False)
         print("", flush=True)
-        print("=== iOS Shortcut URL ===", flush=True)
+        print("=== iOS Shortcut URL (run as main script) ===", flush=True)
         print(SHORTCUT_URL, flush=True)
-        print("Launcher: On This iPhone -> %s" % SHORTCUT_SCRIPT, flush=True)
+        print("Home Screen: Shortcuts -> URL action + Open URLs action (two actions)", flush=True)
         threading.Thread(target=_setup_launcher_background, daemon=True).start()
         if _needs_ui_handoff():
             from lib.shortcut_launcher import handoff_to_ui_app
