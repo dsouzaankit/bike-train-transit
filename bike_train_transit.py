@@ -104,10 +104,6 @@ SHORTCUT_URL = "pythonista3://RunBikeTrainTransit.py?action=run"
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BIKE_FETCH_TIMEOUT = 10
-BIKE_FETCH_RETRIES = 1
-PATH_RAZZA_TIMEOUT = 5
-PATH_RAZZA_RETRIES = 0
 
 COLORS = {
     "bg": "#0f1419",
@@ -151,7 +147,7 @@ def print_shortcut_help():
         from lib.shortcut_launcher import LAUNCHER_VERSION, launcher_help_lines
         from lib.local_deploy import local_app_dir
 
-        lines = launcher_help_lines(_SCRIPT_DIR, install=False)
+        lines = launcher_help_lines(_SCRIPT_DIR, install=True)
         print("(lib/shortcut_launcher.py v%s)" % LAUNCHER_VERSION, flush=True)
         print("Shortcut runs from: %s" % local_app_dir(), flush=True)
     except Exception as exc:
@@ -220,16 +216,11 @@ def fetch_json(url, timeout=30, retries=2):
     last_error = None
     for attempt in range(max(1, retries + 1)):
         try:
-            log_event("fetch_json open {} (attempt {})".format(url, attempt + 1))
-            _flush_logs()
             req = urllib.request.Request(
                 url, headers={"User-Agent": "bike-train-transit/2.0"}
             )
-            opener = urllib.request.build_opener()
-            with opener.open(req, timeout=timeout) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 raw = resp.read()
-            log_event("fetch_json read {} bytes from {}".format(len(raw or b""), url))
-            _flush_logs()
             if isinstance(raw, tuple):
                 raw = raw[0] if raw else b""
             if isinstance(raw, str):
@@ -237,27 +228,21 @@ def fetch_json(url, timeout=30, retries=2):
             else:
                 text = raw.decode("utf-8", errors="replace")
             payload = json.loads(text)
-            payload = _coerce_json_dict(payload, url)
+            if isinstance(payload, tuple):
+                raise ValueError(
+                    "JSON decoder returned tuple from %s (attempt %s)"
+                    % (url, attempt + 1)
+                )
+            if not isinstance(payload, dict):
+                raise ValueError(
+                    "Expected JSON object from %s, got %s"
+                    % (url, type(payload).__name__)
+                )
             return payload
         except Exception as exc:
             last_error = exc
             log_event("fetch_json retry {} for {}: {}".format(attempt + 1, url, exc))
-            _flush_logs()
     raise last_error
-
-
-def _coerce_json_dict(payload, url):
-    if isinstance(payload, dict):
-        return payload
-    if isinstance(payload, tuple):
-        for item in payload:
-            if isinstance(item, dict):
-                log_event("fetch_json coerced tuple->dict for {}".format(url))
-                return item
-        raise ValueError("JSON tuple from %s had no dict element" % url)
-    raise ValueError(
-        "Expected JSON object from %s, got %s" % (url, type(payload).__name__)
-    )
 
 
 def _gbfs_stations(payload, label="GBFS"):
@@ -280,18 +265,8 @@ def _gbfs_stations(payload, label="GBFS"):
     return stations
 
 
-def fetch_bike_json(url):
-    return fetch_json(url, timeout=BIKE_FETCH_TIMEOUT, retries=BIKE_FETCH_RETRIES)
-
-
-_STATION_LOOKUP_CACHE = None
-
-
 def station_lookup():
-    global _STATION_LOOKUP_CACHE
-    if _STATION_LOOKUP_CACHE is not None:
-        return _STATION_LOOKUP_CACHE
-    info = fetch_bike_json(GBFS_BASE + "/station_information.json")
+    info = fetch_json(GBFS_BASE + "/station_information.json")
     by_id = {}
     by_name = {}
     for s in _gbfs_stations(info, "station_information"):
@@ -301,16 +276,11 @@ def station_lookup():
         by_name[name.casefold()] = sid
         if "legacy_id" in s:
             by_id[str(s["legacy_id"])] = name
-    _STATION_LOOKUP_CACHE = (by_id, by_name)
-    return _STATION_LOOKUP_CACHE
+    return by_id, by_name
 
 
 def fetch_transit_json(url):
     return fetch_json(url, timeout=TRANSIT_FETCH_TIMEOUT)
-
-
-def fetch_path_razza_json(url):
-    return fetch_json(url, timeout=PATH_RAZZA_TIMEOUT, retries=PATH_RAZZA_RETRIES)
 
 
 def _placeholder_snapshot(label="No data"):
@@ -344,9 +314,11 @@ def resolve_id(raw, by_id, by_name):
     raise ValueError("Unknown station: %r" % raw)
 
 
-def build_snapshots(by_id, by_name, status_payload):
+def get_snapshots():
+    by_id, by_name = station_lookup()
+    status = fetch_json(GBFS_BASE + "/station_status.json")
     status_by_id = {
-        str(s["station_id"]): s for s in _gbfs_stations(status_payload, "station_status")
+        str(s["station_id"]): s for s in _gbfs_stations(status, "station_status")
     }
 
     out = []
@@ -376,18 +348,6 @@ def build_snapshots(by_id, by_name, status_payload):
             }
         )
     return out
-
-
-def get_snapshots():
-    log_event("GBFS station_information...")
-    _flush_logs()
-    by_id, by_name = station_lookup()
-    log_event("GBFS station_status...")
-    _flush_logs()
-    status = fetch_bike_json(GBFS_BASE + "/station_status.json")
-    log_event("GBFS parsing status...")
-    _flush_logs()
-    return build_snapshots(by_id, by_name, status)
 
 
 def tagged_name(snapshot):
@@ -424,53 +384,8 @@ def get_path_nj_boards():
     return _get_path_nj_boards(fetch_transit_json)
 
 
-def _is_pythonista():
-    import sys
-
-    return "Pythonista" in sys.executable
-
-
 def _fetch_transit_boards():
     """Fetch all transit boards in parallel; never raise."""
-    if _is_pythonista():
-        return _fetch_transit_boards_sequential()
-    return _fetch_transit_boards_parallel()
-
-
-def _fetch_transit_boards_sequential():
-    path_bundle = {}
-    subway_boards = []
-    subway_to_jc_boards = []
-    try:
-        from lib.path_trains import get_all_path_boards
-
-        path_bundle = get_all_path_boards(fetch_transit_json, fetch_path_razza_json)
-    except Exception as exc:
-        log_event("pathAll fetch failed: {}".format(exc))
-        log_event(traceback.format_exc())
-    try:
-        subway_boards = get_subway_boards()
-    except Exception as exc:
-        log_event("subway fetch failed: {}".format(exc))
-        log_event(traceback.format_exc())
-    try:
-        subway_to_jc_boards = get_subway_to_jc_boards()
-    except Exception as exc:
-        log_event("subwayToJc fetch failed: {}".format(exc))
-        log_event(traceback.format_exc())
-    path_boards = path_bundle.get("nyc") or []
-    path_33rd_boards = path_bundle.get("33rd") or []
-    path_nj_boards = path_bundle.get("nj") or []
-    try:
-        from lib.subway_trains import apply_path_subway_connections
-
-        subway_boards = apply_path_subway_connections(subway_boards, path_33rd_boards)
-    except Exception as exc:
-        log_event("PATH+subway connection failed: {}".format(exc))
-    return path_boards, path_33rd_boards, subway_boards, path_nj_boards, subway_to_jc_boards
-
-
-def _fetch_transit_boards_parallel():
     from lib.parallel import run_parallel
 
     def _wrap(label, fn):
@@ -484,7 +399,7 @@ def _fetch_transit_boards_parallel():
     def _fetch_path_all():
         from lib.path_trains import get_all_path_boards
 
-        return get_all_path_boards(fetch_transit_json, fetch_path_razza_json)
+        return get_all_path_boards(fetch_transit_json)
 
     jobs = {
         "pathAll": _fetch_path_all,
@@ -744,7 +659,7 @@ if HAS_UI:
             self.refresh_btn.corner_radius = 8
             self.refresh_btn.action = self.refresh_tapped
 
-            self.status_label = make_label("Tap refresh to load", font_size=12, color=COLORS["muted"])
+            self.status_label = make_label("", font_size=12, color=COLORS["muted"])
 
             self.tab_bar = ui.View()
             self.tab_bar.background_color = COLORS["bg"]
@@ -887,104 +802,62 @@ if HAS_UI:
             except Exception:
                 pass
             self._start_ui_pump()
-            self._begin_bike_fetch()
-
-        def _finish_refresh_error(self, error):
-            from lib import app_state
-
-            view = self
-            try:
-                view._busy = False
-                app_state.set_busy(False)
-                view.refresh_btn.enabled = True
-                app_state.set_error(error)
-                view.status_label.text = "Error: %s" % error
-            except Exception as exc:
-                log_event("UI finish failed: {}".format(exc))
-                log_event(traceback.format_exc())
-
-        def _begin_bike_fetch(self):
-            import ui
-
             view = self
 
             @ui.in_background
-            def fetch_info():
-                try:
-                    log_event("Fetching bikes...")
-                    log_event("GBFS station_information...")
-                    _flush_logs()
-                    station_lookup()
-                except Exception as exc:
-                    log_event("Refresh failed: {}".format(exc))
-                    log_event(traceback.format_exc())
-                    view._enqueue_ui(lambda: view._finish_refresh_error(str(exc)))
-                    return
-                ui.delay(lambda: view._fetch_bike_status(), 0.05)
-
-            fetch_info()
-
-        def _fetch_bike_status(self):
-            import ui
-
-            view = self
-
-            @ui.in_background
-            def fetch_status():
+            def work():
+                error = None
                 snapshots = None
-                try:
-                    log_event("GBFS station_status...")
-                    _flush_logs()
-                    status = fetch_bike_json(GBFS_BASE + "/station_status.json")
-                    log_event("GBFS parsing status...")
-                    _flush_logs()
-                    by_id, by_name = station_lookup()
-                    snapshots = build_snapshots(by_id, by_name, status)
-                    log_event("Bikes fetched: {} stations".format(len(snapshots or [])))
-                    _flush_logs()
-                except Exception as exc:
-                    log_event("Refresh failed: {}".format(exc))
-                    log_event(traceback.format_exc())
-                    view._enqueue_ui(lambda: view._finish_refresh_error(str(exc)))
-                    return
-                ui.delay(lambda: view._continue_refresh(snapshots), 0.05)
-
-            fetch_status()
-
-        def _continue_refresh(self, snapshots):
-            import ui
-
-            view = self
-
-            def show_bikes():
-                try:
-                    log_event("UI bike paint start")
-                    _flush_logs()
-                    view.render_snapshots(
-                        snapshots,
-                        path_boards=None,
-                        path_33rd_boards=None,
-                        subway_boards=None,
-                        path_nj_boards=None,
-                        subway_to_jc_boards=None,
-                        partial=True,
-                    )
-                    view.status_label.text = "Loading transit..."
-                    log_event("UI bike paint done")
-                    _flush_logs()
-                except Exception as exc:
-                    log_event("UI bike render failed: {}".format(exc))
-                    log_event(traceback.format_exc())
-
-            view._enqueue_ui(show_bikes)
-
-            @ui.in_background
-            def fetch_transit():
                 path_boards = []
                 path_33rd_boards = []
                 subway_boards = []
                 path_nj_boards = []
                 subway_to_jc_boards = []
+
+                try:
+                    snapshots = get_snapshots()
+                    log_event("Bikes fetched: {} stations".format(len(snapshots or [])))
+                except Exception as exc:
+                    error = str(exc)
+                    log_event("Refresh failed: {}".format(error))
+                    log_event(traceback.format_exc())
+
+                if error:
+
+                    def finish_error():
+                        from lib import app_state
+
+                        try:
+                            view._busy = False
+                            app_state.set_busy(False)
+                            view.refresh_btn.enabled = True
+                            app_state.set_error(error)
+                            view.status_label.text = "Error: %s" % error
+                        except Exception as exc:
+                            log_event("UI finish failed: {}".format(exc))
+                            log_event(traceback.format_exc())
+
+                    view._enqueue_ui(finish_error)
+                    return
+
+                def show_bikes():
+                    try:
+                        view.render_snapshots(
+                            snapshots,
+                            path_boards=None,
+                            path_33rd_boards=None,
+                            subway_boards=None,
+                            path_nj_boards=None,
+                            subway_to_jc_boards=None,
+                            partial=True,
+                        )
+                        view.status_label.text = "Loading transit..."
+                    except Exception as exc:
+                        log_event("UI bike render failed: {}".format(exc))
+                        log_event(traceback.format_exc())
+
+                view._enqueue_ui(show_bikes)
+
                 try:
                     log_event("Transit fetch started")
                     (
@@ -1003,8 +876,6 @@ if HAS_UI:
                     from lib import app_state
 
                     try:
-                        log_event("UI full paint start")
-                        _flush_logs()
                         view._busy = False
                         app_state.set_busy(False)
                         view.refresh_btn.enabled = True
@@ -1016,8 +887,6 @@ if HAS_UI:
                             path_nj_boards,
                             subway_to_jc_boards,
                         )
-                        log_event("UI full paint done")
-                        _flush_logs()
                     except Exception as exc:
                         view._busy = False
                         app_state.set_busy(False)
@@ -1029,7 +898,7 @@ if HAS_UI:
 
                 view._enqueue_ui(finish)
 
-            fetch_transit()
+            work()
 
         def _log_transit_boards(self, prefix, boards):
             if not boards:
@@ -1272,6 +1141,7 @@ if HAS_UI:
                     return
             raise
         view.start_remote_poll()
+        view.refresh()
 
     def _setup_launcher_background():
         try:
@@ -1283,19 +1153,7 @@ if HAS_UI:
 
     def main_ui():
         setup_debug(mode="full")
-        try:
-            from lib.shortcut_launcher import install_launcher
-
-            install_launcher(_SCRIPT_DIR)
-            log_event("Local deploy OK")
-            _flush_logs()
-        except Exception as exc:
-            log_event("Local deploy failed: %s" % exc)
         start_debug_server(safe_mode=False)
-        print("", flush=True)
-        print("=== iOS Shortcut URL ===", flush=True)
-        print(SHORTCUT_URL, flush=True)
-        print("Launcher: On This iPhone -> %s" % SHORTCUT_SCRIPT, flush=True)
         threading.Thread(target=_setup_launcher_background, daemon=True).start()
         if _needs_ui_handoff():
             from lib.shortcut_launcher import handoff_to_ui_app
