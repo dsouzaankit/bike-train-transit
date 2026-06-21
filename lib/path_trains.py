@@ -2,7 +2,7 @@
 """PATH train departures — NYC-bound, 33rd-bound, and NJ-bound."""
 
 import re
-import time
+from lib.parallel import map_parallel
 from datetime import datetime
 
 PATH_API_BASE = "https://path.api.razza.dev/v1/stations"
@@ -135,14 +135,6 @@ def _is_nj_direction(label):
     return text == "TONJ"
 
 
-def _panynj_url():
-    return PANYNJ_PATH_URL + "?_=" + str(int(time.time() * 1000))
-
-
-def _fetch_panynj_payload(fetch_json):
-    return fetch_json(_panynj_url())
-
-
 def _fetch_razza_station(slug, fetch_json, direction=PATH_DIRECTION_NYC, dest_filter=None):
     payload = fetch_json(PATH_API_BASE + "/" + slug + "/realtime")
     trains = []
@@ -163,6 +155,10 @@ def _fetch_razza_station(slug, fetch_json, direction=PATH_DIRECTION_NYC, dest_fi
             )
         )
     return _filter_sort_trains(trains)
+
+
+def _fetch_panynj_payload(fetch_json):
+    return fetch_json(PANYNJ_PATH_URL)
 
 
 def _parse_panynj_station(code, payload, direction_filter, dest_filter=None):
@@ -190,29 +186,17 @@ def _parse_panynj_station(code, payload, direction_filter, dest_filter=None):
     return []
 
 
-def _board_from_payload(
+def _load_station_board(
     station,
-    payload,
-    direction_filter,
+    fetch_json,
+    panynj_payload,
+    direction=PATH_DIRECTION_NYC,
+    direction_filter=_is_nyc_direction,
     dest_filter=None,
     max_trains=PATH_MAX_TRAINS,
 ):
-    trains = _parse_panynj_station(
-        station["panynj"],
-        payload,
-        direction_filter,
-        dest_filter=dest_filter,
-    )
-    return {
-        "label": station["label"],
-        "trains": trains[:max_trains],
-        "error": None,
-    }
-
-
-def _maybe_enrich_with_razza(board, station, fetch_json, direction, dest_filter=None, max_trains=PATH_MAX_TRAINS):
-    if board.get("trains"):
-        return board
+    error = None
+    trains = []
     try:
         trains = _fetch_razza_station(
             station["slug"],
@@ -221,46 +205,27 @@ def _maybe_enrich_with_razza(board, station, fetch_json, direction, dest_filter=
             dest_filter=dest_filter,
         )
     except Exception as exc:
-        board = dict(board)
-        board["error"] = str(exc)
-        return board
-    if trains:
-        board = dict(board)
-        board["trains"] = trains[:max_trains]
-        board["error"] = None
-    return board
-
-
-def _load_boards_from_payload(
-    stations,
-    payload,
-    fetch_json,
-    direction=PATH_DIRECTION_NYC,
-    direction_filter=_is_nyc_direction,
-    dest_filter=None,
-    max_trains=PATH_MAX_TRAINS,
-    try_razza=False,
-):
-    boards = []
-    for station in stations:
-        board = _board_from_payload(
-            station,
-            payload,
-            direction_filter,
-            dest_filter=dest_filter,
-            max_trains=max_trains,
-        )
-        if try_razza and not board.get("trains"):
-            board = _maybe_enrich_with_razza(
-                board,
-                station,
-                fetch_json,
-                direction,
+        error = str(exc)
+    if not trains:
+        try:
+            if panynj_payload is None:
+                panynj_payload = _fetch_panynj_payload(fetch_json)
+            trains = _parse_panynj_station(
+                station["panynj"],
+                panynj_payload,
+                direction_filter,
                 dest_filter=dest_filter,
-                max_trains=max_trains,
             )
-        boards.append(board)
-    return boards
+            error = None
+        except Exception as exc:
+            if error is None:
+                error = str(exc)
+    board = {
+        "label": station["label"],
+        "trains": trains[:max_trains],
+        "error": error if not trains else None,
+    }
+    return board, panynj_payload
 
 
 def _load_boards(
@@ -270,153 +235,62 @@ def _load_boards(
     direction_filter=_is_nyc_direction,
     dest_filter=None,
     max_trains=PATH_MAX_TRAINS,
-    panynj_payload=None,
 ):
-    error = None
-    payload = panynj_payload
-    try:
-        if payload is None:
-            payload = _fetch_panynj_payload(fetch_json)
-    except Exception as exc:
-        error = str(exc)
-        payload = None
-
-    if payload is not None:
-        boards = _load_boards_from_payload(
-            stations,
-            payload,
-            fetch_json,
-            direction=direction,
-            direction_filter=direction_filter,
-            dest_filter=dest_filter,
-            max_trains=max_trains,
-        )
-        if any(board.get("trains") for board in boards):
-            return boards, payload
-
     boards = []
-    for station in stations:
-        board = {
-            "label": station["label"],
-            "trains": [],
-            "error": error,
-        }
-        board = _maybe_enrich_with_razza(
-            board,
+    panynj_payload = None
+
+    def _one(station):
+        return _load_station_board(
             station,
             fetch_json,
+            None,
             direction,
-            dest_filter=dest_filter,
-            max_trains=max_trains,
+            direction_filter,
+            dest_filter,
+            max_trains,
         )
-        boards.append(board)
-    return boards, payload
 
-
-def get_all_path_boards(
-    fetch_json,
-    razza_fetch_json=None,
-    max_trains=PATH_MAX_TRAINS,
-    max_33rd_trains=PATH_33RD_MAX_TRAINS,
-):
-    """Fetch PANYNJ once and build NYC, 33rd, and NJ boards."""
-    razza_fetch = razza_fetch_json or fetch_json
-    payload = None
-    fetch_error = None
-    try:
-        payload = _fetch_panynj_payload(fetch_json)
-    except Exception as exc:
-        fetch_error = str(exc)
-
-    def _build(stations, direction, direction_filter, dest_filter, limit):
+    for result in map_parallel(stations, _one):
+        if result is None:
+            continue
+        board, payload = result
         if payload is not None:
-            return _load_boards_from_payload(
-                stations,
-                payload,
-                fetch_json,
-                direction=direction,
-                direction_filter=direction_filter,
-                dest_filter=dest_filter,
-                max_trains=limit,
-            )
-        boards = []
-        for station in stations:
-            board = {
-                "label": station["label"],
-                "trains": [],
-                "error": fetch_error,
-            }
-            board = _maybe_enrich_with_razza(
-                board,
-                station,
-                razza_fetch,
-                direction,
-                dest_filter=dest_filter,
-                max_trains=limit,
-            )
-            boards.append(board)
-        return boards
-
-    return {
-        "nyc": _build(
-            PATH_STATIONS,
-            PATH_DIRECTION_NYC,
-            _is_nyc_direction,
-            None,
-            max_trains,
-        ),
-        "33rd": _build(
-            PATH_33RD_STATIONS,
-            PATH_DIRECTION_NYC,
-            _is_nyc_direction,
-            _is_33rd_destination,
-            max_33rd_trains,
-        ),
-        "nj": _build(
-            PATH_NJ_STATIONS,
-            PATH_DIRECTION_NJ,
-            _is_nj_direction,
-            None,
-            max_trains,
-        ),
-    }
+            panynj_payload = payload
+        boards.append(board)
+    order = {s["label"]: index for index, s in enumerate(stations)}
+    boards.sort(key=lambda b: order.get(b["label"], 999))
+    return boards
 
 
-def get_path_nyc_boards(fetch_json, max_trains=PATH_MAX_TRAINS, panynj_payload=None):
-    boards, _payload = _load_boards(
+def get_path_nyc_boards(fetch_json, max_trains=PATH_MAX_TRAINS):
+    return _load_boards(
         PATH_STATIONS,
         fetch_json,
         direction=PATH_DIRECTION_NYC,
         direction_filter=_is_nyc_direction,
         max_trains=max_trains,
-        panynj_payload=panynj_payload,
     )
-    return boards
 
 
-def get_path_33rd_boards(fetch_json, max_trains=PATH_33RD_MAX_TRAINS, panynj_payload=None):
-    boards, _payload = _load_boards(
+def get_path_33rd_boards(fetch_json, max_trains=PATH_33RD_MAX_TRAINS):
+    return _load_boards(
         PATH_33RD_STATIONS,
         fetch_json,
         direction=PATH_DIRECTION_NYC,
         direction_filter=_is_nyc_direction,
         dest_filter=_is_33rd_destination,
         max_trains=max_trains,
-        panynj_payload=panynj_payload,
     )
-    return boards
 
 
-def get_path_nj_boards(fetch_json, max_trains=PATH_MAX_TRAINS, panynj_payload=None):
-    boards, _payload = _load_boards(
+def get_path_nj_boards(fetch_json, max_trains=PATH_MAX_TRAINS):
+    return _load_boards(
         PATH_NJ_STATIONS,
         fetch_json,
         direction=PATH_DIRECTION_NJ,
         direction_filter=_is_nj_direction,
         max_trains=max_trains,
-        panynj_payload=panynj_payload,
     )
-    return boards
 
 
 def print_path_boards(boards, title="PATH"):

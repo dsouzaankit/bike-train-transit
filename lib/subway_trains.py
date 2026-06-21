@@ -198,7 +198,6 @@ def _load_world_trade_center_board(fetch_json, max_trains=SUBWAY_MAX_TRAINS):
                 "trains": trains[:max_trains],
                 "error": None,
                 "estimated": False,
-                "note": "E @ WTC (direct)",
             }
     except Exception as exc:
         error = str(exc)
@@ -228,7 +227,7 @@ def _load_world_trade_center_board(fetch_json, max_trains=SUBWAY_MAX_TRAINS):
                 "trains": raw[:max_trains],
                 "error": None,
                 "estimated": True,
-                "note": "E est. Canal St +%s min" % CANAL_WTC_ESTIMATE_MINUTES,
+                "note": "est. Canal St + %s min" % CANAL_WTC_ESTIMATE_MINUTES,
             }
     except Exception as exc:
         if error is None:

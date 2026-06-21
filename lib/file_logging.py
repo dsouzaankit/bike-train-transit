@@ -26,20 +26,17 @@ class FileLogWriter:
     def log_line(self, line: str) -> None:
         with self._lock:
             self._lines.append(line)
-            self._flush_locked()
+            body = "".join(self._lines).encode("utf-8")
+            log_paths._atomic_write(log_paths.latest_log_path(), body)
+            log_paths._atomic_write(self._session_path, body)
+            tail = self._lines[-12:]
+            log_paths._atomic_write(
+                log_paths.progress_log_path(),
+                "".join(tail).encode("utf-8"),
+            )
 
     def log(self, message: str) -> None:
         self.log_line("{} {}\n".format(log_paths._iso_now(), message))
-
-    def _flush_locked(self) -> None:
-        body = "".join(self._lines).encode("utf-8")
-        log_paths._atomic_write(log_paths.latest_log_path(), body)
-        log_paths._atomic_write(self._session_path, body)
-        tail = self._lines[-12:]
-        log_paths._atomic_write(
-            log_paths.progress_log_path(),
-            "".join(tail).encode("utf-8"),
-        )
 
 
 class FileLogHandler(logging.Handler):
@@ -118,15 +115,6 @@ def append_to_latest(message: str) -> None:
     )
 
 
-def flush_file_logs() -> None:
-    """Force latest/session/progress files to reflect in-memory log state."""
-    writer = _file_writer
-    if writer is None:
-        return
-    with writer._lock:
-        writer._flush_locked()
-
-
 def _log_traceback(prefix: str, exc_type, exc, tb) -> None:
     writer = _file_writer
     msg = "".join(traceback.format_exception(exc_type, exc, tb))
@@ -134,7 +122,6 @@ def _log_traceback(prefix: str, exc_type, exc, tb) -> None:
         writer.log(prefix)
         for line in msg.splitlines():
             writer.log(line)
-        flush_file_logs()
         return
     append_to_latest(prefix)
     for line in msg.splitlines():
@@ -169,7 +156,6 @@ def install_thread_hook() -> None:
         )
         if args.exc_value is not None:
             log_paths.write_crash_marker(args.exc_value)
-        flush_file_logs()
         default = threading.__excepthook__
         if default is not None:
             default(args)
@@ -181,7 +167,6 @@ def install_crash_hooks() -> None:
     def _excepthook(exc_type, exc, tb):
         _log_traceback("FATAL uncaught exception:", exc_type, exc, tb)
         log_paths.write_crash_marker(exc)
-        flush_file_logs()
         sys.__excepthook__(exc_type, exc, tb)
 
     sys.excepthook = _excepthook
@@ -191,25 +176,9 @@ def setup_file_logging(level: int = logging.INFO) -> FileLogWriter:
     global _file_writer
     log_paths.ensure_log_dirs()
     log_paths.prune_old_logs()
-    had_crash = log_paths.has_crash_marker()
-    archived = log_paths.archive_latest_log_if_nonempty()
-    if not had_crash:
-        log_paths.clear_crash_marker()
+    log_paths.clear_crash_marker()
     session = log_paths.new_session_log_path()
-    initial = []
-    if archived:
-        initial.append(
-            "{} === archived previous session: {} ===\n".format(
-                log_paths._iso_now(), archived
-            )
-        )
-    if had_crash:
-        initial.append(
-            "{} === new session (crash marker kept until refresh OK) ===\n".format(
-                log_paths._iso_now()
-            )
-        )
-    _file_writer = FileLogWriter(session, initial_lines=initial)
+    _file_writer = FileLogWriter(session)
     _file_writer.log("=== session {} ===".format(session))
     root = logging.getLogger()
     root.setLevel(level)
@@ -222,22 +191,17 @@ def setup_file_logging(level: int = logging.INFO) -> FileLogWriter:
     install_console_tee()
     install_thread_hook()
     install_crash_hooks()
-    flush_file_logs()
     return _file_writer
 
 
 def setup_safe_mode_logging(port: int = 8765) -> None:
     """Preserve crash logs; tee console; do not start a fresh session."""
     log_paths.ensure_log_dirs()
-    recovered = log_paths.recover_latest_from_history()
-    if recovered:
-        append_to_latest("=== safe mode recovered log: {} ===".format(recovered))
     log_paths.write_ok_probe(mode="safe")
     append_to_latest("=== safe mode LAN server on port {} ===".format(port))
     install_console_tee()
     install_thread_hook()
     install_crash_hooks()
-    flush_file_logs()
 
 
 def log_message(text: str) -> None:
@@ -267,10 +231,3 @@ def log_crash(exc: BaseException) -> None:
         append_to_latest("FATAL crash: {}: {}".format(type(exc).__name__, exc))
         append_to_latest(traceback.format_exc())
     log_paths.write_crash_marker(exc)
-    flush_file_logs()
-
-
-def mark_refresh_ok() -> None:
-    """Clear crash marker after a successful end-to-end refresh."""
-    log_paths.clear_crash_marker()
-    flush_file_logs()

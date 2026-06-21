@@ -8,13 +8,12 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 
 - **Two tabs** — **From JC** (bikes + outbound transit) and **To JC** (inbound transit from Manhattan)
 - **iPhone app** — compact 2-column grid showing filled bikes and empty docks for JC stations
-- **PATH + subway connections** — From JC subway cards filter for trains reachable after PATH arrival + walk time
 - **PATH & subway** — real-time departures in grouped sections (see [App tabs](#app-tabs) below)
 - **Low-count alerts** — cards highlight red when bikes or docks ≤ threshold
 - **LAN debug server** — browse logs and status from a PC on the same Wi‑Fi (`:8765`)
 - **PC deploy script** — `deploy.ps1` zips the project to iCloud Downloads for Pythonista sync
 - **PC email script** — optional Yahoo SMTP status/alert emails
-- **iOS Shortcut** — one-tap launch from Home Screen (launcher v7 two-hop handoff)
+- **iOS Shortcut** — one-tap launch from Home Screen
 
 ## Jersey City stations (`JC`)
 
@@ -37,34 +36,18 @@ Tap **From JC** or **To JC** in the tab bar below the header. One refresh loads 
 | **Citibike grid** | 9 JC stations | GBFS bike/dock counts |
 | **PATH → NYC** | Grove St PATH, Newport PATH | Next NYC-bound PATH trains |
 | **PATH → 33rd St** | Christopher St, 9th St | Next 33rd St-bound PATH trains |
-| **Subway → North / Queens** | Christopher St, West 4 St | Uptown/Queens departures after PATH + walk |
+| **Subway → North / Queens** | Christopher St, West 4 St | Uptown/Queens subway departures |
 
-On refresh, the **bike grid paints first**; PATH and subway sections follow once transit data is loaded. Transit data is fetched in parallel in the background.
-
-**Subway → North / Queens** uses the earliest PATH arrival at **Christopher St** or **9th St** (from PATH → 33rd) and only shows subway departures you can catch after a walk:
-
-| Subway station | Walk buffer after PATH |
-|----------------|------------------------|
-| Christopher St (1 train) | +5 min |
-| West 4 St (A/C/E/B/D/F/M) | +7 min |
-
-Each subway card shows a note like `after PATH +5 min`. Empty state: **None after PATH**.
+Bike cards appear first; transit sections load in parallel afterward.
 
 ### To JC
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **Subway → South Ferry** | WTC Cortlandt, World Trade Center | Downtown 1 train (South Ferry) and E train at WTC |
-| **PATH → NJ** | Christopher St, 9th St, 33rd St, World Trade Center | Next NJ-bound PATH trains (2×2 grid) |
+| **Subway → South Ferry** | WTC Cortlandt, World Trade Center | Downtown 1 / E trains toward South Ferry / WTC |
+| **PATH → NJ** | Christopher St, 9th St, 33rd St, World Trade Center | Next NJ-bound PATH trains |
 
-**World Trade Center (E train)** — card note tells you which source is in use:
-
-| Card note | Meaning |
-|-----------|---------|
-| `E @ WTC (direct)` | Live E-line arrivals at the WTC platform (`E01`) |
-| `E est. Canal St +2 min` | No direct WTC E data; estimated from Canal St WTC-bound trains +2 min (`~` on ETAs) |
-
-WTC Cortlandt shows **1 train** arrivals toward South Ferry directly.
+**World Trade Center subway:** uses direct E-line arrivals when available. If not, estimates from **Canal St** WTC-bound departures **+2 min** (shown with `~` and note “est. Canal St + 2 min”).
 
 ## Project layout
 
@@ -77,14 +60,8 @@ bike_train_transit/
   debug_server.py                 # Safe mode: logs only (no UI)
   lib/
     path_trains.py                # PATH NYC / 33rd / NJ boards
-    subway_trains.py              # Subway north, PATH+subway connections, To JC
-    parallel.py                   # Pythonista-safe parallel fetch (no ThreadPoolExecutor)
-    app_state.py                  # Shared state for UI, CLI, LAN status
-    file_logging.py               # Log tee, crash hooks, session archive
-    shortcut_launcher.py          # RunBikeTrainTransit.py launcher (v7)
-    local_deploy.py               # Incremental copy to On This iPhone
-    lan_debug_server.py           # HTTP debug server
-    ...                           # app_control, log_paths, net_util
+    subway_trains.py              # Subway north and To JC boards
+    ...                           # logging, LAN server, launcher, deploy
   windows/                        # PC helpers for LAN debug URLs, deploy config
   .env.example                    # Yahoo SMTP template
 ```
@@ -113,7 +90,7 @@ Force quit releases log files and the LAN debug listener. It is faster and more 
 On the iPhone, open **Files** and delete **`bike_train_transit`** wherever it exists:
 
 - **iCloud Drive → Downloads** — remove the old extracted folder (not just the zip)
-- **Pythonista → On This iPhone** — remove `bike_train_transit/` and stale launchers if present
+- **Pythonista** (iCloud or On My iPhone) — remove the copy you run from
 
 Do this **after** force quitting Pythonista and **before** running `deploy.ps1` on the PC.
 
@@ -136,20 +113,18 @@ Optional: set `iCloudDownloads` in `windows\bike-train-transit-windows.json` if 
 
 1. **Files → iCloud Drive → Downloads**
 2. Tap **`bike_train_transit.zip`** to unzip
-3. Copy the **`bike_train_transit`** folder into Pythonista (iCloud Downloads is fine for **editing**)
-4. Run **`bike_train_transit.py`** once from the copied folder
+3. Copy the **`bike_train_transit`** folder into Pythonista
+4. Run **`bike_train_transit.py`** once
 
 On first launch the app will:
 
 - Show the **From JC** tab with bike grid and refresh live data
 - Start the LAN debug server on port **8765**
-- Copy itself to **On This iPhone → Documents/bike_train_transit/** (required for shortcuts and URL launch)
-- Install **`RunBikeTrainTransit.py`** (launcher v7) on On This iPhone
+- Copy itself to **On This iPhone → Documents/bike_train_transit/** (for URL launch)
+- Install **`RunBikeTrainTransit.py`** on On This iPhone
 - Log shortcut setup steps to the console and LAN log
 
 Launcher deploy runs in the background so the UI opens immediately. Only changed files are copied on redeploy.
-
-**Important:** Edit in iCloud Downloads if you like, but the **runnable copy** lives under **On This iPhone → Documents/bike_train_transit/** after the first run. Re-run `bike_train_transit.py` after each deploy to sync changes there.
 
 ---
 
@@ -164,7 +139,7 @@ Always copy the **entire folder including `lib/`**, not just the main script.
 
 ### Edit stations (optional)
 
-In `bike_train_transit.py`, edit `STATIONS`, `STATION_LABELS`, `GRID_GROUPS`, and `REGION` at the top. Transit station lists and walk buffers live in `lib/path_trains.py` and `lib/subway_trains.py`.
+In `bike_train_transit.py`, edit `STATIONS`, `STATION_LABELS`, `GRID_GROUPS`, and `REGION` at the top. Transit station lists live in `lib/path_trains.py` and `lib/subway_trains.py`.
 
 ---
 
@@ -199,8 +174,6 @@ Only use this if the wrench method is not an option:
 2. URL: `pythonista3://RunBikeTrainTransit.py?action=run`
 3. Turn off **Show in Share Sheet** in shortcut settings
 4. **⋯** → **Add to Home Screen**
-
-**Launcher v7** uses a two-hop handoff: the shortcut opens `RunBikeTrainTransit.py`, which immediately re-opens the full app via `shortcuts.open_url()`. This avoids the Shortcuts error `ui.View.present is not available in widgets and shortcuts`.
 
 If tapping the icon does nothing, switch to the **wrench method** above.
 
@@ -239,15 +212,7 @@ Find your iPhone IP: **Settings → Wi‑Fi → (i) → IP Address**
 
 Example: `http://10.0.100.10:8765/`
 
-Console output (`stdout`/`stderr`), thread tracebacks, and crash markers are captured to the log file.
-
-### Logging behavior
-
-- Each **full app launch** archives the previous latest log to a timestamped history file before starting a new session
-- **Crash marker** (`bike_train_transit_crash.txt`) is kept until a successful **Refresh OK**
-- Refresh logs step markers: `Refresh started` → `Bikes fetched` → `Transit fetch started/done` → `Refresh OK`
-- UI updates during refresh run on the **main thread** (background thread only fetches data)
-- GBFS and transit HTTP fetches **retry** on transient failures
+Console output (`stdout`/`stderr`), thread tracebacks, and crash markers are captured to the log file. Safe mode **preserves** existing logs (does not wipe the crash session).
 
 ### Safe mode (after a crash)
 
@@ -258,15 +223,7 @@ python debug_server.py
 python bike_train_transit.py --safe
 ```
 
-**Force quit the full app first** — safe mode cannot bind port 8765 if Bike Train Transit is still running (`address already in use`).
-
-Safe mode:
-
-- Does **not** wipe existing logs
-- Recovers latest log from **Previous session** history if latest is empty
-- Serves crash marker, latest log, and session history on the dashboard
-
-Run the full app again when ready.
+Safe mode serves logs only — the dashboard shows crash marker, latest log, and previous session history. Run the full app again when ready.
 
 ### PC helpers (Windows)
 
@@ -338,9 +295,25 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 | File | Configure |
 |------|-----------|
 | `path_trains.py` | PATH stations for NYC, 33rd St, and NJ boards |
-| `subway_trains.py` | Subway north/Queens (PATH connection filters), To JC (WTC Cortlandt, WTC E, Canal St fallback) |
-| `subway_trains.py` | `PATH_SUBWAY_WALK_MINUTES` — walk after PATH before subway (Christopher St: 5, West 4 St: 7) |
-| `subway_trains.py` | `CANAL_WTC_ESTIMATE_MINUTES` — added to Canal St times when WTC E direct data unavailable (default: 2) |
+| `subway_trains.py` | Subway north/Queens and To JC (WTC Cortlandt, WTC E, Canal St fallback) |
+
+### PC email (`config.json`)
+
+| Field | Description |
+|-------|-------------|
+| `region` | Prefix tag for email reports (e.g. `JC`) |
+| `stations` | List of station names (up to 12) |
+| `alert_min_bikes` | Email alert threshold |
+| `alert_min_docks` | Email alert threshold |
+| `email_always` | `true` = email every run; `false` = only on alert |
+
+### PC Windows helpers (`windows\bike-train-transit-windows.json`)
+
+| Field | Description |
+|-------|-------------|
+| `phoneLanHost` | iPhone Wi‑Fi IP for LAN debug URLs |
+| `lanDebugPort` | Debug server port (default `8765`) |
+| `iCloudDownloads` | Optional override for `deploy.ps1` destination |
 
 ---
 
@@ -348,27 +321,20 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 
 | Problem | Fix |
 |---------|-----|
-| Stale code on iPhone after PC edits | Force quit Pythonista, delete old folder in Files + On This iPhone, run `.\deploy.ps1`, reinstall from zip, run `bike_train_transit.py` once |
+| Stale code on iPhone after PC edits | Force quit Pythonista, delete old folder in Files, run `.\deploy.ps1`, reinstall from zip |
 | App stuck in safe mode | Run `bike_train_transit.py` (full UI), not `debug_server.py` or `--safe` |
-| Safe mode: port 8765 already in use | Force quit the full Bike Train Transit app first, then start safe mode |
-| Safe mode shows empty log | Check **Previous session** on dashboard; latest code auto-recovers from history |
-| Console errors not in LAN log | stdout/stderr and thread errors are tee'd to the log |
-| App crashes on Refresh or From JC tab | Redeploy latest code; UI is main-thread only with deferred transit paint. Check log for last step before crash |
-| UI stuck on “Updating…” | Bikes should appear first; check log for `Transit fetch` / `UI finish failed` |
-| Refresh fails: GBFS tuple/object error | Transient network glitch — retry Refresh; fetch retries automatically |
-| Shortcut: `ui.View.present is not available` | Update to launcher v7 — run app once to reinstall `RunBikeTrainTransit.py` |
-| Shortcut tap does nothing | Use **Pythonista wrench → Add to Home Screen** on `RunBikeTrainTransit.py`. Test URL in **Safari** first |
+| Safe mode shows empty log | Update to latest code — safe mode now preserves crash logs; check **Previous session** on dashboard |
+| Console errors not in LAN log | Update to latest code — stdout/stderr and thread errors are now captured |
+| UI stuck on “Updating…” / black screen | Transit fetch may be slow; bikes should appear first. Check log for errors; redeploy latest code |
+| Shortcut tap does nothing / Pythonista doesn’t open | Use **Pythonista wrench → Shortcuts → Add to Home Screen** (not Shortcuts app). Test URL in **Safari** first. |
 | Shortcut: “unable to locate file” | Run app once to install launcher; URL must be `pythonista3://RunBikeTrainTransit.py?action=run` |
-| `lib/ shortcut help unavailable` | Harmless when editing in Downloads — launcher still installs to On This iPhone |
-| Wrong IP in log (`10.115.x.x`) | VPN tunnel IP; use Wi‑Fi IP from Settings for PC access |
+| Shortcuts: “problem communicating with app” | Normal for UI apps — use Pythonista wrench method; launcher defers UI for URL handoff |
+| Wrong IP in log (`10.115.x.x`) | That’s a VPN tunnel IP; use Wi‑Fi IP from Settings for PC access |
 | `ModuleNotFoundError: lib` | Copy the whole folder including `lib/` |
-| PC can’t reach debug URL | Same Wi‑Fi; check iPhone IP; app must be running (or safe mode after force quit) |
+| PC can’t reach debug URL | Same Wi‑Fi; check iPhone IP; app must be running (or safe mode after crash) |
 | Email fails | Use Yahoo **app password** in `.env`, not account password |
 | `deploy.ps1`: iCloud folder not found | Enable iCloud Drive on Windows or set `iCloudDownloads` in windows config |
-| WTC card note `E est. Canal St +2 min` | Fallback estimate — direct WTC E feed had no arrivals |
-| WTC card note `E @ WTC (direct)` | Live E-line data at WTC platform |
-| Subway shows “None after PATH” | No uptown subway departs soon enough after next PATH arrival + walk buffer |
-| PATH → NJ cards overflow | Section uses 2×2 grid layout (update if still broken after redeploy) |
+| WTC subway shows `~` prefix | Estimated from Canal St +2 min — direct WTC E-line data was unavailable |
 
 ---
 
@@ -386,7 +352,5 @@ Transit data sources:
 
 | Module | API |
 |--------|-----|
-| `lib/path_trains.py` | PANYNJ `ridepath.json` (primary; one fetch for all boards). Optional razza.dev per-station fallback when PANYNJ is empty. |
+| `lib/path_trains.py` | [path.api.razza.dev](https://path.api.razza.dev/) (fallback: PANYNJ `ridepath.json`) |
 | `lib/subway_trains.py` | [subwayinfo.nyc](https://subwayinfo.nyc/) arrivals API |
-
-Parallel transit fetches use `lib/parallel.py` (threading-based) — Pythonista’s `ThreadPoolExecutor` is broken and must not be used.

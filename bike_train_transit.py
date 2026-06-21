@@ -128,15 +128,6 @@ def log_event(message):
         pass
 
 
-def _flush_logs():
-    try:
-        from lib.file_logging import flush_file_logs
-
-        flush_file_logs()
-    except Exception:
-        pass
-
-
 def print_shortcut_help():
     # Always print from main module — works even if lib/ on phone is stale.
     print("", flush=True)
@@ -394,27 +385,23 @@ def _fetch_transit_boards():
         except Exception as exc:
             log_event("{} fetch failed: {}".format(label, exc))
             log_event(traceback.format_exc())
-            return [] if label != "pathAll" else {}
-
-    def _fetch_path_all():
-        from lib.path_trains import get_all_path_boards
-
-        return get_all_path_boards(fetch_transit_json)
+            return []
 
     jobs = {
-        "pathAll": _fetch_path_all,
+        "path": get_path_boards,
+        "path33": get_path_33rd_boards,
         "subway": get_subway_boards,
+        "pathNj": get_path_nj_boards,
         "subwayToJc": get_subway_to_jc_boards,
     }
     results = run_parallel(
         {key: (lambda k=key, f=fn: _wrap(k, f)) for key, fn in jobs.items()},
         timeout=TRANSIT_FETCH_TIMEOUT * 3,
     )
-    path_bundle = results.get("pathAll") or {}
-    path_boards = path_bundle.get("nyc") or []
-    path_33rd_boards = path_bundle.get("33rd") or []
-    path_nj_boards = path_bundle.get("nj") or []
+    path_boards = results.get("path") or []
+    path_33rd_boards = results.get("path33") or []
     subway_boards = results.get("subway") or []
+    path_nj_boards = results.get("pathNj") or []
     subway_to_jc_boards = results.get("subwayToJc") or []
     try:
         from lib.subway_trains import apply_path_subway_connections
@@ -645,9 +632,6 @@ if HAS_UI:
             self._busy = False
             self._active_tab = "from_jc"
             self._cache = {"snapshots": []}
-            self._ui_lock = threading.Lock()
-            self._ui_queue = []
-            self._ui_pump_active = False
 
             self.header = ui.View()
             self.header.background_color = COLORS["bg"]
@@ -730,7 +714,7 @@ if HAS_UI:
                     self.refresh()
             except Exception:
                 pass
-            ui.delay(lambda: self._poll_remote_control(), 1.0)
+            ui.delay(self._poll_remote_control, 1.0)
 
         def layout(self):
             safe_top = self.safe_area_insets.top if hasattr(self, "safe_area_insets") else 0
@@ -750,38 +734,6 @@ if HAS_UI:
             self.status_label.frame = (16, status_top, width - 32, 16)
             self.scroll.frame = (0, status_top + 20, width, height - status_top - 20)
 
-        def _enqueue_ui(self, fn):
-            with self._ui_lock:
-                self._ui_queue.append(fn)
-
-        def _run_ui_callbacks(self):
-            import ui
-
-            with self._ui_lock:
-                batch = self._ui_queue[:]
-                self._ui_queue.clear()
-            for fn in batch:
-                try:
-                    fn()
-                except Exception as exc:
-                    log_event("UI callback failed: {}".format(exc))
-                    log_event(traceback.format_exc())
-            if self._busy or self._ui_queue:
-                ui.delay(lambda: self._run_ui_callbacks(), 0.05)
-
-        def _start_ui_pump(self):
-            import ui
-
-            if self._ui_pump_active:
-                return
-            self._ui_pump_active = True
-
-            def pump():
-                self._ui_pump_active = False
-                self._run_ui_callbacks()
-
-            ui.delay(pump, 0)
-
         def refresh_tapped(self, sender):
             self.refresh()
 
@@ -795,16 +747,7 @@ if HAS_UI:
             self.refresh_btn.enabled = False
             self.status_label.text = "Updating..."
             log_event("Refresh started")
-            try:
-                from lib.file_logging import flush_file_logs
 
-                flush_file_logs()
-            except Exception:
-                pass
-            self._start_ui_pump()
-            view = self
-
-            @ui.in_background
             def work():
                 error = None
                 snapshots = None
@@ -816,7 +759,6 @@ if HAS_UI:
 
                 try:
                     snapshots = get_snapshots()
-                    log_event("Bikes fetched: {} stations".format(len(snapshots or [])))
                 except Exception as exc:
                     error = str(exc)
                     log_event("Refresh failed: {}".format(error))
@@ -825,24 +767,27 @@ if HAS_UI:
                 if error:
 
                     def finish_error():
+                        import ui
                         from lib import app_state
 
                         try:
-                            view._busy = False
+                            self._busy = False
                             app_state.set_busy(False)
-                            view.refresh_btn.enabled = True
+                            self.refresh_btn.enabled = True
                             app_state.set_error(error)
-                            view.status_label.text = "Error: %s" % error
+                            self.status_label.text = "Error: %s" % error
                         except Exception as exc:
                             log_event("UI finish failed: {}".format(exc))
                             log_event(traceback.format_exc())
 
-                    view._enqueue_ui(finish_error)
+                    ui.delay(finish_error, 0)
                     return
 
                 def show_bikes():
+                    import ui
+
                     try:
-                        view.render_snapshots(
+                        self.render_snapshots(
                             snapshots,
                             path_boards=None,
                             path_33rd_boards=None,
@@ -851,15 +796,14 @@ if HAS_UI:
                             subway_to_jc_boards=None,
                             partial=True,
                         )
-                        view.status_label.text = "Loading transit..."
+                        self.status_label.text = "Loading transit..."
                     except Exception as exc:
                         log_event("UI bike render failed: {}".format(exc))
                         log_event(traceback.format_exc())
 
-                view._enqueue_ui(show_bikes)
+                ui.delay(show_bikes, 0)
 
                 try:
-                    log_event("Transit fetch started")
                     (
                         path_boards,
                         path_33rd_boards,
@@ -867,19 +811,19 @@ if HAS_UI:
                         path_nj_boards,
                         subway_to_jc_boards,
                     ) = _fetch_transit_boards()
-                    log_event("Transit fetch done")
                 except Exception as exc:
                     log_event("Transit fetch failed: {}".format(exc))
                     log_event(traceback.format_exc())
 
                 def finish():
+                    import ui
                     from lib import app_state
 
                     try:
-                        view._busy = False
+                        self._busy = False
                         app_state.set_busy(False)
-                        view.refresh_btn.enabled = True
-                        view.render_snapshots(
+                        self.refresh_btn.enabled = True
+                        self.render_snapshots(
                             snapshots,
                             path_boards,
                             path_33rd_boards,
@@ -888,17 +832,17 @@ if HAS_UI:
                             subway_to_jc_boards,
                         )
                     except Exception as exc:
-                        view._busy = False
+                        self._busy = False
                         app_state.set_busy(False)
                         app_state.set_error(str(exc))
-                        view.refresh_btn.enabled = True
-                        view.status_label.text = "Error: %s" % exc
+                        self.refresh_btn.enabled = True
+                        self.status_label.text = "Error: %s" % exc
                         log_event("UI finish failed: {}".format(exc))
                         log_event(traceback.format_exc())
 
-                view._enqueue_ui(finish)
+                ui.delay(finish, 0)
 
-            work()
+            threading.Thread(target=work, daemon=True).start()
 
         def _log_transit_boards(self, prefix, boards):
             if not boards:
@@ -1008,12 +952,6 @@ if HAS_UI:
                 self._log_transit_boards("SUBWAY", subway_boards)
                 self._log_transit_boards("SUBWAYJC", subway_to_jc_boards)
                 log_event("Refresh OK: {} stations".format(len(snapshots or [])))
-                try:
-                    from lib.file_logging import mark_refresh_ok
-
-                    mark_refresh_ok()
-                except Exception:
-                    pass
                 app_state.update_refresh(
                     snapshots or self._cache.get("snapshots") or [],
                     path_boards,
@@ -1029,9 +967,6 @@ if HAS_UI:
         def _paint_active_tab(self, partial=False):
             import ui
 
-            log_event(
-                "UI paint tab={} partial={}".format(self._active_tab, partial)
-            )
             for subview in list(self.scroll.subviews):
                 self.scroll.remove_subview(subview)
             width = max(self.width - 16, 320)
@@ -1154,6 +1089,10 @@ if HAS_UI:
     def main_ui():
         setup_debug(mode="full")
         start_debug_server(safe_mode=False)
+        print("", flush=True)
+        print("=== iOS Shortcut URL ===", flush=True)
+        print(SHORTCUT_URL, flush=True)
+        print("Launcher: On This iPhone -> %s" % SHORTCUT_SCRIPT, flush=True)
         threading.Thread(target=_setup_launcher_background, daemon=True).start()
         if _needs_ui_handoff():
             from lib.shortcut_launcher import handoff_to_ui_app
