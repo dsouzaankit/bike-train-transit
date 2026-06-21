@@ -23,6 +23,14 @@ PATH_33RD_STATIONS = [
     {"slug": "ninth_street", "panynj": "09S", "label": "9th St"},
 ]
 
+PATH_14TH_STATION = {
+    "slug": "fourteenth_street",
+    "panynj": "14S",
+    "label": "14 St PATH",
+}
+
+NINTH_ST_ESTIMATE_TO_14TH_MINUTES = 1
+
 PATH_NJ_STATIONS = [
     {"slug": "christopher_street", "panynj": "CHR", "label": "Christopher St"},
     {"slug": "ninth_street", "panynj": "09S", "label": "9th St"},
@@ -37,6 +45,11 @@ _DEST_SHORT = {
     "Hoboken": "Hoboken",
     "Newark": "Newark",
 }
+
+
+def _is_hoboken_destination(name):
+    text = (name or "").casefold()
+    return "hoboken" in text
 
 
 def _short_destination(name):
@@ -152,6 +165,8 @@ def _fetch_razza_station(slug, fetch_json, direction=PATH_DIRECTION_NYC, dest_fi
         if direction and item_direction and item_direction != direction:
             continue
         dest = item.get("headsign") or item.get("lineName") or "?"
+        if _is_hoboken_destination(dest):
+            continue
         if dest_filter is not None and not dest_filter(dest):
             continue
         minutes = _minutes_until_utc(item.get("projectedArrival"))
@@ -176,6 +191,8 @@ def _parse_panynj_station(code, payload, direction_filter, dest_filter=None):
                 continue
             for msg in dest.get("messages") or []:
                 headsign = msg.get("headSign") or "?"
+                if _is_hoboken_destination(headsign):
+                    continue
                 if dest_filter is not None and not dest_filter(headsign):
                     continue
                 minutes, eta_text = _parse_eta_message(msg.get("arrivalTimeMessage"))
@@ -314,6 +331,79 @@ def _load_boards(
     return boards, payload
 
 
+def _load_14th_path_board(fetch_json, panynj_payload=None, max_trains=PATH_33RD_MAX_TRAINS):
+    """33rd-bound PATH at 14 St; fallback estimate from 9th St +1 min."""
+    payload = panynj_payload
+    if payload is None:
+        try:
+            payload = _fetch_panynj_payload(fetch_json)
+        except Exception as exc:
+            return {
+                "label": PATH_14TH_STATION["label"],
+                "trains": [],
+                "error": str(exc),
+            }
+
+    trains = _parse_panynj_station(
+        PATH_14TH_STATION["panynj"],
+        payload,
+        _is_nyc_direction,
+        dest_filter=_is_33rd_destination,
+    )
+    if trains:
+        return {
+            "label": PATH_14TH_STATION["label"],
+            "trains": trains[:max_trains],
+            "error": None,
+            "estimated": False,
+        }
+
+    ninth = _parse_panynj_station(
+        "09S",
+        payload,
+        _is_nyc_direction,
+        dest_filter=_is_33rd_destination,
+    )
+    if ninth:
+        estimated = []
+        for train in ninth:
+            minutes = train.get("minutes")
+            if minutes is not None:
+                minutes = minutes + NINTH_ST_ESTIMATE_TO_14TH_MINUTES
+            eta_text = train.get("eta")
+            if minutes is not None and minutes > 0:
+                eta_text = "~%sm" % minutes
+            estimated.append(
+                {
+                    **train,
+                    "minutes": minutes,
+                    "eta": eta_text,
+                    "estimated": True,
+                }
+            )
+        return {
+            "label": PATH_14TH_STATION["label"],
+            "trains": estimated[:max_trains],
+            "error": None,
+            "estimated": True,
+            "note": "est. 9th St + %s min" % NINTH_ST_ESTIMATE_TO_14TH_MINUTES,
+        }
+
+    board = {
+        "label": PATH_14TH_STATION["label"],
+        "trains": [],
+        "error": "No 33rd St trains",
+    }
+    return _maybe_enrich_with_razza(
+        board,
+        PATH_14TH_STATION,
+        fetch_json,
+        PATH_DIRECTION_NYC,
+        dest_filter=_is_33rd_destination,
+        max_trains=max_trains,
+    )
+
+
 def get_all_path_boards(
     fetch_json,
     razza_fetch_json=None,
@@ -358,6 +448,21 @@ def get_all_path_boards(
             boards.append(board)
         return boards
 
+    path_33rd = _build(
+        PATH_33RD_STATIONS,
+        PATH_DIRECTION_NYC,
+        _is_nyc_direction,
+        _is_33rd_destination,
+        max_33rd_trains,
+    )
+    path_14th = _load_14th_path_board(
+        razza_fetch,
+        panynj_payload=payload,
+        max_trains=max_33rd_trains,
+    )
+    if path_14th.get("trains"):
+        path_33rd = [path_14th] + path_33rd
+
     return {
         "nyc": _build(
             PATH_STATIONS,
@@ -366,13 +471,7 @@ def get_all_path_boards(
             None,
             max_trains,
         ),
-        "33rd": _build(
-            PATH_33RD_STATIONS,
-            PATH_DIRECTION_NYC,
-            _is_nyc_direction,
-            _is_33rd_destination,
-            max_33rd_trains,
-        ),
+        "33rd": path_33rd,
         "nj": _build(
             PATH_NJ_STATIONS,
             PATH_DIRECTION_NJ,
@@ -396,7 +495,7 @@ def get_path_nyc_boards(fetch_json, max_trains=PATH_MAX_TRAINS, panynj_payload=N
 
 
 def get_path_33rd_boards(fetch_json, max_trains=PATH_33RD_MAX_TRAINS, panynj_payload=None):
-    boards, _payload = _load_boards(
+    boards, payload = _load_boards(
         PATH_33RD_STATIONS,
         fetch_json,
         direction=PATH_DIRECTION_NYC,
@@ -405,6 +504,13 @@ def get_path_33rd_boards(fetch_json, max_trains=PATH_33RD_MAX_TRAINS, panynj_pay
         max_trains=max_trains,
         panynj_payload=panynj_payload,
     )
+    fourteenth = _load_14th_path_board(
+        fetch_json,
+        panynj_payload=payload or panynj_payload,
+        max_trains=max_trains,
+    )
+    if fourteenth.get("trains"):
+        boards = [fourteenth] + boards
     return boards
 
 

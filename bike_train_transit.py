@@ -34,6 +34,7 @@ except ImportError:
     HAS_UI = False
 
 # --- edit these ---
+APP_TITLE = "Bike Train Tunnel . JC"
 REGION = "JC"
 STATIONS = [
     "Dixon Mills",
@@ -91,6 +92,8 @@ CARD_HEIGHT = 76
 CARD_GAP = 6
 CARD_COLUMNS = 2
 PATH_CARD_HEIGHT = 98
+TRANSIT_LINE_ROW_HEIGHT = 22
+TUNNEL_ROW_HEIGHT = 40
 ETA_COLUMN_WIDTH = 68
 SECTION_HEADER_HEIGHT = 26
 SECTION_GAP = 10
@@ -104,7 +107,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "diag-step-markers-1"
+BUILD_TAG = "transit-tunnels-v1"
 
 COLORS = {
     "bg": "#0f1419",
@@ -277,6 +280,26 @@ def fetch_transit_json(url):
     return fetch_json(url, timeout=TRANSIT_FETCH_TIMEOUT)
 
 
+def fetch_transit_payload(url):
+    """Like fetch_transit_json but accepts JSON arrays (e.g. PANYNJ crossing times)."""
+    last_error = None
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "bike-train-transit/2.0"}
+            )
+            with urllib.request.urlopen(req, timeout=TRANSIT_FETCH_TIMEOUT) as resp:
+                raw = resp.read()
+            text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+            payload = json.loads(text)
+            if isinstance(payload, (dict, list)):
+                return payload
+            raise ValueError("Expected JSON object or array from %s" % url)
+        except Exception as exc:
+            last_error = exc
+    raise last_error
+
+
 def _placeholder_snapshot(label="No data"):
     return {
         "region": REGION,
@@ -402,6 +425,9 @@ def _fetch_transit_boards():
         "pathAll": _fetch_path_all,
         "subway": get_subway_boards,
         "subwayToJc": get_subway_to_jc_boards,
+        "tunnels": lambda: __import__("lib.tunnel_crossings", fromlist=["get_tunnel_boards"]).get_tunnel_boards(
+            fetch_transit_payload
+        ),
     }
     results = run_parallel(
         {key: (lambda k=key, f=fn: _wrap(k, f)) for key, fn in jobs.items()},
@@ -413,6 +439,7 @@ def _fetch_transit_boards():
     path_nj_boards = path_bundle.get("nj") or []
     subway_boards = results.get("subway") or []
     subway_to_jc_boards = results.get("subwayToJc") or []
+    tunnel_boards = results.get("tunnels") or []
     try:
         log_event("step: transit connections")
         from lib.subway_trains import apply_path_subway_connections
@@ -420,7 +447,7 @@ def _fetch_transit_boards():
         subway_boards = apply_path_subway_connections(subway_boards, path_33rd_boards)
     except Exception as exc:
         log_event("PATH+subway connection failed: {}".format(exc))
-    return path_boards, path_33rd_boards, subway_boards, path_nj_boards, subway_to_jc_boards
+    return path_boards, path_33rd_boards, subway_boards, path_nj_boards, subway_to_jc_boards, tunnel_boards
 
 
 def print_subway_boards(boards, title="Subway"):
@@ -458,7 +485,7 @@ def main_cli():
     start_debug_server(safe_mode=False)
     try:
         snapshots = get_snapshots()
-        path_boards, path_33rd_boards, subway_boards, path_nj_boards, subway_to_jc_boards = (
+        path_boards, path_33rd_boards, subway_boards, path_nj_boards, subway_to_jc_boards, tunnel_boards = (
             _fetch_transit_boards()
         )
         print_snapshots(snapshots)
@@ -472,6 +499,10 @@ def main_cli():
         print_subway_boards(subway_boards, title="Subway North / Queens")
         print("")
         print_subway_boards(subway_to_jc_boards, title="Subway To JC")
+        print("")
+        from lib.tunnel_crossings import print_tunnel_boards
+
+        print_tunnel_boards(tunnel_boards)
         from lib import app_state
 
         app_state.update_cli(
@@ -481,6 +512,7 @@ def main_cli():
             path_33rd_boards,
             path_nj_boards,
             subway_to_jc_boards,
+            tunnel_boards=tunnel_boards,
             tagged_name_fn=tagged_name,
         )
         log_event("CLI refresh OK: {} stations".format(len(snapshots)))
@@ -558,6 +590,45 @@ if HAS_UI:
             label.frame = (0, 4, 300, 18)
             self.add_subview(label)
 
+    def transit_card_height(board):
+        if board.get("tunnel_card"):
+            rows = len(board.get("trains") or []) or 1
+            note_h = 0
+            header_h = 30
+            if board.get("error") and not board.get("trains"):
+                return header_h + 24
+            return header_h + rows * TUNNEL_ROW_HEIGHT + 10
+
+        note_h = 12 if board.get("note") else 0
+        header_h = 28 + note_h
+        if board.get("error"):
+            return max(PATH_CARD_HEIGHT, header_h + 20)
+        trains = board.get("trains") or []
+        if not trains:
+            return max(PATH_CARD_HEIGHT, header_h + 20)
+        if board.get("by_line"):
+            return header_h + len(trains) * TRANSIT_LINE_ROW_HEIGHT + 10
+        return header_h + min(len(trains), 2) * 26 + 8
+
+    def _add_line_badge(parent, line_val, x, y, size=18):
+        from lib.subway_lines import subway_line_color, subway_line_text_color
+
+        badge = ui.View()
+        badge.background_color = subway_line_color(line_val)
+        badge.corner_radius = 4
+        badge.frame = (x, y, size, size)
+        parent.add_subview(badge)
+        label = make_label(
+            str(line_val),
+            font_size=11,
+            bold=True,
+            color=subway_line_text_color(line_val),
+            align=ui.ALIGN_CENTER,
+        )
+        label.frame = (0, 1, size, size - 2)
+        badge.add_subview(label)
+        return size + 4
+
     class TransitCard(ui.View):
         def __init__(self, board, card_width, tag="NYC", empty_text="No trains"):
             super().__init__()
@@ -565,7 +636,7 @@ if HAS_UI:
             self.corner_radius = 10
             self.border_width = 1
             self.border_color = "#2a3441"
-            self.height = PATH_CARD_HEIGHT
+            self.height = transit_card_height(board)
 
             name = make_label(board["label"], font_size=13, bold=True)
             name.frame = (8, 6, card_width - 56, 18)
@@ -575,7 +646,12 @@ if HAS_UI:
             tag_label.alignment = ui.ALIGN_RIGHT
             tag_label.frame = (card_width - 44, 6, 36, 14)
 
-            trains = board.get("trains") or []
+            from lib.subway_trains import format_train_eta
+
+            trains = sorted(
+                board.get("trains") or [],
+                key=lambda t: t.get("minutes") if t.get("minutes") is not None else 9999,
+            )
             error = board.get("error")
             self.add_subview(name)
             self.add_subview(tag_label)
@@ -596,12 +672,32 @@ if HAS_UI:
                 self.add_subview(line)
                 return
 
+            if board.get("by_line"):
+                for train in trains:
+                    eta_text = format_train_eta(train)
+                    dest_text = str(train.get("destination") or "?")
+                    eta_color = COLORS["text"]
+                    if train.get("status") == "DELAYED" or "delay" in eta_text.lower():
+                        eta_color = COLORS["warn"]
+                    eta = make_label(eta_text, font_size=14, bold=True, color=eta_color)
+                    eta.frame = (8, y, ETA_COLUMN_WIDTH - 8, 20)
+                    line_x = 8 + ETA_COLUMN_WIDTH - 4
+                    line_val = train.get("line")
+                    if line_val not in (None, "", "?"):
+                        line_x += _add_line_badge(self, line_val, line_x, y + 1)
+                    dest = make_label(dest_text, font_size=11, color=COLORS["muted"])
+                    dest.frame = (line_x, y + 2, card_width - line_x - 8, 18)
+                    self.add_subview(eta)
+                    self.add_subview(dest)
+                    y += TRANSIT_LINE_ROW_HEIGHT
+                return
+
             for index, train in enumerate(trains[:2]):
                 eta_size = 22 if index == 0 else 14
                 dest_size = 13 if index == 0 else 11
                 eta_color = COLORS["text"] if index == 0 else COLORS["muted"]
                 dest_color = COLORS["text"] if index == 0 else COLORS["muted"]
-                eta_text = str(train.get("eta") or "?")
+                eta_text = format_train_eta(train)
                 dest_text = str(train.get("destination") or "?")
                 if train.get("status") == "DELAYED" or "delay" in eta_text.lower():
                     eta_color = COLORS["warn"]
@@ -615,15 +711,7 @@ if HAS_UI:
                 line_x = 8 + ETA_COLUMN_WIDTH
                 line_val = train.get("line")
                 if line_val not in (None, "", "?"):
-                    line = make_label(
-                        str(line_val),
-                        font_size=dest_size,
-                        bold=True,
-                        color=COLORS["accent"],
-                    )
-                    line.frame = (line_x, y + (2 if index == 0 else 0), 18, 20)
-                    self.add_subview(line)
-                    line_x += 22
+                    line_x += _add_line_badge(self, line_val, line_x, y + (2 if index == 0 else 0))
                 dest = make_label(
                     dest_text,
                     font_size=dest_size,
@@ -635,11 +723,72 @@ if HAS_UI:
                 self.add_subview(dest)
                 y += 28 if index == 0 else 24
 
+    class TunnelCard(ui.View):
+        def __init__(self, board, card_width):
+            super().__init__()
+            self.background_color = COLORS["card"]
+            self.corner_radius = 10
+            self.border_width = 1
+            self.border_color = "#2a3441"
+            self.height = transit_card_height(board)
+
+            name = make_label(board["label"], font_size=15, bold=True)
+            name.frame = (12, 8, card_width - 24, 20)
+            self.add_subview(name)
+
+            trains = sorted(
+                board.get("trains") or [],
+                key=lambda t: t.get("minutes") if t.get("minutes") is not None else 9999,
+            )
+            error = board.get("error")
+            y = 34
+            row_h = TUNNEL_ROW_HEIGHT
+            if error and not trains:
+                err = make_label("Unavailable", font_size=13, color=COLORS["bad"])
+                err.frame = (12, y, card_width - 24, 18)
+                self.add_subview(err)
+                return
+
+            for train in trains:
+                row_w = card_width - 16
+                row = ui.View()
+                row.frame = (8, y, row_w, row_h - 4)
+                row.background_color = "#151b22"
+                row.corner_radius = 8
+                self.add_subview(row)
+
+                dest = make_label(str(train.get("destination") or "?"), font_size=14, bold=True)
+                dest.frame = (10, 8, 110, 20)
+                row.add_subview(dest)
+
+                status = make_label(str(train.get("status_text") or ""), font_size=11, color=COLORS["muted"])
+                status.frame = (row_w - 112, 12, 102, 16)
+                status.alignment = ui.ALIGN_RIGHT
+                row.add_subview(status)
+
+                pill_w = 72
+                pill = ui.View()
+                pill.background_color = train.get("eta_bg") or COLORS["accent"]
+                pill.corner_radius = 6
+                pill.frame = (125, 6, pill_w, row_h - 16)
+                row.add_subview(pill)
+
+                eta = make_label(
+                    str(train.get("eta") or "?"),
+                    font_size=16,
+                    bold=True,
+                    color=train.get("eta_fg") or COLORS["text"],
+                    align=ui.ALIGN_CENTER,
+                )
+                eta.frame = (0, 4, pill_w, row_h - 18)
+                pill.add_subview(eta)
+                y += row_h
+
     class BikeTrainTransitView(ui.View):
         def __init__(self):
             super().__init__()
             self.background_color = COLORS["bg"]
-            self.name = "Bike Train Transit"
+            self.name = APP_TITLE
             self._busy = False
             self._active_tab = "from_jc"
             self._cache = {"snapshots": []}
@@ -647,7 +796,7 @@ if HAS_UI:
             self.header = ui.View()
             self.header.background_color = COLORS["bg"]
 
-            self.title_label = make_label("Bike Train Transit · %s" % REGION, font_size=24, bold=True)
+            self.title_label = make_label(APP_TITLE, font_size=24, bold=True)
             self.refresh_btn = ui.Button(title="Refresh")
             self.refresh_btn.background_color = COLORS["accent"]
             self.refresh_btn.tint_color = COLORS["text"]
@@ -661,14 +810,17 @@ if HAS_UI:
             self.tab_cbike_btn = ui.Button(title="Cbike JC")
             self.tab_from_btn = ui.Button(title="From JC")
             self.tab_to_btn = ui.Button(title="To JC")
-            for btn in (self.tab_cbike_btn, self.tab_from_btn, self.tab_to_btn):
+            self.tab_tunnels_btn = ui.Button(title="Tunnels")
+            for btn in (self.tab_cbike_btn, self.tab_from_btn, self.tab_to_btn, self.tab_tunnels_btn):
                 btn.corner_radius = 8
             self.tab_cbike_btn.action = self._tab_cbike_tapped
             self.tab_from_btn.action = self._tab_from_tapped
             self.tab_to_btn.action = self._tab_to_tapped
+            self.tab_tunnels_btn.action = self._tab_tunnels_tapped
             self.tab_bar.add_subview(self.tab_cbike_btn)
             self.tab_bar.add_subview(self.tab_from_btn)
             self.tab_bar.add_subview(self.tab_to_btn)
+            self.tab_bar.add_subview(self.tab_tunnels_btn)
 
             self.scroll = ui.ScrollView()
             self.scroll.background_color = COLORS["bg"]
@@ -690,6 +842,7 @@ if HAS_UI:
                 ("cbike_jc", self.tab_cbike_btn),
                 ("from_jc", self.tab_from_btn),
                 ("to_jc", self.tab_to_btn),
+                ("tunnels", self.tab_tunnels_btn),
             ):
                 is_active = self._active_tab == tab
                 btn.background_color = COLORS["accent"] if is_active else "#2a3441"
@@ -723,6 +876,9 @@ if HAS_UI:
         def _tab_to_tapped(self, sender):
             self._set_tab("to_jc")
 
+        def _tab_tunnels_tapped(self, sender):
+            self._set_tab("tunnels")
+
         def _poll_remote_control(self):
             import ui
 
@@ -749,13 +905,15 @@ if HAS_UI:
             self.title_label.frame = (16, safe_top + 8, width - 120, 28)
             self.refresh_btn.frame = (width - 96, safe_top + 8, 80, 30)
             self.tab_bar.frame = (0, tab_top, width, TAB_BAR_HEIGHT)
-            tab_gap = 6
-            tab_side = 10
-            tab_w = max((width - tab_side * 2 - tab_gap * 2) // 3, 88)
+            tab_gap = 4
+            tab_side = 6
+            tab_count = 4
+            tab_w = max((width - tab_side * 2 - tab_gap * (tab_count - 1)) // tab_count, 72)
             self.tab_cbike_btn.frame = (tab_side, 0, tab_w, TAB_BAR_HEIGHT - 4)
-            self.tab_from_btn.frame = (tab_side + tab_w + tab_gap, 0, tab_w, TAB_BAR_HEIGHT - 4)
-            self.tab_to_btn.frame = (
-                tab_side + 2 * (tab_w + tab_gap),
+            self.tab_from_btn.frame = (tab_side + (tab_w + tab_gap), 0, tab_w, TAB_BAR_HEIGHT - 4)
+            self.tab_to_btn.frame = (tab_side + 2 * (tab_w + tab_gap), 0, tab_w, TAB_BAR_HEIGHT - 4)
+            self.tab_tunnels_btn.frame = (
+                tab_side + 3 * (tab_w + tab_gap),
                 0,
                 tab_w,
                 TAB_BAR_HEIGHT - 4,
@@ -786,6 +944,7 @@ if HAS_UI:
                 subway_boards = []
                 path_nj_boards = []
                 subway_to_jc_boards = []
+                tunnel_boards = []
 
                 try:
                     log_event("step: fetch bikes")
@@ -827,6 +986,7 @@ if HAS_UI:
                             subway_boards=None,
                             path_nj_boards=None,
                             subway_to_jc_boards=None,
+                            tunnel_boards=None,
                             partial=True,
                         )
                         self.status_label.text = "Loading transit..."
@@ -845,6 +1005,7 @@ if HAS_UI:
                         subway_boards,
                         path_nj_boards,
                         subway_to_jc_boards,
+                        tunnel_boards,
                     ) = _fetch_transit_boards()
                     log_event("step: transit ok")
                 except Exception as exc:
@@ -866,6 +1027,7 @@ if HAS_UI:
                             subway_boards,
                             path_nj_boards,
                             subway_to_jc_boards,
+                            tunnel_boards,
                         )
                     except Exception as exc:
                         self._busy = False
@@ -908,18 +1070,68 @@ if HAS_UI:
             self.scroll.add_subview(header)
             y += SECTION_HEADER_HEIGHT + CARD_GAP
             cols = CARD_COLUMNS
+            if not boards:
+                return y + pad
+            row_heights = []
+            row_boards = []
             for index, board in enumerate(boards):
                 col = index % cols
-                row = index // cols
-                x = pad + col * (card_width + CARD_GAP)
-                card_y = y + row * (PATH_CARD_HEIGHT + CARD_GAP)
-                card = TransitCard(board, card_width, tag=tag, empty_text=empty_text)
-                card.frame = (x, card_y, card_width, PATH_CARD_HEIGHT)
-                self.scroll.add_subview(card)
-            rows = (len(boards) + cols - 1) // cols if boards else 0
-            if rows:
-                y += rows * PATH_CARD_HEIGHT + max(0, rows - 1) * CARD_GAP
-            return y + pad
+                if col == 0:
+                    row_heights.append(transit_card_height(board))
+                    row_boards.append([])
+                else:
+                    row_heights[-1] = max(row_heights[-1], transit_card_height(board))
+                row_boards[-1].append((index, board))
+
+            row_y = y
+            for row_index, group in enumerate(row_boards):
+                row_h = row_heights[row_index]
+                for index, board in group:
+                    col = index % cols
+                    x = pad + col * (card_width + CARD_GAP)
+                    card = TransitCard(board, card_width, tag=tag, empty_text=empty_text)
+                    card.frame = (x, row_y, card_width, row_h)
+                    self.scroll.add_subview(card)
+                row_y += row_h + CARD_GAP
+            return row_y + pad - CARD_GAP
+
+        def _pick_board(self, boards, label, by_line=False):
+            for board in boards or []:
+                if board.get("label") == label:
+                    return board
+            stub = {"label": label, "trains": [], "error": None}
+            if by_line:
+                stub["by_line"] = True
+            return stub
+
+        def _append_tile_row(self, y, pad, inner_w, card_width, tiles):
+            """tiles: list of (board, tag, empty_text). Two columns per row."""
+            if not tiles:
+                return y
+            cols = CARD_COLUMNS
+            row_groups = []
+            row_heights = []
+            for index, tile in enumerate(tiles):
+                board = tile[0]
+                col = index % cols
+                if col == 0:
+                    row_groups.append([])
+                    row_heights.append(transit_card_height(board))
+                else:
+                    row_heights[-1] = max(row_heights[-1], transit_card_height(board))
+                row_groups[-1].append((index, tile))
+
+            row_y = y
+            for row_index, group in enumerate(row_groups):
+                row_h = row_heights[row_index]
+                for index, (board, tag, empty_text) in group:
+                    col = index % cols
+                    x = pad + col * (card_width + CARD_GAP)
+                    card = TransitCard(board, card_width, tag=tag, empty_text=empty_text)
+                    card.frame = (x, row_y, card_width, row_h)
+                    self.scroll.add_subview(card)
+                row_y += row_h + CARD_GAP
+            return row_y
 
         def _append_from_jc_transit(self, y, pad, inner_w, card_width):
             y = self._append_transit_section(
@@ -933,28 +1145,34 @@ if HAS_UI:
                 empty_text="No NYC trains",
             )
             y += SECTION_GAP
-            y = self._append_transit_section(
-                y,
-                pad,
-                inner_w,
-                card_width,
-                "PATH → 33rd St",
-                self._cache.get("path_33rd_boards"),
-                tag="33",
-                empty_text="No 33rd St trains",
+
+            header = SectionHeader("PATH + Subway · 33rd St")
+            header.frame = (pad, y, inner_w, SECTION_HEADER_HEIGHT)
+            self.scroll.add_subview(header)
+            y += SECTION_HEADER_HEIGHT + CARD_GAP
+
+            path33 = self._cache.get("path_33rd_boards")
+            subway = self._cache.get("subway_boards")
+
+            groups = (
+                [
+                    (self._pick_board(path33, "Christopher St"), "33", "No 33rd St"),
+                    (self._pick_board(subway, "Christopher St", by_line=True), "↑", "None after PATH"),
+                ],
+                [
+                    (self._pick_board(path33, "9th St"), "33", "No 33rd St"),
+                    (self._pick_board(subway, "West 4 St", by_line=True), "↑", "None after PATH"),
+                ],
+                [
+                    (self._pick_board(path33, "14 St PATH"), "33", "No 33rd St"),
+                    (self._pick_board(subway, "6 Av", by_line=True), "↑", "None after PATH"),
+                    (self._pick_board(subway, "14 St - Union Sq", by_line=True), "↑", "None after PATH"),
+                ],
             )
-            y += SECTION_GAP
-            y = self._append_transit_section(
-                y,
-                pad,
-                inner_w,
-                card_width,
-                "Subway → North / Queens",
-                self._cache.get("subway_boards"),
-                tag="↑",
-                empty_text="None after PATH",
-            )
-            return y
+            for group in groups:
+                y = self._append_tile_row(y, pad, inner_w, card_width, group)
+                y += CARD_GAP
+            return y + pad
 
         def render_snapshots(
             self,
@@ -964,6 +1182,7 @@ if HAS_UI:
             subway_boards=None,
             path_nj_boards=None,
             subway_to_jc_boards=None,
+            tunnel_boards=None,
             partial=False,
         ):
             from lib import app_state
@@ -976,6 +1195,7 @@ if HAS_UI:
                 self._cache["subway_boards"] = subway_boards
                 self._cache["path_nj_boards"] = path_nj_boards
                 self._cache["subway_to_jc_boards"] = subway_to_jc_boards
+                self._cache["tunnel_boards"] = tunnel_boards
                 for snapshot in snapshots or []:
                     log_event(
                         "{} filled={} empty={}".format(
@@ -987,6 +1207,7 @@ if HAS_UI:
                 self._log_transit_boards("PATHNJ", path_nj_boards)
                 self._log_transit_boards("SUBWAY", subway_boards)
                 self._log_transit_boards("SUBWAYJC", subway_to_jc_boards)
+                self._log_transit_boards("TUNNEL", tunnel_boards)
                 log_event("Refresh OK: {} stations".format(len(snapshots or [])))
                 app_state.update_refresh(
                     snapshots or self._cache.get("snapshots") or [],
@@ -995,6 +1216,7 @@ if HAS_UI:
                     path_33rd_boards,
                     path_nj_boards,
                     subway_to_jc_boards,
+                    tunnel_boards=tunnel_boards,
                     active_tab=self._active_tab,
                     tagged_name_fn=tagged_name,
                 )
@@ -1014,6 +1236,8 @@ if HAS_UI:
                     y = self._paint_cbike_jc(pad, inner_w, card_width, partial=partial)
                 elif self._active_tab == "to_jc":
                     y = self._paint_to_jc(pad, inner_w, card_width, partial=partial)
+                elif self._active_tab == "tunnels":
+                    y = self._paint_tunnels(pad, inner_w, card_width, partial=partial)
                 else:
                     y = self._paint_from_jc(pad, inner_w, card_width, partial=partial)
                 content_h = max(y, pad)
@@ -1025,6 +1249,7 @@ if HAS_UI:
                         "cbike_jc": "Cbike JC",
                         "from_jc": REGION,
                         "to_jc": "To JC",
+                        "tunnels": "Tunnels",
                     }
                     self.status_label.text = "Updated %s · %s" % (
                         datetime.now().strftime("%I:%M:%S %p"),
@@ -1069,28 +1294,50 @@ if HAS_UI:
                 loading.frame = (pad, y, inner_w, 24)
                 self.scroll.add_subview(loading)
                 return y + 32
-            y = self._append_transit_section(
-                y,
-                pad,
-                inner_w,
-                card_width,
-                "Subway → South Ferry",
-                self._cache.get("subway_to_jc_boards"),
-                tag="↓",
-                empty_text="No downtown trains",
-            )
+
+            subway_boards = self._cache.get("subway_to_jc_boards") or []
+            path_nj_boards = self._cache.get("path_nj_boards") or []
+            wtc_path = self._pick_board(path_nj_boards, "World Trade Center")
+            path_nj_rest = [
+                board for board in path_nj_boards if board.get("label") != "World Trade Center"
+            ]
+
+            header = SectionHeader("Subway + PATH . Nwk")
+            header.frame = (pad, y, inner_w, SECTION_HEADER_HEIGHT)
+            self.scroll.add_subview(header)
+            y += SECTION_HEADER_HEIGHT + CARD_GAP
+
+            nwk_tiles = [(board, "↓", "No downtown trains") for board in subway_boards]
+            nwk_tiles.append((wtc_path, "NJ", "No NJ trains"))
+            y = self._append_tile_row(y, pad, inner_w, card_width, nwk_tiles)
             y += SECTION_GAP
+
             y = self._append_transit_section(
                 y,
                 pad,
                 inner_w,
                 card_width,
                 "PATH → NJ",
-                self._cache.get("path_nj_boards"),
+                path_nj_rest,
                 tag="NJ",
                 empty_text="No NJ trains",
             )
             return y
+
+        def _paint_tunnels(self, pad, inner_w, card_width, partial=False):
+            y = pad
+            if partial:
+                loading = make_label("Loading tunnels...", font_size=14, color=COLORS["muted"])
+                loading.frame = (pad, y, inner_w, 24)
+                self.scroll.add_subview(loading)
+                return y + 32
+            boards = self._cache.get("tunnel_boards") or []
+            for board in boards:
+                card = TunnelCard(board, inner_w)
+                card.frame = (pad, y, inner_w, card.height)
+                self.scroll.add_subview(card)
+                y += card.height + CARD_GAP
+            return y + pad
 
     def _needs_ui_handoff():
         try:

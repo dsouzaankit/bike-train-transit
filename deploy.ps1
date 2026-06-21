@@ -28,7 +28,7 @@ $TempZip = Join-Path $env:TEMP $ZipName
 $DestZip = Join-Path $ICloudDownloads $ZipName
 
 $ExcludeDirs = @(
-    ".git", "__pycache__", ".cursor", ".vscode",
+    ".git", "__pycache__", ".cursor", ".vscode", "ai",
     "bike_train_transit", "citibike_alert", "windows"
 )
 $ExcludeFiles = @(

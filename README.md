@@ -1,16 +1,19 @@
-# Bike Train Transit
+# Bike Train Tunnel . JC
 
-Monitor Citibike dock counts, PATH trains, and NYC subway departures for Jersey City (`JC`) stations — with separate tabs for bikes, outbound transit (**From JC**), and inbound transit from Manhattan (**To JC**). Includes an iPhone UI (Pythonista), optional PC email alerts, and a LAN debug server for reading logs from your desktop.
+Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **Bike Train Tunnel . JC** — tabs: **Cbike JC**, **From JC**, **To JC**, and **Tunnels**. Includes a Pythonista app, optional PC email alerts, and a LAN debug server for reading logs from your desktop.
 
 Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — no Citibike account login required.
 
 ## Features
 
-- **Three tabs** — **Cbike JC** (bike grid), **From JC** (outbound PATH/subway), and **To JC** (inbound transit from Manhattan)
+- **Four tabs** — **Cbike JC**, **From JC**, **To JC**, and **Tunnels** (Lincoln/Holland crossing times)
 - **iPhone app** — compact 2-column Citibike grid on the **Cbike JC** tab (filled bikes and empty docks for JC stations)
-- **PATH + subway connections** — From JC subway cards filter for trains reachable after PATH arrival + walk time (Christopher St +5 min, West 4 St +7 min)
+- **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
+- **PATH + subway connections** — From JC subway cards only show trains reachable after the earliest paired PATH arrival + walk time
+- **PATH schedules** — Hoboken-origin/destination trains are excluded from all PATH boards
 - **PATH & subway** — real-time departures in grouped sections (see [App tabs](#app-tabs) below); PATH uses one PANYNJ fetch for all boards
-- **Compact ETAs** — `5m`, `Due`, `Delay` / `~5m` (fits narrow card columns without ellipsis)
+- **Compact ETAs** — `5m`, `Due`, `Delay` / `~5m`; southbound **6** trains show **↓** (e.g. `14m↓` at Union Sq); fits narrow card columns without ellipsis
+- **Sorted departures** — train rows on each card sorted by ascending ETA
 - **Low-count alerts** — cards highlight red when bikes or docks ≤ threshold
 - **LAN debug server** — browse logs and status from a PC on the same Wi‑Fi (`:8765`)
 - **PC deploy script** — `deploy.ps1` zips the project to iCloud Downloads for Pythonista sync
@@ -29,7 +32,7 @@ All stations are tagged `[JC]` in logs, email, and the **Cbike JC** tab.
 
 ## App tabs
 
-Tap **Cbike JC**, **From JC**, or **To JC** in the tab bar below the header. One refresh loads all tabs; switching tabs uses cached data (no extra network calls).
+Tap **Cbike JC**, **From JC**, **To JC**, or **Tunnels** in the tab bar. One refresh loads all tabs; switching tabs uses cached data (no extra network calls).
 
 ### Cbike JC
 
@@ -43,20 +46,37 @@ Bike cards paint first after refresh; transit loads in the background for the ot
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **PATH → NYC** | Grove St PATH, Newport PATH | Next NYC-bound PATH trains |
-| **PATH → 33rd St** | Christopher St, 9th St | Next 33rd St-bound PATH trains |
-| **Subway → North / Queens** | Christopher St, West 4 St | Uptown/Queens departures **after PATH + walk** (note: “after PATH +5 min”) |
+| **PATH → NYC** | Grove St PATH, Newport PATH | Next NYC-bound PATH trains (Hoboken excluded) |
+| **PATH + Subway · 33rd St** | Grouped tiles (see table below) | 33rd PATH + northbound subway, paired by corridor |
 
-Transit-only tab (no bike grid) to keep scrolling short. Network runs via Pythonista's `@ui.in_background` (not a raw thread). On the PC transit fetches in parallel; on Pythonista it fetches one at a time, since raw-thread or concurrent TLS can hard-crash the app.
+**PATH 14 St:** direct 33rd-bound arrivals at **14 St PATH** when available; otherwise estimated from **9th St** departure **+1 min** (`~`, note on card).
+
+**Subway filter (From JC):** only trains with `subway ETA ≥ paired PATH ETA + walk` are shown (earliest PATH arrival at the paired station). ETAs are **minutes from now** from the subway API — not adjusted. Card note: `after PATH 9th +5 walk`.
+
+| Group | PATH | Subway | Walk |
+|-------|------|--------|------|
+| 1 | Christopher St | Christopher St | 5 min |
+| 2 | 9th St | West 4 St | 5 min |
+| 3 | 14 St PATH | 6 Av (L East/Bk), 14 St - Union Sq | 2 / 6 min |
+
+Layout on **From JC** matches these groups (two columns per row; group 3 is 14 St PATH + 6 Av, then Union Sq on the next row).
+
+Transit-only tab (no bike grid) to keep scrolling short. **To JC** subway cards show **up to 2 ETAs per line** when available.
 
 ### To JC
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **Subway → South Ferry** | WTC Cortlandt, World Trade Center | Downtown 1 / E trains toward South Ferry / WTC |
-| **PATH → NJ** | Christopher St, 9th St, 33rd St, World Trade Center | Next NJ-bound PATH trains (2×2 card grid) |
+| **Subway + PATH . Nwk** | WTC Cortlandt, World Trade Center (subway + PATH) | Downtown 1 / E toward South Ferry / WTC; NJ-bound PATH at WTC |
+| **PATH → NJ** | Christopher St, 9th St, 33rd St | Next NJ-bound PATH trains |
 
-**World Trade Center subway:** uses direct E-line arrivals when available. If not, estimates from **Canal St** WTC-bound departures **+2 min** (shown with `~` and note “est. Canal St + 2 min”).
+**World Trade Center subway:** uses direct E-line arrivals when available. If not, estimates from **Canal St** WTC-bound departures **+2 min** (shown with `~` and note “est. Canal St + 2 min”). Cards show **up to 2 ETAs per line** when multiple lines serve the station. The **PATH WTC** card (tag `NJ`) sits in this section next to the subway tiles.
+
+### Tunnels
+
+| Section | Data source | Data |
+|---------|-------------|------|
+| **Lincoln & Holland** | [PANYNJ crossing times](https://www.panynj.gov/bin/portauthority/crossingtimesapi.json) (same backend as [Bridges & Tunnels](https://www.panynj.gov/bridges-tunnels/en/index.html)) | Full-width cards: **→ NYC** / **→ NJ** travel minutes with green / amber / red pills matching the website |
 
 ## Project layout
 
@@ -68,8 +88,10 @@ bike_train_transit/
   config.json                     # PC stations + thresholds
   debug_server.py                 # Safe mode: logs only (no UI)
   lib/
-    path_trains.py                # PATH NYC / 33rd / NJ (PANYNJ single-fetch)
+    path_trains.py                # PATH NYC / 33rd / NJ (PANYNJ single-fetch; Hoboken filtered)
     subway_trains.py              # Subway north and To JC boards
+    subway_lines.py               # MTA line badge colors
+    tunnel_crossings.py           # Lincoln/Holland PANYNJ crossingtimesapi.json
     parallel.py                   # Parallel on PC, sequential on Pythonista (avoids TLS-thread crash)
     app_state.py                  # Shared state for UI / LAN status.json
     shortcut_launcher.py          # Deploys app to Documents; reports direct UI-script URL; removes obsolete stub
@@ -118,7 +140,7 @@ cd P:\all_scripts\bike_train_transit
 The script:
 
 1. Removes old `bike_train_transit.zip` and `bike_train_transit\` from iCloud Downloads
-2. Stages the project (excludes logs, `windows/`, PC-only email files, editor junk)
+2. Stages the project (excludes logs, `windows/`, `ai/`, PC-only email files, editor junk)
 3. Creates `bike_train_transit.zip` and copies it to `%USERPROFILE%\iCloudDrive\Downloads`
 
 Optional: set `iCloudDownloads` in `windows\bike-train-transit-windows.json` if your iCloud path differs.
@@ -194,6 +216,16 @@ A single **Open URLs** action with the URL typed inline often does nothing for `
 5. **⋯** → **Add to Home Screen**
 
 Tapping the icon launches the app as the main script and refresh works. The first launch may prompt **“Open in Pythonista?” → Allow**.
+
+### Double back-tap launch (iOS)
+
+Use iOS **Back Tap** to run the same Shortcut without opening Shortcuts manually:
+
+1. Build the **URL → Open URLs** Shortcut above (name it e.g. `Bike Train Transit`).
+2. **Settings → Accessibility → Touch → Back Tap → Double Tap**
+3. Choose **Shortcut** → select **Bike Train Transit**
+
+Double-tapping the back of the iPhone runs the Shortcut and opens Pythonista at the deployed `bike_train_transit.py` URL. This uses the same direct UI-script URL as the Home Screen icon.
 
 ### Test the URL first (Safari)
 
@@ -303,7 +335,8 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `REGION` | `JC` | Tag shown on cards and in logs |
+| `APP_TITLE` | `Bike Train Tunnel . JC` | Header title and view name in the UI |
+| `REGION` | `JC` | Tag shown on bike cards and in logs |
 | `STATIONS` | JC names | GBFS station names or partial matches |
 | `STATION_LABELS` | Short names | Compact UI labels (same order) |
 | `GRID_GROUPS` | See file | 2-column card layout groups |
@@ -317,7 +350,7 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 | File | Configure |
 |------|-----------|
 | `path_trains.py` | PATH stations for NYC, 33rd St, and NJ boards; PANYNJ `ridepath.json` fetched once per refresh |
-| `subway_trains.py` | Subway north/Queens and To JC; `PATH_SUBWAY_WALK_MINUTES` for connection filtering |
+| `subway_trains.py` | Subway north/Queens and To JC; `SUBWAY_PATH_WALKS` for From JC connection filtering; southbound **6** ETAs append **↓** |
 
 ### PC email (`config.json`)
 
@@ -358,6 +391,8 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 | Email fails | Use Yahoo **app password** in `.env`, not account password |
 | `deploy.ps1`: iCloud folder not found | Enable iCloud Drive on Windows or set `iCloudDownloads` in windows config |
 | WTC subway shows `~` prefix | Estimated from Canal St +2 min — direct WTC E-line data was unavailable |
+| PATH missing Hoboken | Intentional — Hoboken origin/destination schedules are filtered out |
+| Subway card is taller | One row per line (earliest ETA per line); normal when many lines serve the station |
 
 ---
 
@@ -377,3 +412,4 @@ Transit data sources:
 |--------|-----|
 | `lib/path_trains.py` | PANYNJ [ridepath.json](https://www.panynj.gov/bin/portauthority/ridepath.json) (primary, one fetch); [path.api.razza.dev](https://path.api.razza.dev/) fallback if PANYNJ fails |
 | `lib/subway_trains.py` | [subwayinfo.nyc](https://subwayinfo.nyc/) arrivals API |
+| `lib/tunnel_crossings.py` | PANYNJ [crossingtimesapi.json](https://www.panynj.gov/bin/portauthority/crossingtimesapi.json) |

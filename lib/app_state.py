@@ -17,6 +17,7 @@ _state: dict[str, Any] = {
     "pathNjTrains": [],
     "subwayTrains": [],
     "subwayToJcTrains": [],
+    "tunnelBoards": [],
     "activeTab": "from_jc",
 }
 
@@ -44,6 +45,7 @@ def update_refresh(
     path_33rd_boards=None,
     path_nj_boards=None,
     subway_to_jc_boards=None,
+    tunnel_boards=None,
     active_tab="from_jc",
     *,
     tagged_name_fn,
@@ -66,6 +68,7 @@ def update_refresh(
     _state["pathNjTrains"] = path_nj_boards or []
     _state["subwayTrains"] = subway_boards or []
     _state["subwayToJcTrains"] = subway_to_jc_boards or []
+    _state["tunnelBoards"] = tunnel_boards or []
 
 
 def update_cli(
@@ -75,6 +78,7 @@ def update_cli(
     path_33rd_boards=None,
     path_nj_boards=None,
     subway_to_jc_boards=None,
+    tunnel_boards=None,
     *,
     tagged_name_fn,
 ) -> None:
@@ -85,6 +89,7 @@ def update_cli(
         path_33rd_boards,
         path_nj_boards,
         subway_to_jc_boards,
+        tunnel_boards=tunnel_boards,
         active_tab="from_jc",
         tagged_name_fn=tagged_name_fn,
     )

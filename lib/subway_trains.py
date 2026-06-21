@@ -4,19 +4,30 @@
 import re
 import urllib.parse
 from lib.parallel import map_parallel, run_parallel
+from lib.subway_lines import line_sort_key, normalize_line
 
 SUBWAY_API_BASE = "https://subwayinfo.nyc/api/arrivals"
 SUBWAY_DIRECTION_NORTH = "N"
 SUBWAY_DIRECTION_SOUTH = "S"
-SUBWAY_MAX_TRAINS = 2
-SUBWAY_FETCH_LIMIT = 10
+SUBWAY_FETCH_LIMIT = 20
 CANAL_WTC_ESTIMATE_MINUTES = 2
-PATH_SUBWAY_WALK_MINUTES = {
-    "Christopher St": 5,
-    "West 4 St": 7,
+TO_JC_ETAS_PER_LINE = 2
+
+# Subway station -> (PATH 33rd board label, walk minutes from PATH platform).
+SUBWAY_PATH_WALKS = {
+    "Christopher St": ("Christopher St", 5),
+    "West 4 St": ("9th St", 5),
+    "6 Av": ("14 St PATH", 2),
+    "14 St - Union Sq": ("14 St PATH", 6),
 }
 
-# West 4 St-Wash Sq uses separate stop IDs for ACE vs BDFM platforms.
+NORTH_SUBWAY_ORDER = (
+    "Christopher St",
+    "West 4 St",
+    "6 Av",
+    "14 St - Union Sq",
+)
+
 SUBWAY_STATIONS_NORTH = [
     {"station_id": "133", "label": "Christopher St", "direction": SUBWAY_DIRECTION_NORTH},
     {"station_id": ["A32", "D20"], "label": "West 4 St", "direction": SUBWAY_DIRECTION_NORTH},
@@ -40,6 +51,25 @@ SUBWAY_CANAL_ACE = {
     "direction": SUBWAY_DIRECTION_SOUTH,
 }
 
+SUBWAY_SIXTH_AV_L = {
+    "station_id": "L02",
+    "label": "6 Av",
+    "direction": SUBWAY_DIRECTION_SOUTH,
+}
+
+SUBWAY_UNION_SQ = {
+    "station_id": "635",
+    "label": "14 St - Union Sq",
+}
+
+# (line, direction) pairs shown on the Union Sq card.
+UNION_SQ_LINE_SPECS = (
+    ("4", SUBWAY_DIRECTION_NORTH),
+    ("5", SUBWAY_DIRECTION_NORTH),
+    ("6", SUBWAY_DIRECTION_NORTH),
+    ("6", SUBWAY_DIRECTION_SOUTH),
+)
+
 _HEADSIGN_SHORT = {
     "Van Cortlandt Park-242 St": "Van Cortlandt",
     "Inwood-207 St": "Inwood",
@@ -49,6 +79,12 @@ _HEADSIGN_SHORT = {
     "Norwood-205 St": "Norwood",
     "South Ferry": "South Ferry",
     "World Trade Center": "WTC",
+    "Canarsie-Rockaway Pkwy": "Canarsie",
+    "Pelham Bay Park": "Pelham",
+    "Eastchester-Dyre Av": "Eastchester",
+    "Woodlawn": "Woodlawn",
+    "Brooklyn Bridge-City Hall": "Bk Bridge",
+    "Parkchester": "Parkchester",
 }
 
 
@@ -97,6 +133,7 @@ def _normalize_arrival(item, extra_minutes=0, estimated=False):
         "eta": _format_eta(minutes, estimated=estimated),
         "status": "ON_TIME",
         "estimated": estimated,
+        "direction": item.get("direction"),
     }
 
 
@@ -138,7 +175,19 @@ def _is_south_ferry_headsign(headsign):
     return "south ferry" in text
 
 
-def fetch_station_arrivals(station, fetch_json, limit=6, headsign_filter=None):
+def _is_brooklyn_l_headsign(headsign):
+    text = (headsign or "").casefold()
+    return "canarsie" in text or "rockaway" in text
+
+
+def fetch_station_arrivals(
+    station,
+    fetch_json,
+    limit=6,
+    headsign_filter=None,
+    extra_minutes=0,
+    estimated=False,
+):
     station_ids = station["station_id"]
     direction = station.get("direction", SUBWAY_DIRECTION_NORTH)
     if isinstance(station_ids, str):
@@ -158,42 +207,123 @@ def fetch_station_arrivals(station, fetch_json, limit=6, headsign_filter=None):
 
     if headsign_filter is not None:
         arrivals = [a for a in arrivals if headsign_filter(a.get("headsign"))]
-    return _sort_arrivals(arrivals)
+
+    out = []
+    for item in arrivals:
+        norm = _normalize_arrival(item, extra_minutes=extra_minutes, estimated=estimated)
+        if norm is not None:
+            out.append(norm)
+    out.sort(key=lambda t: t.get("minutes") if t.get("minutes") is not None else 9999)
+    return out
 
 
-def _load_simple_board(
+def format_train_eta(train):
+    """Display ETA; ↓ suffix for southbound 6 trains (Union Sq etc.)."""
+    eta = str(train.get("eta") or "?")
+    if normalize_line(train.get("line")) == "6" and train.get("direction") == SUBWAY_DIRECTION_SOUTH:
+        return eta + "\u2193"
+    return eta
+
+
+def _sort_by_eta(trains):
+    return sorted(
+        trains or [],
+        key=lambda t: t.get("minutes") if t.get("minutes") is not None else 9999,
+    )
+
+
+def _trains_per_line(arrivals, line_specs=None, per_line=1):
+    """Keep up to per_line soonest trains for each line (and direction when specified)."""
+    buckets = {}
+    for train in arrivals or []:
+        line = normalize_line(train.get("line"))
+        if line == "?":
+            continue
+        direction = train.get("direction")
+        if line_specs is not None:
+            matched = any(
+                normalize_line(spec_line) == line
+                and (spec_dir is None or spec_dir == direction)
+                for spec_line, spec_dir in line_specs
+            )
+            if not matched:
+                continue
+            key = "%s:%s" % (line, direction or "?")
+        else:
+            key = line
+        buckets.setdefault(key, []).append(train)
+
+    for key in buckets:
+        buckets[key].sort(
+            key=lambda t: t.get("minutes") if t.get("minutes") is not None else 9999
+        )
+
+    result = []
+    if line_specs is not None:
+        for spec_line, spec_dir in line_specs:
+            key = "%s:%s" % (normalize_line(spec_line), spec_dir or "?")
+            result.extend(buckets.get(key, [])[:per_line])
+        return _sort_by_eta(result)
+
+    for line_key in sorted(buckets.keys(), key=lambda k: line_sort_key(k.split(":")[0])):
+        result.extend(buckets[line_key][:per_line])
+    return _sort_by_eta(result)
+
+
+def _earliest_per_line(arrivals, line_specs=None):
+    return _trains_per_line(arrivals, line_specs=line_specs, per_line=1)
+
+
+def _load_line_board(
     station,
     fetch_json,
-    max_trains,
+    *,
+    line_specs=None,
     headsign_filter=None,
-    fetch_limit=8,
+    extra_minutes=0,
+    estimated=False,
+    fetch_limit=SUBWAY_FETCH_LIMIT,
+    per_line=1,
 ):
     error = None
     trains = []
+    raw = []
     try:
-        trains = fetch_station_arrivals(
+        raw = fetch_station_arrivals(
             station,
             fetch_json,
             limit=fetch_limit,
             headsign_filter=headsign_filter,
+            extra_minutes=extra_minutes,
+            estimated=estimated,
         )
+        trains = _trains_per_line(raw, line_specs=line_specs, per_line=per_line)
     except Exception as exc:
         error = str(exc)
-    return {
+    board = {
         "label": station["label"],
-        "trains": trains[:max_trains],
+        "trains": trains,
+        "by_line": True,
         "error": error if not trains else None,
+        "_raw_trains": raw,
+        "_line_specs": line_specs,
+        "_per_line": per_line,
     }
+    if extra_minutes and trains:
+        board["estimated"] = estimated
+    return board
 
 
-def _load_world_trade_center_board(fetch_json, max_trains=SUBWAY_MAX_TRAINS):
+def _load_world_trade_center_board(fetch_json, per_line=TO_JC_ETAS_PER_LINE):
     error = None
     try:
-        trains = fetch_station_arrivals(SUBWAY_WTC_E, fetch_json)
+        trains = fetch_station_arrivals(SUBWAY_WTC_E, fetch_json, limit=SUBWAY_FETCH_LIMIT)
+        trains = _trains_per_line(trains, per_line=per_line)
         if trains:
             return {
                 "label": "World Trade Center",
-                "trains": trains[:max_trains],
+                "trains": trains,
+                "by_line": True,
                 "error": None,
                 "estimated": False,
             }
@@ -206,7 +336,7 @@ def _load_world_trade_center_board(fetch_json, max_trains=SUBWAY_MAX_TRAINS):
             SUBWAY_CANAL_ACE["station_id"],
             fetch_json,
             SUBWAY_CANAL_ACE["direction"],
-            limit=8,
+            limit=SUBWAY_FETCH_LIMIT,
         )
         for item in payload.get("arrivals") or []:
             if not _is_wtc_bound_headsign(item.get("headsign")):
@@ -218,11 +348,12 @@ def _load_world_trade_center_board(fetch_json, max_trains=SUBWAY_MAX_TRAINS):
             )
             if norm is not None:
                 raw.append(norm)
-        raw.sort(key=lambda t: t.get("minutes") if t.get("minutes") is not None else 9999)
-        if raw:
+        trains = _trains_per_line(raw, per_line=per_line)
+        if trains:
             return {
                 "label": "World Trade Center",
-                "trains": raw[:max_trains],
+                "trains": trains,
+                "by_line": True,
                 "error": None,
                 "estimated": True,
                 "note": "est. Canal St + %s min" % CANAL_WTC_ESTIMATE_MINUTES,
@@ -234,89 +365,168 @@ def _load_world_trade_center_board(fetch_json, max_trains=SUBWAY_MAX_TRAINS):
     return {
         "label": "World Trade Center",
         "trains": [],
+        "by_line": True,
         "error": error or "No WTC-bound trains",
         "estimated": False,
     }
 
 
-def _earliest_path_arrival_minutes(path_boards):
+def _load_union_sq_board(fetch_json, per_line=1):
+    error = None
+    merged = []
+    try:
+        for spec_line, spec_dir in UNION_SQ_LINE_SPECS:
+            station = {
+                **SUBWAY_UNION_SQ,
+                "direction": spec_dir,
+            }
+            for train in fetch_station_arrivals(
+                station,
+                fetch_json,
+                limit=SUBWAY_FETCH_LIMIT,
+            ):
+                if normalize_line(train.get("line")) != normalize_line(spec_line):
+                    continue
+                if train.get("direction") != spec_dir:
+                    continue
+                merged.append(train)
+        trains = _trains_per_line(merged, line_specs=UNION_SQ_LINE_SPECS, per_line=per_line)
+        return {
+            "label": SUBWAY_UNION_SQ["label"],
+            "trains": trains,
+            "by_line": True,
+            "error": None if trains else "No matching trains",
+            "_raw_trains": merged,
+            "_line_specs": UNION_SQ_LINE_SPECS,
+            "_per_line": per_line,
+        }
+    except Exception as exc:
+        error = str(exc)
+    return {
+        "label": SUBWAY_UNION_SQ["label"],
+        "trains": [],
+        "by_line": True,
+        "error": error,
+        "_raw_trains": [],
+        "_line_specs": UNION_SQ_LINE_SPECS,
+        "_per_line": per_line,
+    }
+
+
+def _path_arrival_minutes(path_board):
     earliest = None
-    for board in path_boards or []:
-        for train in board.get("trains") or []:
-            minutes = train.get("minutes")
-            if minutes is None:
-                continue
-            if earliest is None or minutes < earliest:
-                earliest = minutes
+    for train in (path_board or {}).get("trains") or []:
+        minutes = train.get("minutes")
+        if minutes is None:
+            continue
+        if earliest is None or minutes < earliest:
+            earliest = minutes
     return earliest
 
 
-def apply_path_subway_connections(
-    subway_boards,
-    path_33rd_boards,
-    max_trains=SUBWAY_MAX_TRAINS,
-):
-    """Keep subway departures reachable after earliest PATH at Christopher / 9th St."""
-    earliest_path = _earliest_path_arrival_minutes(path_33rd_boards)
-    if earliest_path is None:
-        return subway_boards
-
+def apply_path_subway_connections(subway_boards, path_33rd_boards):
+    """Drop subway trains that depart before PATH arrival + walk at the paired station."""
+    path_by_label = {b.get("label"): b for b in path_33rd_boards or []}
     connected = []
     for board in subway_boards or []:
-        walk = PATH_SUBWAY_WALK_MINUTES.get(board.get("label"), 5)
-        threshold = earliest_path + walk
-        catchable = []
-        for train in board.get("trains") or []:
-            minutes = train.get("minutes")
-            if minutes is not None and minutes >= threshold:
-                catchable.append(train)
+        label = board.get("label")
+        pairing = SUBWAY_PATH_WALKS.get(label)
+        if pairing is None:
+            connected.append(board)
+            continue
 
-        note = "after PATH +%s min" % walk
-        if board.get("note"):
-            note = board["note"] + " · " + note
+        path_label, walk = pairing
+        path_min = _path_arrival_minutes(path_by_label.get(path_label))
+        if path_min is None:
+            note = "no %s PATH yet" % path_label.replace(" PATH", "")
+            if label == "6 Av":
+                note = "L East/Bk · " + note
+            new_board = dict(board)
+            new_board["note"] = note
+            connected.append(new_board)
+            continue
 
+        threshold = path_min + walk
+        source = board.get("_raw_trains") or board.get("trains") or []
+        filtered = [
+            train
+            for train in source
+            if train.get("minutes") is not None and train.get("minutes") >= threshold
+        ]
+        line_specs = board.get("_line_specs")
+        per_line = board.get("_per_line", 1)
+        if line_specs is not None:
+            catchable = _trains_per_line(filtered, line_specs=line_specs, per_line=per_line)
+        else:
+            catchable = _trains_per_line(filtered, per_line=per_line)
+
+        short_path = path_label.replace(" PATH", "")
+        note = "after PATH %s +%s walk" % (short_path, walk)
+        if label == "6 Av":
+            note = "L East/Bk · " + note
         new_board = dict(board)
         new_board["note"] = note
-        new_board["trains"] = catchable[:max_trains]
+        new_board["trains"] = catchable
         if catchable:
             new_board["error"] = None
         connected.append(new_board)
     return connected
 
 
-def get_subway_north_boards(fetch_json, max_trains=SUBWAY_MAX_TRAINS):
-    boards = []
+def _load_sixth_av_l_board(fetch_json, per_line=1):
+    board = _load_line_board(
+        SUBWAY_SIXTH_AV_L,
+        fetch_json,
+        line_specs=(("L", SUBWAY_DIRECTION_SOUTH),),
+        headsign_filter=_is_brooklyn_l_headsign,
+        fetch_limit=SUBWAY_FETCH_LIMIT,
+        per_line=per_line,
+    )
+    board["note"] = "L East/Bk"
+    return board
+
+
+def get_subway_north_boards(fetch_json):
+    by_label = {}
 
     def _load_board(station):
-        return _load_simple_board(
+        return _load_line_board(
             station,
             fetch_json,
-            max_trains=SUBWAY_FETCH_LIMIT,
             fetch_limit=SUBWAY_FETCH_LIMIT,
         )
 
     for board in map_parallel(SUBWAY_STATIONS_NORTH, _load_board):
         if board is not None:
-            boards.append(board)
-    boards.sort(key=lambda b: b["label"])
+            by_label[board["label"]] = board
+
+    by_label["6 Av"] = _load_sixth_av_l_board(fetch_json)
+    by_label["14 St - Union Sq"] = _load_union_sq_board(fetch_json)
+
+    boards = []
+    for label in NORTH_SUBWAY_ORDER:
+        if label in by_label:
+            boards.append(by_label[label])
     return boards
 
 
-def get_subway_to_jc_boards(fetch_json, max_trains=SUBWAY_MAX_TRAINS):
+def get_subway_to_jc_boards(fetch_json):
     boards = []
+    per_line = TO_JC_ETAS_PER_LINE
 
     def _cortlandt():
-        return _load_simple_board(
+        return _load_line_board(
             SUBWAY_WTC_CORTLANDT,
             fetch_json,
-            max_trains,
             headsign_filter=_is_south_ferry_headsign,
+            fetch_limit=SUBWAY_FETCH_LIMIT,
+            per_line=per_line,
         )
 
     results = run_parallel(
         {
             "cortlandt": _cortlandt,
-            "wtc": lambda: _load_world_trade_center_board(fetch_json, max_trains),
+            "wtc": lambda: _load_world_trade_center_board(fetch_json, per_line=per_line),
         }
     )
     if results.get("cortlandt") is not None:
@@ -344,4 +554,4 @@ def print_subway_boards(boards, title="Subway"):
             print("  no upcoming trains")
             continue
         for train in trains:
-            print("  %s  %s -> %s" % (train["eta"], train["line"], train["destination"]))
+            print("  %s  %s -> %s" % (format_train_eta(train), train["line"], train["destination"]))
