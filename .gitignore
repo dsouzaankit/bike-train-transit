@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.env
+*.zip
+_gtfsrt.bin
+bike_train_transit/logs/
+citibike_alert/logs/
+bike_train_transit/bike_train_transit/

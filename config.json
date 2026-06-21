@@ -1,0 +1,17 @@
+{
+  "region": "JC",
+  "stations": [
+    "Dixon Mills",
+    "Montgomery St",
+    "Brunswick & 6th",
+    "Monmouth & 6th",
+    "Jersey & 6th St",
+    "Newport PATH",
+    "Washington St",
+    "City Hall",
+    "Grove St PATH"
+  ],
+  "alert_min_bikes": 2,
+  "alert_min_docks": 2,
+  "email_always": true
+}

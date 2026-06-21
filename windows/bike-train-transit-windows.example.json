@@ -1,0 +1,6 @@
+{
+  "phoneLanHost": "192.168.1.100",
+  "lanDebugPort": 8765,
+  "iCloudDownloads": "",
+  "notes": "phoneLanHost: iPhone Wi-Fi IP. iCloudDownloads: optional override for deploy.ps1 (default: %USERPROFILE%\\iCloudDrive\\Downloads)."
+}

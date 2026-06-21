@@ -1,0 +1,5 @@
+{
+  "phoneLanHost": "10.0.100.10",
+  "lanDebugPort": 8765,
+  "notes": "iPhone Wi-Fi IP for LAN debug server."
+}
