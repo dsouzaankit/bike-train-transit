@@ -753,6 +753,7 @@ if HAS_UI:
             self.status_label.text = "Updating..."
             log_event("Refresh started")
 
+            @ui.in_background
             def work():
                 error = None
                 snapshots = None
@@ -847,7 +848,7 @@ if HAS_UI:
 
                 ui.delay(finish, 0)
 
-            threading.Thread(target=work, daemon=True).start()
+            work()
 
         def _log_transit_boards(self, prefix, boards):
             if not boards:

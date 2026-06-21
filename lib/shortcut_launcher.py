@@ -164,8 +164,8 @@ def launcher_help_lines(app_dir: str | None = None, install: bool = True) -> lis
         "3. Add to Home Screen",
         "Launcher: On This iPhone -> %s" % LAUNCHER_NAME,
         "",
-        "Shortcut opens the full app (two-hop); ui.present does not work",
-        "directly inside Shortcuts. Alternative: Pythonista wrench -> Add to Home Screen.",
+        "Launcher runs the app in-process (runpy); no URL re-launch.",
+        "Alternative: Pythonista wrench -> Add to Home Screen.",
     ]
     if installed:
         lines.append("Installed: %s" % installed)
