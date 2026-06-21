@@ -146,9 +146,12 @@ def install_launcher(app_dir: str | None = None) -> str | None:
     return path
 
 
-def launcher_help_lines(app_dir: str | None = None) -> list[str]:
+def launcher_help_lines(app_dir: str | None = None, install: bool = True) -> list[str]:
     source_dir = os.path.abspath(app_dir or os.path.dirname(os.path.dirname(__file__)))
-    installed = install_launcher(source_dir)
+    installed = install_launcher(source_dir) if install else None
+    if not install:
+        path = _launcher_path()
+        installed = path if os.path.isfile(path) else None
     url = shortcuts_run_url()
     run_dir = local_deploy.local_app_dir() if _is_pythonista() else source_dir
     lines = [

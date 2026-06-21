@@ -8,13 +8,13 @@ def run_parallel(tasks, timeout=None):
     results = {}
     lock = threading.Lock()
 
-    def worker(name, fn):
+    def worker(name, fn, _results=results, _lock=lock):
         try:
             val = fn()
         except Exception:
             val = None
-        with lock:
-            results[name] = val
+        with _lock:
+            _results[name] = val
 
     threads = []
     for name, fn in tasks.items():

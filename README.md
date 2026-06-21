@@ -8,7 +8,9 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 
 - **Two tabs** — **From JC** (bikes + outbound transit) and **To JC** (inbound transit from Manhattan)
 - **iPhone app** — compact 2-column grid showing filled bikes and empty docks for JC stations
-- **PATH & subway** — real-time departures in grouped sections (see [App tabs](#app-tabs) below)
+- **PATH + subway connections** — From JC subway cards filter for trains reachable after PATH arrival + walk time (Christopher St +5 min, West 4 St +7 min)
+- **PATH & subway** — real-time departures in grouped sections (see [App tabs](#app-tabs) below); PATH uses one PANYNJ fetch for all boards
+- **Compact ETAs** — `5m`, `Due`, `Delay` / `~5m` (fits narrow card columns without ellipsis)
 - **Low-count alerts** — cards highlight red when bikes or docks ≤ threshold
 - **LAN debug server** — browse logs and status from a PC on the same Wi‑Fi (`:8765`)
 - **PC deploy script** — `deploy.ps1` zips the project to iCloud Downloads for Pythonista sync
@@ -36,16 +38,16 @@ Tap **From JC** or **To JC** in the tab bar below the header. One refresh loads 
 | **Citibike grid** | 9 JC stations | GBFS bike/dock counts |
 | **PATH → NYC** | Grove St PATH, Newport PATH | Next NYC-bound PATH trains |
 | **PATH → 33rd St** | Christopher St, 9th St | Next 33rd St-bound PATH trains |
-| **Subway → North / Queens** | Christopher St, West 4 St | Uptown/Queens subway departures |
+| **Subway → North / Queens** | Christopher St, West 4 St | Uptown/Queens departures **after PATH + walk** (note: “after PATH +5 min”) |
 
-Bike cards appear first; transit sections load in parallel afterward.
+Bike cards appear first; transit sections load in parallel afterward. Refresh uses a **main-thread UI queue** and **cached station lookup** so repeat taps work reliably on Pythonista.
 
 ### To JC
 
 | Section | Stations | Data |
 |---------|----------|------|
 | **Subway → South Ferry** | WTC Cortlandt, World Trade Center | Downtown 1 / E trains toward South Ferry / WTC |
-| **PATH → NJ** | Christopher St, 9th St, 33rd St, World Trade Center | Next NJ-bound PATH trains |
+| **PATH → NJ** | Christopher St, 9th St, 33rd St, World Trade Center | Next NJ-bound PATH trains (2×2 card grid) |
 
 **World Trade Center subway:** uses direct E-line arrivals when available. If not, estimates from **Canal St** WTC-bound departures **+2 min** (shown with `~` and note “est. Canal St + 2 min”).
 
@@ -59,9 +61,14 @@ bike_train_transit/
   config.json                     # PC stations + thresholds
   debug_server.py                 # Safe mode: logs only (no UI)
   lib/
-    path_trains.py                # PATH NYC / 33rd / NJ boards
+    path_trains.py                # PATH NYC / 33rd / NJ (PANYNJ single-fetch)
     subway_trains.py              # Subway north and To JC boards
-    ...                           # logging, LAN server, launcher, deploy
+    parallel.py                   # Pythonista-safe parallel fetch (not ThreadPoolExecutor)
+    app_state.py                  # Shared state for UI / LAN status.json
+    shortcut_launcher.py          # Launcher v7 (Shortcuts two-hop handoff)
+    local_deploy.py               # Incremental copy to On This iPhone
+    file_logging.py, log_paths.py # Session logs + safe-mode preservation
+    lan_debug_server.py           # LAN debug HTTP server
   windows/                        # PC helpers for LAN debug URLs, deploy config
   .env.example                    # Yahoo SMTP template
 ```
@@ -289,13 +296,14 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 | `ALERT_MIN_DOCKS` | `2` | Highlight when empty docks ≤ this |
 | `LAN_DEBUG_PORT` | `8765` | LAN debug server port |
 | `TRANSIT_FETCH_TIMEOUT` | `12` | Seconds per transit API call |
+| `BIKE_FETCH_TIMEOUT` | `12` | Seconds per GBFS call on refresh |
 
 ### Transit modules (`lib/`)
 
 | File | Configure |
 |------|-----------|
-| `path_trains.py` | PATH stations for NYC, 33rd St, and NJ boards |
-| `subway_trains.py` | Subway north/Queens and To JC (WTC Cortlandt, WTC E, Canal St fallback) |
+| `path_trains.py` | PATH stations for NYC, 33rd St, and NJ boards; PANYNJ `ridepath.json` fetched once per refresh |
+| `subway_trains.py` | Subway north/Queens and To JC; `PATH_SUBWAY_WALK_MINUTES` for connection filtering |
 
 ### PC email (`config.json`)
 
@@ -326,6 +334,8 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 | Safe mode shows empty log | Update to latest code — safe mode now preserves crash logs; check **Previous session** on dashboard |
 | Console errors not in LAN log | Update to latest code — stdout/stderr and thread errors are now captured |
 | UI stuck on “Updating…” / black screen | Transit fetch may be slow; bikes should appear first. Check log for errors; redeploy latest code |
+| App crashes on 2nd+ Refresh | Update to latest code (UI queue + `lib/parallel.py` closure fix). Run from **On This iPhone → Documents/bike_train_transit**, not iCloud Downloads |
+| `fetch_json retry … JSON decoder returned tuple` | Harmless on older builds; latest code coerces Pythonista tuple JSON automatically |
 | Shortcut tap does nothing / Pythonista doesn’t open | Use **Pythonista wrench → Shortcuts → Add to Home Screen** (not Shortcuts app). Test URL in **Safari** first. |
 | Shortcut: “unable to locate file” | Run app once to install launcher; URL must be `pythonista3://RunBikeTrainTransit.py?action=run` |
 | Shortcuts: “problem communicating with app” | Normal for UI apps — use Pythonista wrench method; launcher defers UI for URL handoff |
@@ -352,5 +362,5 @@ Transit data sources:
 
 | Module | API |
 |--------|-----|
-| `lib/path_trains.py` | [path.api.razza.dev](https://path.api.razza.dev/) (fallback: PANYNJ `ridepath.json`) |
+| `lib/path_trains.py` | PANYNJ [ridepath.json](https://www.panynj.gov/bin/portauthority/ridepath.json) (primary, one fetch); [path.api.razza.dev](https://path.api.razza.dev/) fallback if PANYNJ fails |
 | `lib/subway_trains.py` | [subwayinfo.nyc](https://subwayinfo.nyc/) arrivals API |

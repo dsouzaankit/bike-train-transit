@@ -79,10 +79,8 @@ def _format_eta(minutes, estimated=False):
         return "?"
     prefix = "~" if estimated else ""
     if minutes <= 0:
-        return prefix + "Due"
-    if minutes == 1:
-        return prefix + "1 min"
-    return prefix + "%s min" % minutes
+        return "Due"
+    return prefix + "%sm" % minutes
 
 
 def _normalize_arrival(item, extra_minutes=0, estimated=False):
