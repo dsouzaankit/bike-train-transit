@@ -1,13 +1,13 @@
 # Bike Train Transit
 
-Monitor Citibike dock counts, PATH trains, and NYC subway departures for Jersey City (`JC`) stations — plus a **To JC** tab for downtown subway and NJ-bound PATH from Manhattan. Includes an iPhone UI (Pythonista), optional PC email alerts, and a LAN debug server for reading logs from your desktop.
+Monitor Citibike dock counts, PATH trains, and NYC subway departures for Jersey City (`JC`) stations — with separate tabs for bikes, outbound transit (**From JC**), and inbound transit from Manhattan (**To JC**). Includes an iPhone UI (Pythonista), optional PC email alerts, and a LAN debug server for reading logs from your desktop.
 
 Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — no Citibike account login required.
 
 ## Features
 
-- **Two tabs** — **From JC** (bikes + outbound transit) and **To JC** (inbound transit from Manhattan)
-- **iPhone app** — compact 2-column grid showing filled bikes and empty docks for JC stations
+- **Three tabs** — **Cbike JC** (bike grid), **From JC** (outbound PATH/subway), and **To JC** (inbound transit from Manhattan)
+- **iPhone app** — compact 2-column Citibike grid on the **Cbike JC** tab (filled bikes and empty docks for JC stations)
 - **PATH + subway connections** — From JC subway cards filter for trains reachable after PATH arrival + walk time (Christopher St +5 min, West 4 St +7 min)
 - **PATH & subway** — real-time departures in grouped sections (see [App tabs](#app-tabs) below); PATH uses one PANYNJ fetch for all boards
 - **Compact ETAs** — `5m`, `Due`, `Delay` / `~5m` (fits narrow card columns without ellipsis)
@@ -25,22 +25,29 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 | Monmouth & 6th | Jersey & 6th St | Newport PATH |
 | Washington St | City Hall | Grove St PATH |
 
-All stations are tagged `[JC]` in logs, email, and the **From JC** tab title.
+All stations are tagged `[JC]` in logs, email, and the **Cbike JC** tab.
 
 ## App tabs
 
-Tap **From JC** or **To JC** in the tab bar below the header. One refresh loads both tabs; switching tabs uses cached data (no extra network calls).
+Tap **Cbike JC**, **From JC**, or **To JC** in the tab bar below the header. One refresh loads all tabs; switching tabs uses cached data (no extra network calls).
+
+### Cbike JC
+
+| Section | Stations | Data |
+|---------|----------|------|
+| **Citibike grid** | 9 JC stations | GBFS bike/dock counts |
+
+Bike cards paint first after refresh; transit loads in the background for the other tabs.
 
 ### From JC
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **Citibike grid** | 9 JC stations | GBFS bike/dock counts |
 | **PATH → NYC** | Grove St PATH, Newport PATH | Next NYC-bound PATH trains |
 | **PATH → 33rd St** | Christopher St, 9th St | Next 33rd St-bound PATH trains |
 | **Subway → North / Queens** | Christopher St, West 4 St | Uptown/Queens departures **after PATH + walk** (note: “after PATH +5 min”) |
 
-Bike cards appear first; transit sections load afterward. Network runs via Pythonista's `@ui.in_background` (not a raw thread). On the PC transit fetches in parallel; on Pythonista it fetches one at a time, since raw-thread or concurrent TLS can hard-crash the app.
+Transit-only tab (no bike grid) to keep scrolling short. Network runs via Pythonista's `@ui.in_background` (not a raw thread). On the PC transit fetches in parallel; on Pythonista it fetches one at a time, since raw-thread or concurrent TLS can hard-crash the app.
 
 ### To JC
 
@@ -125,7 +132,7 @@ Optional: set `iCloudDownloads` in `windows\bike-train-transit-windows.json` if 
 
 On first launch the app will:
 
-- Show the **From JC** tab with bike grid and refresh live data
+- Show the **From JC** tab (default) and refresh live data; bikes appear on **Cbike JC**
 - Start the LAN debug server on port **8765**
 - Copy itself to **On This iPhone → Documents/bike_train_transit/** (for the Home Screen URL)
 - Remove the obsolete **`RunBikeTrainTransit.py`** stub if present (its `runpy` launch breaks the UI loop; the Home Screen uses the direct UI-script URL instead — see [iOS Home Screen](#ios-home-screen-one-tap-launch))

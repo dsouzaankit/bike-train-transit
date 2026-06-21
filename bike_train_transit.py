@@ -658,12 +658,15 @@ if HAS_UI:
 
             self.tab_bar = ui.View()
             self.tab_bar.background_color = COLORS["bg"]
+            self.tab_cbike_btn = ui.Button(title="Cbike JC")
             self.tab_from_btn = ui.Button(title="From JC")
             self.tab_to_btn = ui.Button(title="To JC")
-            self.tab_from_btn.corner_radius = 8
-            self.tab_to_btn.corner_radius = 8
+            for btn in (self.tab_cbike_btn, self.tab_from_btn, self.tab_to_btn):
+                btn.corner_radius = 8
+            self.tab_cbike_btn.action = self._tab_cbike_tapped
             self.tab_from_btn.action = self._tab_from_tapped
             self.tab_to_btn.action = self._tab_to_tapped
+            self.tab_bar.add_subview(self.tab_cbike_btn)
             self.tab_bar.add_subview(self.tab_from_btn)
             self.tab_bar.add_subview(self.tab_to_btn)
 
@@ -683,8 +686,12 @@ if HAS_UI:
             self._poll_remote_control()
 
         def _style_tabs(self):
-            active = self._active_tab == "from_jc"
-            for btn, is_active in ((self.tab_from_btn, active), (self.tab_to_btn, not active)):
+            for tab, btn in (
+                ("cbike_jc", self.tab_cbike_btn),
+                ("from_jc", self.tab_from_btn),
+                ("to_jc", self.tab_to_btn),
+            ):
+                is_active = self._active_tab == tab
                 btn.background_color = COLORS["accent"] if is_active else "#2a3441"
                 btn.tint_color = COLORS["text"]
                 btn.font = ("<system-bold>", 14) if is_active else ("<system>", 14)
@@ -706,6 +713,9 @@ if HAS_UI:
                 log_event("Tab paint failed: {}".format(exc))
                 log_event(traceback.format_exc())
                 self.status_label.text = "UI error: %s" % exc
+
+        def _tab_cbike_tapped(self, sender):
+            self._set_tab("cbike_jc")
 
         def _tab_from_tapped(self, sender):
             self._set_tab("from_jc")
@@ -739,9 +749,17 @@ if HAS_UI:
             self.title_label.frame = (16, safe_top + 8, width - 120, 28)
             self.refresh_btn.frame = (width - 96, safe_top + 8, 80, 30)
             self.tab_bar.frame = (0, tab_top, width, TAB_BAR_HEIGHT)
-            tab_w = max((width - 40) // 2, 120)
-            self.tab_from_btn.frame = (12, 0, tab_w, TAB_BAR_HEIGHT - 4)
-            self.tab_to_btn.frame = (20 + tab_w, 0, tab_w, TAB_BAR_HEIGHT - 4)
+            tab_gap = 6
+            tab_side = 10
+            tab_w = max((width - tab_side * 2 - tab_gap * 2) // 3, 88)
+            self.tab_cbike_btn.frame = (tab_side, 0, tab_w, TAB_BAR_HEIGHT - 4)
+            self.tab_from_btn.frame = (tab_side + tab_w + tab_gap, 0, tab_w, TAB_BAR_HEIGHT - 4)
+            self.tab_to_btn.frame = (
+                tab_side + 2 * (tab_w + tab_gap),
+                0,
+                tab_w,
+                TAB_BAR_HEIGHT - 4,
+            )
             self.status_label.frame = (16, status_top, width - 32, 16)
             self.scroll.frame = (0, status_top + 20, width, height - status_top - 20)
 
@@ -992,7 +1010,9 @@ if HAS_UI:
             inner_w = width - pad * 2
             card_width = (inner_w - CARD_GAP * (CARD_COLUMNS - 1)) // CARD_COLUMNS
             try:
-                if self._active_tab == "to_jc":
+                if self._active_tab == "cbike_jc":
+                    y = self._paint_cbike_jc(pad, inner_w, card_width, partial=partial)
+                elif self._active_tab == "to_jc":
                     y = self._paint_to_jc(pad, inner_w, card_width, partial=partial)
                 else:
                     y = self._paint_from_jc(pad, inner_w, card_width, partial=partial)
@@ -1001,19 +1021,23 @@ if HAS_UI:
                 if content_h <= self.scroll.height:
                     self.scroll.content_offset = (0, 0)
                 if not partial:
+                    tab_labels = {
+                        "cbike_jc": "Cbike JC",
+                        "from_jc": REGION,
+                        "to_jc": "To JC",
+                    }
                     self.status_label.text = "Updated %s · %s" % (
                         datetime.now().strftime("%I:%M:%S %p"),
-                        "To JC" if self._active_tab == "to_jc" else REGION,
+                        tab_labels.get(self._active_tab, REGION),
                     )
             except Exception as exc:
                 log_event("Paint failed: {}".format(exc))
                 log_event(traceback.format_exc())
                 self.status_label.text = "UI error: %s" % exc
 
-        def _paint_from_jc(self, pad, inner_w, card_width, partial=False):
+        def _paint_cbike_jc(self, pad, inner_w, card_width, partial=False):
             snapshots = self._cache.get("snapshots") or []
             rows = (len(GRID_SLOTS) + CARD_COLUMNS - 1) // CARD_COLUMNS
-            y = pad
             for index, slot in enumerate(GRID_SLOTS):
                 col = index % CARD_COLUMNS
                 row = index // CARD_COLUMNS
@@ -1027,9 +1051,15 @@ if HAS_UI:
                     card = StationCard(_placeholder_snapshot("No data"), card_width)
                 card.frame = (x, card_y, card_width, CARD_HEIGHT)
                 self.scroll.add_subview(card)
-            y = pad + rows * CARD_HEIGHT + max(0, rows - 1) * CARD_GAP + SECTION_GAP
+            return pad + rows * CARD_HEIGHT + max(0, rows - 1) * CARD_GAP + pad
+
+        def _paint_from_jc(self, pad, inner_w, card_width, partial=False):
+            y = pad
             if partial:
-                return y
+                loading = make_label("Loading transit...", font_size=14, color=COLORS["muted"])
+                loading.frame = (pad, y, inner_w, 24)
+                self.scroll.add_subview(loading)
+                return y + 32
             return self._append_from_jc_transit(y, pad, inner_w, card_width)
 
         def _paint_to_jc(self, pad, inner_w, card_width, partial=False):
