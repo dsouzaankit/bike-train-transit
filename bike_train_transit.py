@@ -1366,14 +1366,18 @@ if HAS_UI:
 
     def _kickoff_ui(view):
         """Start polling and first refresh once the UI run loop is active."""
-        _schedule_safe_area_relayout(view)
-        view.start_remote_poll()
-        view.refresh()
+        try:
+            log_event("kickoff: layout + poll + first refresh")
+            _schedule_safe_area_relayout(view)
+            view.start_remote_poll()
+            view.refresh()
+        except Exception as exc:
+            log_event("kickoff failed: {}".format(exc))
+            log_event(traceback.format_exc())
 
     def _present_ui():
         view = BikeTrainTransitView()
         try:
-            ui.delay(lambda: _kickoff_ui(view), 0.5)
             view.present("fullscreen", hide_title_bar=True)
         except Exception as exc:
             msg = str(exc).casefold()
@@ -1386,6 +1390,10 @@ if HAS_UI:
                 if handoff_to_ui_app():
                     return
             raise
+        # Present first so the UI run loop is active, then kick off on the
+        # main thread. ui.delay timers registered before present() are
+        # unreliable on Pythonista and may never fire (auto-refresh skipped).
+        ui.delay(lambda: _kickoff_ui(view), 0.2)
 
     def _setup_launcher_background():
         try:
