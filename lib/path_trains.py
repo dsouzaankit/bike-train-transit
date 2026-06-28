@@ -228,7 +228,14 @@ def _board_from_payload(
     }
 
 
+# path.api.razza.dev is permanently offline; its SSL handshakes time out (~37s
+# per launch) and leave dead sockets that crash Pythonista when GC'd. Disabled.
+RAZZA_ENABLED = False
+
+
 def _maybe_enrich_with_razza(board, station, fetch_json, direction, dest_filter=None, max_trains=PATH_MAX_TRAINS):
+    if not RAZZA_ENABLED:
+        return board
     if board.get("trains"):
         return board
     try:
