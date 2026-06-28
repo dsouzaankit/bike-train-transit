@@ -20,11 +20,12 @@ import sys
 import threading
 import traceback
 import urllib.request
-from datetime import datetime
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
+
+from lib import clock
 
 try:
     import ui
@@ -34,7 +35,7 @@ except ImportError:
     HAS_UI = False
 
 # --- edit these ---
-APP_TITLE = "Bike Train Tunnel . JC"
+APP_TITLE = "JC<->NYC Transit"
 REGION = "JC"
 STATIONS = [
     "Dixon Mills",
@@ -86,6 +87,11 @@ def _build_grid_slots():
 GRID_SLOTS = _build_grid_slots()
 ALERT_MIN_BIKES = 2
 ALERT_MIN_DOCKS = 2
+# Simulate the app at a different time: global hour offset applied to every
+# "now" used for time-derived state (HBLR offline schedule, shown timestamps).
+# 0 = real time. Whole hours, clamped to -23..23 (e.g. 3, -2). On iPhone use the
+# in-app "Sim" button; also overridable via BTT_SIM_HOUR_OFFSET or --sim-hours.
+SIM_HOUR_OFFSET = 0
 # --- end edit ---
 
 CARD_HEIGHT = 76
@@ -512,7 +518,10 @@ def print_path_boards(boards, title="PATH to NYC"):
 
 def print_snapshots(snapshots):
     print("Bike dock status [%s]" % REGION)
-    print("Checked at: %s" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    print("Checked at: %s%s" % (
+        clock.now().strftime("%Y-%m-%d %H:%M:%S"),
+        (" (sim %s)" % clock.offset_label()) if clock.is_simulated() else "",
+    ))
     print("")
     for snapshot in snapshots:
         alert = snapshot["low_bikes"] or snapshot["low_docks"]
@@ -859,6 +868,12 @@ if HAS_UI:
             self.refresh_btn.corner_radius = 8
             self.refresh_btn.action = self.refresh_tapped
 
+            self.sim_btn = ui.Button(title="now")
+            self.sim_btn.tint_color = COLORS["text"]
+            self.sim_btn.corner_radius = 8
+            self.sim_btn.font = ("<system>", 13)
+            self.sim_btn.action = self._sim_tapped
+
             self.status_label = make_label("", font_size=12, color=COLORS["muted"])
 
             self.tab_bar = ui.View()
@@ -883,12 +898,14 @@ if HAS_UI:
             self.scroll.shows_vertical_scroll_indicator = False
 
             self.header.add_subview(self.title_label)
+            self.header.add_subview(self.sim_btn)
             self.header.add_subview(self.refresh_btn)
             self.add_subview(self.header)
             self.add_subview(self.tab_bar)
             self.add_subview(self.status_label)
             self.add_subview(self.scroll)
             self._style_tabs()
+            self._update_sim_btn()
 
         def start_remote_poll(self):
             self._poll_remote_control()
@@ -935,6 +952,48 @@ if HAS_UI:
         def _tab_tunnels_tapped(self, sender):
             self._set_tab("tunnels")
 
+        def _update_sim_btn(self):
+            try:
+                self.sim_btn.title = clock.offset_label() or "now"
+                self.sim_btn.background_color = (
+                    COLORS["warn"] if clock.is_simulated() else "#2a3441"
+                )
+            except Exception:
+                pass
+
+        def _sim_tapped(self, sender):
+            self._prompt_sim_offset()
+
+        @ui.in_background
+        def _prompt_sim_offset(self):
+            import ui
+
+            try:
+                import console
+
+                raw = console.input_alert(
+                    "Simulate clock",
+                    "Whole-hour offset (%d..%d). 0 = real time."
+                    % (clock.OFFSET_MIN, clock.OFFSET_MAX),
+                    str(clock.get_offset_hours()),
+                    "Set",
+                )
+            except KeyboardInterrupt:
+                return
+            except Exception as exc:
+                log_event("Sim prompt unavailable: {}".format(exc))
+                return
+
+            clock.set_offset_hours(raw)
+            clock.save_offset()
+            log_event("Sim offset set to %s" % (clock.offset_label() or "+0h"))
+
+            def apply():
+                self._update_sim_btn()
+                self.refresh()
+
+            ui.delay(apply, 0)
+
         def _poll_remote_control(self):
             import ui
 
@@ -958,7 +1017,8 @@ if HAS_UI:
             status_top = tab_top + TAB_BAR_HEIGHT + 2
 
             self.header.frame = (0, 0, width, header_h)
-            self.title_label.frame = (16, top + 8, width - 120, 28)
+            self.title_label.frame = (16, top + 8, width - 188, 28)
+            self.sim_btn.frame = (width - 168, top + 8, 64, 30)
             self.refresh_btn.frame = (width - 96, top + 8, 80, 30)
             self.tab_bar.frame = (0, tab_top, width, TAB_BAR_HEIGHT)
             tab_gap = 4
@@ -1323,9 +1383,11 @@ if HAS_UI:
                         "to_jc": "To JC",
                         "tunnels": "Tunnels",
                     }
-                    self.status_label.text = "Updated %s · %s" % (
-                        datetime.now().strftime("%I:%M:%S %p"),
+                    sim = (" · sim %s" % clock.offset_label()) if clock.is_simulated() else ""
+                    self.status_label.text = "Updated %s · %s%s" % (
+                        clock.now().strftime("%I:%M:%S %p"),
                         tab_labels.get(self._active_tab, REGION),
+                        sim,
                     )
             except Exception as exc:
                 log_event("Paint failed: {}".format(exc))
@@ -1537,13 +1599,33 @@ def parse_args():
         default=LAN_DEBUG_PORT,
         help="LAN debug server port (default: %(default)s)",
     )
+    parser.add_argument(
+        "--sim-hours",
+        type=int,
+        default=None,
+        help="Simulate a different time: whole-hour offset (-23..23) for "
+        "time-derived state (overrides persisted / env / SIM_HOUR_OFFSET)",
+    )
     return parser.parse_args()
+
+
+def _init_sim_clock(cli_hours=None):
+    """Set the global simulated-time offset (CLI > env > SIM_HOUR_OFFSET)."""
+    if cli_hours is not None:
+        clock.set_offset_hours(cli_hours)
+    else:
+        clock.load_offset(default=SIM_HOUR_OFFSET)
+    if clock.is_simulated():
+        log_event("Simulated clock active: %s (%s)" % (
+            clock.offset_label(), clock.now().strftime("%Y-%m-%d %H:%M:%S")
+        ))
 
 
 def main():
     args = parse_args()
     global LAN_DEBUG_PORT
     LAN_DEBUG_PORT = args.port
+    _init_sim_clock(args.sim_hours)
     if args.safe:
         main_safe(args.port)
     elif args.cli or not HAS_UI:

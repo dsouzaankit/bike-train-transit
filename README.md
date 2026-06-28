@@ -1,6 +1,6 @@
-# Bike Train Tunnel . JC
+# JC<->NYC Transit
 
-Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **Bike Train Tunnel . JC** — tabs: **Cbike JC**, **From JC**, **To JC**, and **Tunnels**. Includes a Pythonista app, optional PC email alerts, and a LAN debug server for reading logs from your desktop.
+Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **JC<->NYC Transit** — tabs: **Cbike JC**, **From JC**, **To JC**, and **Tunnels**. Includes a Pythonista app, optional PC email alerts, and a LAN debug server for reading logs from your desktop.
 
 Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — no Citibike account login required.
 
@@ -107,6 +107,8 @@ bike_train_transit/
     subway_trains.py              # Subway north and To JC boards
     subway_lines.py               # MTA line badge colors
     tunnel_crossings.py           # Lincoln/Holland PANYNJ crossingtimesapi.json
+    clock.py                      # Global simulated-time offset (SIM_HOUR_OFFSET); clock.now()/utcnow()
+    path_schedule.py              # Offline PATH clock-face schedule (used when the clock is simulated)
     parallel.py                   # Parallel on PC, sequential on Pythonista (avoids TLS-thread crash)
     app_state.py                  # Shared state for UI / LAN status.json
     shortcut_launcher.py          # Deploys app to Documents; reports direct UI-script URL; removes obsolete stub
@@ -350,7 +352,7 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `APP_TITLE` | `Bike Train Tunnel . JC` | Header title and view name in the UI |
+| `APP_TITLE` | `JC<->NYC Transit` | Header title and view name in the UI |
 | `TOP_CONTENT_INSET` | `43` | Points (~1.5 cm) from screen top to title row — clears iOS status bar / notch (title bar is hidden) |
 | `REGION` | `JC` | Tag shown on bike cards and in logs |
 | `STATIONS` | JC names | GBFS station names or partial matches |
@@ -360,12 +362,53 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 | `ALERT_MIN_DOCKS` | `2` | Highlight when empty docks ≤ this |
 | `LAN_DEBUG_PORT` | `8765` | LAN debug server port |
 | `TRANSIT_FETCH_TIMEOUT` | `12` | Seconds per transit API call |
+| `SIM_HOUR_OFFSET` | `0` | Default simulated-time offset, whole hours `-23..23` (see [Simulated time](#simulated-time)) |
+
+### Simulated time
+
+A single global hour offset lets you preview the app's **time-derived** state as
+if it were a different moment — the **PATH / HBLR offline schedules** and the
+displayed timestamps. The offset is a **whole number of hours, clamped to
+`-23..23`** (fractional input is rounded).
+
+**In the iPhone app:** tap the **Sim** button in the header (next to Refresh),
+enter an offset, and it applies immediately (the boards re-fetch). When active
+the button turns amber and shows e.g. `+3h`, and the status line shows
+`· sim +3h`. The chosen offset is **persisted** (`sim_offset.json`) so it
+survives the Shortcut relaunch; set it back to `0` to return to real time.
+
+Other ways to set it (highest precedence first — persisted in-app value, then
+env var, then the constant):
+
+```bash
+python bike_train_transit.py --cli --sim-hours 3      # +3h (CLI flag)
+BTT_SIM_HOUR_OFFSET=3 python bike_train_transit.py    # env var
+```
+
+…or edit `SIM_HOUR_OFFSET` at the top of `bike_train_transit.py`. The CLI prints
+`(sim +3h)` next to the timestamp.
+
+The offset flows through `lib/clock.py` (`clock.now()` / `clock.utcnow()`), so
+every module reading "now" stays consistent.
+
+**PATH & HBLR offline schedules under simulation:** because live PANYNJ/NJT
+feeds always reflect *real* now, a simulated clock would make their ETAs
+meaningless. So whenever the offset is non-zero, **PATH** boards (NYC / 33rd /
+NJ) and **HBLR** boards fall back to an **offline clock-face schedule estimate**
+(`lib/path_schedule.py`, `lib/light_rail.py`) for the simulated time — including
+the overnight JSQ↔33rd "via Hoboken" routing. These are approximations of PATH
+service patterns (peak / off-peak / weekend / overnight), flagged `~` with a
+`sched` note, and the PATH→subway and PATH→HBLR connection offsets are computed
+against them so the whole pipeline stays exercisable at any time of day.
+
+Subway and tunnel feeds have no offline model, so they still show real-time
+data even under simulation.
 
 ### Transit modules (`lib/`)
 
 | File | Configure |
 |------|-----------|
-| `path_trains.py` | PATH stations for NYC, 33rd St, and NJ boards; PANYNJ `ridepath.json` fetched once per refresh; per-station `allow_hoboken` (set on WTC) |
+| `path_trains.py` | PATH stations for NYC, 33rd St, and NJ boards; PANYNJ `ridepath.json` fetched once per refresh; per-station `allow_hoboken` (set on WTC); falls back to `path_schedule.py` under a simulated clock |
 | `light_rail.py` | HBLR stations, PATH pairings + offsets, and the offline schedule headways; reads NJT creds from env or `njt_credentials.json` |
 | `subway_trains.py` | Subway north/Queens and To JC; `SUBWAY_PATH_WALKS` for From JC connection filtering; southbound **6** (Union Sq) and **4/5** (Bleecker St) ETAs append **↓** |
 
