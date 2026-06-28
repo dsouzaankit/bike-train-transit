@@ -251,9 +251,11 @@ def fetch_station_arrivals(
 
 
 def format_train_eta(train):
-    """Display ETA; ↓ suffix for southbound 6 trains (Union Sq etc.)."""
+    """Display ETA; ↓ suffix for southbound 6 (Union Sq) and 4/5 (Bleecker St)."""
     eta = str(train.get("eta") or "?")
-    if normalize_line(train.get("line")) == "6" and train.get("direction") == SUBWAY_DIRECTION_SOUTH:
+    if train.get("direction") == SUBWAY_DIRECTION_SOUTH and normalize_line(
+        train.get("line")
+    ) in ("6", "4", "5"):
         return eta + "\u2193"
     return eta
 

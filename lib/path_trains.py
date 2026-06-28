@@ -49,6 +49,10 @@ _DEST_SHORT = {
 
 def _is_hoboken_destination(name):
     text = (name or "").casefold()
+    # "33rd Street via Hoboken" / "Journal Square via Hoboken" are the overnight
+    # routings of the 33rd<->JSQ line: they terminate at 33rd/JSQ, not Hoboken.
+    if "via hoboken" in text:
+        return False
     return "hoboken" in text
 
 
@@ -60,8 +64,9 @@ def _short_destination(name):
         if text == full:
             return short
         if text.startswith(full + " "):
-            return short + text[len(full) :]
-    return text
+            text = short + text[len(full) :]
+            break
+    return text.replace(" via Hoboken", " via Hob")
 
 
 def _is_33rd_destination(name):
