@@ -1,6 +1,6 @@
-# JC<->NYC Transit
+# JC <-> NYC Transit
 
-Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **JC<->NYC Transit** — tabs: **Cbike JC**, **From JC**, **To JC**, and **Tunnels**. Includes a Pythonista app, optional PC email alerts, and a LAN debug server for reading logs from your desktop.
+Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **JC <-> NYC Transit** — tabs: **Cbike JC**, **From JC**, **To JC**, and **Tunnels**. Includes a Pythonista app, optional PC email alerts, and a LAN debug server for reading logs from your desktop.
 
 Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — no Citibike account login required.
 
@@ -350,7 +350,7 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `APP_TITLE` | `JC<->NYC Transit` | Header title and view name in the UI |
+| `APP_TITLE` | `JC <-> NYC Transit` | Header title and view name in the UI |
 | `TOP_CONTENT_INSET` | `43` | Points (~1.5 cm) from screen top to title row — clears iOS status bar / notch (title bar is hidden) |
 | `REGION` | `JC` | Tag shown on bike cards and in logs |
 | `STATIONS` | JC names | GBFS station names or partial matches |

@@ -34,7 +34,7 @@ except ImportError:
     HAS_UI = False
 
 # --- edit these ---
-APP_TITLE = "JC<->NYC Transit"
+APP_TITLE = "JC <-> NYC Transit"
 REGION = "JC"
 STATIONS = [
     "Dixon Mills",
