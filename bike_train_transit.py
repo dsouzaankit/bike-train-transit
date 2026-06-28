@@ -737,10 +737,7 @@ if HAS_UI:
             name.frame = (12, 8, card_width - 24, 20)
             self.add_subview(name)
 
-            trains = sorted(
-                board.get("trains") or [],
-                key=lambda t: t.get("minutes") if t.get("minutes") is not None else 9999,
-            )
+            trains = board.get("trains") or []
             error = board.get("error")
             y = 34
             row_h = TUNNEL_ROW_HEIGHT
@@ -1168,6 +1165,13 @@ if HAS_UI:
                     (self._pick_board(path33, "14 St PATH"), "33", "No 33rd St"),
                     (self._pick_board(subway, "6 Av", by_line=True), "↑", "None after PATH"),
                     (self._pick_board(subway, "14 St - Union Sq", by_line=True), "↑", "None after PATH"),
+                ],
+                [
+                    (self._pick_board(subway, "51 St", by_line=True), "↑", "No uptown trains"),
+                    (self._pick_board(subway, "50 St", by_line=True), "↑", "No uptown trains"),
+                ],
+                [
+                    (self._pick_board(subway, "Bleecker St", by_line=True), "↓", "No downtown trains"),
                 ],
             )
             for group in groups:

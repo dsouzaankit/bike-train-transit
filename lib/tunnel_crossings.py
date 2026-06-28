@@ -6,7 +6,7 @@ from __future__ import annotations
 import time
 
 CROSSING_TIMES_URL = "https://www.panynj.gov/bin/portauthority/crossingtimesapi.json"
-TUNNEL_FACILITIES = ("Holland Tunnel", "Lincoln Tunnel")
+TUNNEL_FACILITIES = ("Lincoln Tunnel", "Holland Tunnel")
 DIRECTION_LABELS = {
     "ToNY": "→ NYC",
     "ToNJ": "→ NJ",
@@ -54,7 +54,7 @@ def _normalize_entry(entry):
 
 
 def get_tunnel_boards(fetch_json):
-    """Return one board per tunnel (Holland, Lincoln) with ToNY/ToNJ rows."""
+    """Return one board per tunnel (Lincoln, Holland) with → NYC then → NJ rows."""
     error = None
     payload = None
     try:

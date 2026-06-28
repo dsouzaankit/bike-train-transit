@@ -26,12 +26,45 @@ NORTH_SUBWAY_ORDER = (
     "West 4 St",
     "6 Av",
     "14 St - Union Sq",
+    "51 St",
+    "50 St",
+    "Bleecker St",
 )
 
 SUBWAY_STATIONS_NORTH = [
     {"station_id": "133", "label": "Christopher St", "direction": SUBWAY_DIRECTION_NORTH},
     {"station_id": ["A32", "D20"], "label": "West 4 St", "direction": SUBWAY_DIRECTION_NORTH},
 ]
+
+SUBWAY_FIFTY_FIRST = {
+    "station_id": "630",
+    "label": "51 St",
+    "direction": SUBWAY_DIRECTION_NORTH,
+}
+
+SUBWAY_FIFTY_ST = {
+    "station_id": "A25",
+    "label": "50 St",
+    "direction": SUBWAY_DIRECTION_NORTH,
+}
+
+SUBWAY_BLEECKER = {
+    "station_id": "637",
+    "label": "Bleecker St",
+    "direction": SUBWAY_DIRECTION_SOUTH,
+}
+
+FIFTY_FIRST_LINE_SPECS = (
+    ("4", SUBWAY_DIRECTION_NORTH),
+    ("5", SUBWAY_DIRECTION_NORTH),
+)
+
+FIFTY_ST_LINE_SPECS = (("A", SUBWAY_DIRECTION_NORTH),)
+
+BLEECKER_LINE_SPECS = (
+    ("4", SUBWAY_DIRECTION_SOUTH),
+    ("5", SUBWAY_DIRECTION_SOUTH),
+)
 
 SUBWAY_WTC_CORTLANDT = {
     "station_id": "138",
@@ -502,6 +535,24 @@ def get_subway_north_boards(fetch_json):
 
     by_label["6 Av"] = _load_sixth_av_l_board(fetch_json)
     by_label["14 St - Union Sq"] = _load_union_sq_board(fetch_json)
+    by_label["51 St"] = _load_line_board(
+        SUBWAY_FIFTY_FIRST,
+        fetch_json,
+        line_specs=FIFTY_FIRST_LINE_SPECS,
+        fetch_limit=SUBWAY_FETCH_LIMIT,
+    )
+    by_label["50 St"] = _load_line_board(
+        SUBWAY_FIFTY_ST,
+        fetch_json,
+        line_specs=FIFTY_ST_LINE_SPECS,
+        fetch_limit=SUBWAY_FETCH_LIMIT,
+    )
+    by_label["Bleecker St"] = _load_line_board(
+        SUBWAY_BLEECKER,
+        fetch_json,
+        line_specs=BLEECKER_LINE_SPECS,
+        fetch_limit=SUBWAY_FETCH_LIMIT,
+    )
 
     boards = []
     for label in NORTH_SUBWAY_ORDER:

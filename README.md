@@ -59,8 +59,10 @@ Bike cards paint first after refresh; transit loads in the background for the ot
 | 1 | Christopher St | Christopher St | 5 min |
 | 2 | 9th St | West 4 St | 5 min |
 | 3 | 14 St PATH | 6 Av (L East/Bk), 14 St - Union Sq | 2 / 6 min |
+| 4 | — | 51 St (4/5 ↑), 50 St (A ↑) | — |
+| 5 | — | Bleecker St (4/5 ↓) | — |
 
-Layout on **From JC** matches these groups (two columns per row; group 3 is 14 St PATH + 6 Av, then Union Sq on the next row).
+Layout on **From JC** matches these groups (two columns per row; group 3 is 14 St PATH + 6 Av, then Union Sq on the next row; groups 4–5 are subway-only).
 
 Transit-only tab (no bike grid) to keep scrolling short. **To JC** subway cards show **up to 2 ETAs per line** when available.
 
@@ -77,7 +79,7 @@ Transit-only tab (no bike grid) to keep scrolling short. **To JC** subway cards 
 
 | Section | Data source | Data |
 |---------|-------------|------|
-| **Lincoln & Holland** | [PANYNJ crossing times](https://www.panynj.gov/bin/portauthority/crossingtimesapi.json) (same backend as [Bridges & Tunnels](https://www.panynj.gov/bridges-tunnels/en/index.html)) | Full-width cards: **→ NYC** / **→ NJ** travel minutes with green / amber / red pills matching the website |
+| **Lincoln & Holland** | [PANYNJ crossing times](https://www.panynj.gov/bin/portauthority/crossingtimesapi.json) (same backend as [Bridges & Tunnels](https://www.panynj.gov/bridges-tunnels/en/index.html)) | Full-width cards in fixed order — **Lincoln Tunnel** then **Holland Tunnel**, each with **→ NYC** above **→ NJ** travel minutes and green / amber / red pills matching the website |
 
 ## Project layout
 
