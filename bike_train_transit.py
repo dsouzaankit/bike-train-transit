@@ -46,8 +46,9 @@ STATIONS = [
     "Washington St",
     "City Hall",
     "Grove St PATH",
+    "JC Medical Center",
 ]
-# Shorter labels for compact UI (same order as STATIONS)
+# Shorter labels for compact UI (same order as STATIONS). Use \n for a two-line name.
 STATION_LABELS = [
     "Dixon Mills",
     "Montgomery",
@@ -58,10 +59,12 @@ STATION_LABELS = [
     "Washington St",
     "City Hall",
     "Grove St PATH",
+    "JC\nMedical Center",
 ]
 # Snapshot indices (matches STATIONS order above):
 #   0 Dixon Mills  1 Montgomery  |  2 Brunswick  3 Monmouth  4 Jersey & 6th
 #   5 Newport PATH  6 Washington  |  7 City Hall  8 Grove St PATH
+#   9 JC Medical Center (own row)
 #
 # Group 1 — 6th St (2x2, empty cell beside Jersey)
 # Group 2 — Newport PATH, Washington St
@@ -71,6 +74,7 @@ GRID_GROUPS = [
     [(2, 3), (4, None)],   # Group 1
     [(5, 6)],              # Group 2
     [(7, 8)],              # City Hall, Grove St PATH
+    [(9, None)],           # JC Medical Center
 ]
 
 
@@ -415,10 +419,10 @@ def get_path_nj_boards():
     return _get_path_nj_boards(fetch_transit_json)
 
 
-def get_light_rail_boards():
-    from lib.light_rail import get_light_rail_boards as _get_light_rail_boards
+def get_hblr_path_sections(path_bundle):
+    from lib.hblr_path import build_hblr_path_sections
 
-    return _get_light_rail_boards(fetch_transit_json)
+    return build_hblr_path_sections(path_bundle, fetch_json=fetch_transit_json)
 
 
 def _fetch_transit_boards():
@@ -448,7 +452,6 @@ def _fetch_transit_boards():
         "tunnels": lambda: __import__("lib.tunnel_crossings", fromlist=["get_tunnel_boards"]).get_tunnel_boards(
             fetch_transit_payload
         ),
-        "lightRail": get_light_rail_boards,
     }
     results = run_parallel(
         {key: (lambda k=key, f=fn: _wrap(k, f)) for key, fn in jobs.items()},
@@ -461,7 +464,6 @@ def _fetch_transit_boards():
     subway_boards = results.get("subway") or []
     subway_to_jc_boards = results.get("subwayToJc") or []
     tunnel_boards = results.get("tunnels") or []
-    light_rail_boards = results.get("lightRail") or []
     try:
         log_event(
             "step: transit connections (subway={} path33={})".format(
@@ -475,17 +477,8 @@ def _fetch_transit_boards():
     except Exception as exc:
         log_event("PATH+subway connection failed: {}".format(exc))
         log_event(traceback.format_exc())
-    if light_rail_boards:
-        try:
-            from lib.light_rail import apply_path_lightrail_connections
-
-            light_rail_boards = apply_path_lightrail_connections(
-                light_rail_boards, path_nj_boards
-            )
-            log_event("step: HBLR connections done ({})".format(len(light_rail_boards)))
-        except Exception as exc:
-            log_event("PATH+HBLR connection failed: {}".format(exc))
-            log_event(traceback.format_exc())
+    hblr_path_sections = get_hblr_path_sections(path_bundle)
+    log_event("step: HBLR↔PATH sections ({})".format(len(hblr_path_sections or [])))
     log_event("step: transit boards assembled")
     return (
         path_boards,
@@ -494,7 +487,7 @@ def _fetch_transit_boards():
         path_nj_boards,
         subway_to_jc_boards,
         tunnel_boards,
-        light_rail_boards,
+        hblr_path_sections,
     )
 
 
@@ -540,7 +533,7 @@ def main_cli():
             path_nj_boards,
             subway_to_jc_boards,
             tunnel_boards,
-            light_rail_boards,
+            hblr_path_sections,
         ) = _fetch_transit_boards()
         print_snapshots(snapshots)
         print("")
@@ -554,11 +547,14 @@ def main_cli():
         print("")
         print_subway_boards(subway_to_jc_boards, title="Subway To JC")
         print("")
-        for board in light_rail_boards or []:
-            trains = ", ".join(
-                "%s %s" % (t.get("eta"), t.get("destination")) for t in board.get("trains") or []
-            ) or (board.get("error") or "(none)")
-            print("HBLR %s: %s" % (board.get("label"), trains))
+        for section in hblr_path_sections or []:
+            print(section.get("title"))
+            for key in ("primary", "secondary"):
+                board = section.get(key) or {}
+                trains = ", ".join(
+                    "%s %s" % (t.get("eta"), t.get("destination")) for t in board.get("trains") or []
+                ) or (board.get("error") or board.get("note") or "(none)")
+                print("  %s: %s" % (board.get("label"), trains))
         from lib.tunnel_crossings import print_tunnel_boards
 
         print_tunnel_boards(tunnel_boards)
@@ -608,8 +604,13 @@ if HAS_UI:
             tag = make_label(REGION, font_size=10, bold=True, color=COLORS["accent"])
             tag.frame = (8, 6, 28, 14)
 
-            name = make_label(snapshot["label"], font_size=13, bold=True)
-            name.frame = (38, 4, card_width - 46, 18)
+            label_text = snapshot["label"]
+            if "\n" in label_text:
+                name = make_label(label_text, font_size=11, bold=True)
+                name.frame = (38, 2, card_width - 46, 28)
+            else:
+                name = make_label(label_text, font_size=13, bold=True)
+                name.frame = (38, 4, card_width - 46, 18)
 
             filled = make_label(str(snapshot["bikes"]), font_size=28, bold=True)
             filled.text_color = COLORS["bad"] if snapshot["low_bikes"] else COLORS["filled"]
@@ -866,16 +867,25 @@ if HAS_UI:
             self.tab_cbike_btn = ui.Button(title="Cbike JC")
             self.tab_from_btn = ui.Button(title="From JC")
             self.tab_to_btn = ui.Button(title="To JC")
+            self.tab_hblr_path_btn = ui.Button(title="HBLR↔PATH")
             self.tab_tunnels_btn = ui.Button(title="Tunnels")
-            for btn in (self.tab_cbike_btn, self.tab_from_btn, self.tab_to_btn, self.tab_tunnels_btn):
+            for btn in (
+                self.tab_cbike_btn,
+                self.tab_from_btn,
+                self.tab_to_btn,
+                self.tab_hblr_path_btn,
+                self.tab_tunnels_btn,
+            ):
                 btn.corner_radius = 8
             self.tab_cbike_btn.action = self._tab_cbike_tapped
             self.tab_from_btn.action = self._tab_from_tapped
             self.tab_to_btn.action = self._tab_to_tapped
+            self.tab_hblr_path_btn.action = self._tab_hblr_path_tapped
             self.tab_tunnels_btn.action = self._tab_tunnels_tapped
             self.tab_bar.add_subview(self.tab_cbike_btn)
             self.tab_bar.add_subview(self.tab_from_btn)
             self.tab_bar.add_subview(self.tab_to_btn)
+            self.tab_bar.add_subview(self.tab_hblr_path_btn)
             self.tab_bar.add_subview(self.tab_tunnels_btn)
 
             self.scroll = ui.ScrollView()
@@ -898,6 +908,7 @@ if HAS_UI:
                 ("cbike_jc", self.tab_cbike_btn),
                 ("from_jc", self.tab_from_btn),
                 ("to_jc", self.tab_to_btn),
+                ("hblr_path", self.tab_hblr_path_btn),
                 ("tunnels", self.tab_tunnels_btn),
             ):
                 is_active = self._active_tab == tab
@@ -932,6 +943,9 @@ if HAS_UI:
         def _tab_to_tapped(self, sender):
             self._set_tab("to_jc")
 
+        def _tab_hblr_path_tapped(self, sender):
+            self._set_tab("hblr_path")
+
         def _tab_tunnels_tapped(self, sender):
             self._set_tab("tunnels")
 
@@ -963,17 +977,18 @@ if HAS_UI:
             self.tab_bar.frame = (0, tab_top, width, TAB_BAR_HEIGHT)
             tab_gap = 4
             tab_side = 6
-            tab_count = 4
-            tab_w = max((width - tab_side * 2 - tab_gap * (tab_count - 1)) // tab_count, 72)
-            self.tab_cbike_btn.frame = (tab_side, 0, tab_w, TAB_BAR_HEIGHT - 4)
-            self.tab_from_btn.frame = (tab_side + (tab_w + tab_gap), 0, tab_w, TAB_BAR_HEIGHT - 4)
-            self.tab_to_btn.frame = (tab_side + 2 * (tab_w + tab_gap), 0, tab_w, TAB_BAR_HEIGHT - 4)
-            self.tab_tunnels_btn.frame = (
-                tab_side + 3 * (tab_w + tab_gap),
-                0,
-                tab_w,
-                TAB_BAR_HEIGHT - 4,
+            tab_count = 5
+            tab_w = max((width - tab_side * 2 - tab_gap * (tab_count - 1)) // tab_count, 64)
+            tab_btns = (
+                self.tab_cbike_btn,
+                self.tab_from_btn,
+                self.tab_to_btn,
+                self.tab_hblr_path_btn,
+                self.tab_tunnels_btn,
             )
+            for index, btn in enumerate(tab_btns):
+                btn.frame = (tab_side + index * (tab_w + tab_gap), 0, tab_w, TAB_BAR_HEIGHT - 4)
+                btn.font = ("<system>", 12)
             self.status_label.frame = (16, status_top, width - 32, 16)
             self.scroll.frame = (0, status_top + 20, width, height - status_top - 20)
 
@@ -1001,7 +1016,7 @@ if HAS_UI:
                 path_nj_boards = []
                 subway_to_jc_boards = []
                 tunnel_boards = []
-                light_rail_boards = []
+                hblr_path_sections = []
 
                 try:
                     log_event("step: fetch bikes")
@@ -1063,7 +1078,7 @@ if HAS_UI:
                         path_nj_boards,
                         subway_to_jc_boards,
                         tunnel_boards,
-                        light_rail_boards,
+                        hblr_path_sections,
                     ) = _fetch_transit_boards()
                     log_event("step: transit ok")
                 except Exception as exc:
@@ -1087,7 +1102,7 @@ if HAS_UI:
                             path_nj_boards,
                             subway_to_jc_boards,
                             tunnel_boards,
-                            light_rail_boards,
+                            hblr_path_sections,
                         )
                         log_event("step: finish render done")
                     except Exception as exc:
@@ -1252,7 +1267,7 @@ if HAS_UI:
             path_nj_boards=None,
             subway_to_jc_boards=None,
             tunnel_boards=None,
-            light_rail_boards=None,
+            hblr_path_sections=None,
             partial=False,
         ):
             from lib import app_state
@@ -1266,7 +1281,7 @@ if HAS_UI:
                 self._cache["path_nj_boards"] = path_nj_boards
                 self._cache["subway_to_jc_boards"] = subway_to_jc_boards
                 self._cache["tunnel_boards"] = tunnel_boards
-                self._cache["light_rail_boards"] = light_rail_boards
+                self._cache["hblr_path_sections"] = hblr_path_sections
                 for snapshot in snapshots or []:
                     log_event(
                         "{} filled={} empty={}".format(
@@ -1279,7 +1294,9 @@ if HAS_UI:
                 self._log_transit_boards("SUBWAY", subway_boards)
                 self._log_transit_boards("SUBWAYJC", subway_to_jc_boards)
                 self._log_transit_boards("TUNNEL", tunnel_boards)
-                self._log_transit_boards("HBLR", light_rail_boards)
+                for section in hblr_path_sections or []:
+                    for key in ("primary", "secondary"):
+                        self._log_transit_boards("HBLRPATH", [section.get(key)])
                 log_event("Refresh OK: {} stations".format(len(snapshots or [])))
                 app_state.update_refresh(
                     snapshots or self._cache.get("snapshots") or [],
@@ -1308,6 +1325,8 @@ if HAS_UI:
                     y = self._paint_cbike_jc(pad, inner_w, card_width, partial=partial)
                 elif self._active_tab == "to_jc":
                     y = self._paint_to_jc(pad, inner_w, card_width, partial=partial)
+                elif self._active_tab == "hblr_path":
+                    y = self._paint_hblr_path(pad, inner_w, card_width, partial=partial)
                 elif self._active_tab == "tunnels":
                     y = self._paint_tunnels(pad, inner_w, card_width, partial=partial)
                 else:
@@ -1321,6 +1340,7 @@ if HAS_UI:
                         "cbike_jc": "Cbike JC",
                         "from_jc": REGION,
                         "to_jc": "To JC",
+                        "hblr_path": "JC HBLR ↔ PATH",
                         "tunnels": "Tunnels",
                     }
                     self.status_label.text = "Updated %s · %s" % (
@@ -1394,20 +1414,39 @@ if HAS_UI:
                 tag="NJ",
                 empty_text="No NJ trains",
             )
+            return y
 
-            light_rail_boards = self._cache.get("light_rail_boards") or []
-            if light_rail_boards:
-                y += SECTION_GAP
-                y = self._append_transit_section(
+        def _paint_hblr_path(self, pad, inner_w, card_width, partial=False):
+            y = pad
+            if partial:
+                loading = make_label("Loading HBLR↔PATH...", font_size=14, color=COLORS["muted"])
+                loading.frame = (pad, y, inner_w, 24)
+                self.scroll.add_subview(loading)
+                return y + 32
+
+            sections = self._cache.get("hblr_path_sections") or []
+            for section in sections:
+                header = SectionHeader(section.get("title") or "HBLR ↔ PATH")
+                header.frame = (pad, y, inner_w, SECTION_HEADER_HEIGHT)
+                self.scroll.add_subview(header)
+                y += SECTION_HEADER_HEIGHT + CARD_GAP
+
+                primary = section.get("primary") or {}
+                secondary = section.get("secondary") or {}
+                primary_tag = "HBLR" if primary.get("by_line") else "PATH"
+                secondary_tag = "HBLR" if secondary.get("by_line") else "PATH"
+
+                y = self._append_tile_row(
                     y,
                     pad,
                     inner_w,
                     card_width,
-                    "HBLR → Bayonne",
-                    light_rail_boards,
-                    tag="↓",
-                    empty_text="No HBLR after PATH",
+                    [
+                        (primary, primary_tag, "No departures"),
+                        (secondary, secondary_tag, "None catchable"),
+                    ],
                 )
+                y += SECTION_GAP
             return y
 
         def _paint_tunnels(self, pad, inner_w, card_width, partial=False):

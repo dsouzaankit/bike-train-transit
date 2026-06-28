@@ -9,7 +9,8 @@
     "Newport PATH",
     "Washington St",
     "City Hall",
-    "Grove St PATH"
+    "Grove St PATH",
+    "JC Medical Center"
   ],
   "alert_min_bikes": 2,
   "alert_min_docks": 2,

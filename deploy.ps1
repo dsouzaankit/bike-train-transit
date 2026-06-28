@@ -29,7 +29,7 @@ $DestZip = Join-Path $ICloudDownloads $ZipName
 
 $ExcludeDirs = @(
     ".git", "__pycache__", ".cursor", ".vscode", "ai",
-    "bike_train_transit", "citibike_alert", "windows"
+    "bike_train_transit", "citibike_alert", "windows", "tools"
 )
 $ExcludeFiles = @(
     "*.pyc", "deploy.ps1",

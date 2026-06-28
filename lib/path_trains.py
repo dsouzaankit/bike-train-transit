@@ -18,6 +18,12 @@ PATH_STATIONS = [
     {"slug": "newport", "panynj": "NEW", "label": "Newport PATH"},
 ]
 
+PATH_EXCHANGE_STATION = {
+    "slug": "exchange_place",
+    "panynj": "EXP",
+    "label": "Exchange Place",
+}
+
 PATH_33RD_STATIONS = [
     {"slug": "christopher_street", "panynj": "CHR", "label": "Christopher St"},
     {"slug": "ninth_street", "panynj": "09S", "label": "9th St"},
@@ -75,6 +81,11 @@ def _is_33rd_destination(name):
     if "world trade" in text or text.strip() == "wtc":
         return False
     return bool(re.search(r"33(?:rd|\s*st)", text))
+
+
+def _is_wtc_destination(name):
+    text = (name or "").casefold()
+    return "world trade" in text or text.strip() == "wtc"
 
 
 def _parse_utc_iso(iso_text):
@@ -418,6 +429,92 @@ def _load_14th_path_board(fetch_json, panynj_payload=None, max_trains=PATH_33RD_
     )
 
 
+_PATH_STATION_LOOKUP = {}
+for _entry in (
+    PATH_STATIONS
+    + PATH_33RD_STATIONS
+    + [PATH_14TH_STATION, PATH_EXCHANGE_STATION]
+    + PATH_NJ_STATIONS
+):
+    _PATH_STATION_LOOKUP[_entry["label"]] = _entry
+_PATH_STATION_LOOKUP["Newport"] = _PATH_STATION_LOOKUP["Newport PATH"]
+
+
+def _dest_filter_fn(name):
+    if name == "33rd":
+        return _is_33rd_destination
+    if name == "wtc":
+        return _is_wtc_destination
+    return None
+
+
+def get_path_station_board(
+    station_label,
+    direction,
+    dest_filter=None,
+    fetch_json=None,
+    panynj_payload=None,
+    max_trains=PATH_MAX_TRAINS,
+    raw_pool=None,
+):
+    """Single PATH station board (NYC, 33rd, or NJ). Never raises."""
+    station = _PATH_STATION_LOOKUP.get(station_label)
+    if station is None:
+        return {"label": station_label, "trains": [], "error": "Unknown PATH station"}
+
+    dest_fn = _dest_filter_fn(dest_filter) if isinstance(dest_filter, str) else dest_filter
+    pool = raw_pool or max(max_trains, PATH_MAX_TRAINS)
+
+    if direction == "nyc":
+        dir_filter = _is_nyc_direction
+        path_direction = PATH_DIRECTION_NYC
+    elif direction == "nyc_33rd":
+        dir_filter = _is_nyc_direction
+        path_direction = PATH_DIRECTION_NYC
+        dest_fn = dest_fn or _is_33rd_destination
+    elif direction == "nj":
+        dir_filter = _is_nj_direction
+        path_direction = PATH_DIRECTION_NJ
+    else:
+        return {"label": station_label, "trains": [], "error": "Unknown direction"}
+
+    payload = panynj_payload
+    error = None
+    if payload is None and fetch_json is not None:
+        try:
+            payload = _fetch_panynj_payload(fetch_json)
+        except Exception as exc:
+            error = str(exc)
+
+    trains = []
+    if payload is not None:
+        trains = _parse_panynj_station(
+            station["panynj"],
+            payload,
+            dir_filter,
+            dest_filter=dest_fn,
+            allow_hoboken=bool(station.get("allow_hoboken")),
+        )
+    board = {
+        "label": station["label"],
+        "trains": trains[:max_trains],
+        "_raw_trains": trains,
+        "error": error if not trains else None,
+    }
+    if not trains and fetch_json is not None:
+        board = _maybe_enrich_with_razza(
+            board,
+            station,
+            fetch_json,
+            path_direction,
+            dest_filter=dest_fn,
+            max_trains=max_trains,
+        )
+        if board.get("trains"):
+            board["_raw_trains"] = board["trains"]
+    return board
+
+
 def get_all_path_boards(
     fetch_json,
     razza_fetch_json=None,
@@ -477,7 +574,7 @@ def get_all_path_boards(
     if path_14th.get("trains"):
         path_33rd = [path_14th] + path_33rd
 
-    return {
+    bundle = {
         "nyc": _build(
             PATH_STATIONS,
             PATH_DIRECTION_NYC,
@@ -493,7 +590,9 @@ def get_all_path_boards(
             None,
             max_trains,
         ),
+        "_payload": payload,
     }
+    return bundle
 
 
 def get_path_nyc_boards(fetch_json, max_trains=PATH_MAX_TRAINS, panynj_payload=None):

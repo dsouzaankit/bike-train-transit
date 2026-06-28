@@ -1,10 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for the HBLR <- PATH offset/connection logic.
-
-Run from the project root:
-    python -m unittest discover -s tests
-    python tests/test_light_rail_offset.py
-"""
+"""Unit tests for HBLR ↔ PATH transfer offset logic."""
 
 import os
 import sys
@@ -12,107 +7,66 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.light_rail import (  # noqa: E402
-    LIGHT_RAIL_MAX_TRAINS,
-    _earliest_path_minutes,
-    apply_path_lightrail_connections,
+from lib.hblr_path import (  # noqa: E402
+    HBLR_PATH_MAX_TRAINS,
+    apply_transfer_filter,
 )
 
 
-def _hblr_board(label, minutes, raw=None, **extra):
-    """Build a minimal HBLR board with trains at the given minute marks."""
+def _board(label, minutes, raw=None, **extra):
     board = {
         "label": label,
-        "trains": [{"minutes": m, "destination": "8th St"} for m in minutes],
+        "trains": [{"minutes": m, "destination": "WTC", "eta": "%dm" % m} for m in minutes],
         "error": None,
     }
     if raw is not None:
-        board["_raw_trains"] = [{"minutes": m, "destination": "8th St"} for m in raw]
+        board["_raw_trains"] = [{"minutes": m, "destination": "WTC", "eta": "%dm" % m} for m in raw]
     board.update(extra)
     return board
-
-
-def _path_board(label, minutes):
-    return {"label": label, "trains": [{"minutes": m} for m in minutes], "error": None}
 
 
 def _mins(board):
     return [t["minutes"] for t in board["trains"]]
 
 
-class EarliestPathMinutesTests(unittest.TestCase):
-    def test_picks_minimum(self):
-        self.assertEqual(_earliest_path_minutes(_path_board("X", [9, 3, 14])), 3)
+class TransferFilterTests(unittest.TestCase):
+    def test_hblr_to_wtc_offset(self):
+        primary = _board("Liberty State Park", [5, 12])
+        secondary = _board("Exchange Place", [10, 20, 25], raw=[10, 20, 25])
+        out = apply_transfer_filter(primary, secondary, 11, "LSP HBLR", "Exchange Place")
+        self.assertEqual(_mins(out), [20, 25])
+        self.assertEqual(out["note"], "after LSP HBLR +11")
 
-    def test_ignores_none(self):
-        board = {"trains": [{"minutes": None}, {"minutes": 7}, {"minutes": None}]}
-        self.assertEqual(_earliest_path_minutes(board), 7)
+    def test_path_to_hblr_offset(self):
+        primary = _board("World Trade Center", [3])
+        secondary = _board("Exchange Place", [5, 9, 12], raw=[5, 9, 12])
+        out = apply_transfer_filter(primary, secondary, 7, "World Trade Center", "Exchange Place HBLR")
+        self.assertEqual(_mins(out), [12])
 
-    def test_empty_or_missing(self):
-        self.assertIsNone(_earliest_path_minutes(None))
-        self.assertIsNone(_earliest_path_minutes({"trains": []}))
-        self.assertIsNone(_earliest_path_minutes({"trains": [{"minutes": None}]}))
+    def test_newport_33rd_offset(self):
+        primary = _board("Liberty State Park", [0])
+        secondary = _board("Newport PATH", [15, 18, 25], raw=[15, 18, 25])
+        out = apply_transfer_filter(primary, secondary, 21, "LSP HBLR", "Newport")
+        self.assertEqual(_mins(out), [25])
 
-
-class OffsetConnectionTests(unittest.TestCase):
-    def test_newport_threshold_filters_below_path_plus_offset(self):
-        # Newport offset is 15; earliest Christopher St PATH at 5 -> threshold 20.
-        hblr = [_hblr_board("Newport", [10, 20, 25, 40])]
-        path = [_path_board("Christopher St", [5, 12])]
-        out = apply_path_lightrail_connections(hblr, path)
-        self.assertEqual(_mins(out[0]), [20, 25, 40])  # 10 dropped; 20 inclusive
-        self.assertEqual(out[0]["note"], "after Christopher St PATH +15")
-
-    def test_exchange_place_offset(self):
-        # Exchange Place offset is 6; earliest WTC PATH at 3 -> threshold 9.
-        hblr = [_hblr_board("Exchange Place", [5, 9, 12])]
-        path = [_path_board("World Trade Center", [3])]
-        out = apply_path_lightrail_connections(hblr, path)
-        self.assertEqual(_mins(out[0]), [9, 12])
-        self.assertEqual(out[0]["note"], "after World Trade Center PATH +6")
-
-    def test_threshold_is_inclusive(self):
-        hblr = [_hblr_board("Newport", [19, 20])]  # threshold 20 (path 5 + 15)
-        path = [_path_board("Christopher St", [5])]
-        out = apply_path_lightrail_connections(hblr, path)
-        self.assertEqual(_mins(out[0]), [20])
+    def test_no_primary_yields_note(self):
+        primary = _board("Christopher St", [])
+        secondary = _board("Newport", [10, 20])
+        out = apply_transfer_filter(primary, secondary, 13, "Christopher St", "Newport HBLR")
+        self.assertEqual(out["note"], "no Christopher St yet")
+        self.assertEqual(_mins(out), [10, 20])
 
     def test_caps_to_max_trains(self):
-        hblr = [_hblr_board("Newport", [15, 16, 17, 18, 19])]  # path 0 -> threshold 15
-        path = [_path_board("Christopher St", [0])]
-        out = apply_path_lightrail_connections(hblr, path)
-        self.assertEqual(len(out[0]["trains"]), LIGHT_RAIL_MAX_TRAINS)
-        self.assertEqual(_mins(out[0]), [15, 16, 17])
+        primary = _board("WTC", [0])
+        secondary = _board("Exchange Place", list(range(7, 20)), raw=list(range(7, 20)))
+        out = apply_transfer_filter(primary, secondary, 7, "WTC", "Exchange Place HBLR")
+        self.assertEqual(len(out["trains"]), HBLR_PATH_MAX_TRAINS)
 
-    def test_uses_raw_trains_when_present(self):
-        # Visible trains are pre-capped; filtering must use the larger _raw_trains.
-        hblr = [_hblr_board("Newport", [20], raw=[10, 20, 30, 40])]
-        path = [_path_board("Christopher St", [5])]  # threshold 20
-        out = apply_path_lightrail_connections(hblr, path)
-        self.assertEqual(_mins(out[0]), [20, 30, 40])
-
-    def test_no_path_data_keeps_trains_with_note(self):
-        hblr = [_hblr_board("Newport", [10, 20])]
-        out = apply_path_lightrail_connections(hblr, [])  # no PATH board
-        self.assertEqual(out[0]["note"], "no Christopher St PATH yet")
-        self.assertEqual(_mins(out[0]), [10, 20])  # untouched
-
-    def test_estimated_board_gets_sched_prefix(self):
-        hblr = [_hblr_board("Newport", [25], estimated=True)]
-        path = [_path_board("Christopher St", [5])]
-        out = apply_path_lightrail_connections(hblr, path)
-        self.assertEqual(out[0]["note"], "sched \u00b7 after Christopher St PATH +15")
-
-    def test_nothing_catchable_yields_empty(self):
-        hblr = [_hblr_board("Newport", [5, 10])]  # threshold 20
-        path = [_path_board("Christopher St", [5])]
-        out = apply_path_lightrail_connections(hblr, path)
-        self.assertEqual(out[0]["trains"], [])
-
-    def test_unmapped_board_passes_through(self):
-        board = {"label": "Mystery", "trains": [{"minutes": 1}], "error": None}
-        out = apply_path_lightrail_connections([board], [])
-        self.assertEqual(out[0], board)
+    def test_sched_prefix_on_estimated(self):
+        primary = _board("LSP", [5])
+        secondary = _board("Exchange Place", [20], estimated=True)
+        out = apply_transfer_filter(primary, secondary, 11, "LSP HBLR", "Exchange Place")
+        self.assertEqual(out["note"], "sched · after LSP HBLR +11")
 
 
 if __name__ == "__main__":
