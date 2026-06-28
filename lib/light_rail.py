@@ -18,8 +18,6 @@ import os
 import urllib.parse
 import urllib.request
 
-from . import clock
-
 NJT_BASE = "https://pcsdata.njtransit.com"
 NJT_AUTH_PATH = "/api/BUSDV2/authenticateUser"
 NJT_DV_PATH = "/api/BUSDV2/getBusDV"
@@ -233,7 +231,7 @@ def offline_schedule_trains(station, now=None, count=12):
     Generates a longer pool (default 12) so the PATH offset filter still has
     catchable departures beyond the offset window; callers cap the display.
     """
-    now = now or clock.now()
+    now = now or datetime.datetime.now()
     headway = _service_headway(now)
     if not headway:
         return []
@@ -265,9 +263,7 @@ def get_light_rail_boards(fetch_json=None, now=None):
     username, password, token = _load_credentials()
     realtime = {}
     auth_error = None
-    # When the clock is simulated, live data reflects real now, not the
-    # pretended time — use the offline schedule instead.
-    if not clock.is_simulated() and (token or (username and password)):
+    if token or (username and password):
         try:
             if not token:
                 token = _authenticate(username, password)

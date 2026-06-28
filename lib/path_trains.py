@@ -5,8 +5,6 @@ import re
 import time
 from datetime import datetime
 
-from . import clock, path_schedule
-
 PATH_API_BASE = "https://path.api.razza.dev/v1/stations"
 PANYNJ_PATH_URL = "https://www.panynj.gov/bin/portauthority/ridepath.json"
 PATH_DIRECTION_NYC = "TO_NY"
@@ -95,7 +93,7 @@ def _minutes_until_utc(iso_text):
     when = _parse_utc_iso(iso_text)
     if when is None:
         return None
-    delta = (when - clock.utcnow()).total_seconds() / 60.0
+    delta = (when - datetime.utcnow()).total_seconds() / 60.0
     return max(0, int(round(delta)))
 
 
@@ -420,38 +418,13 @@ def _load_14th_path_board(fetch_json, panynj_payload=None, max_trains=PATH_33RD_
     )
 
 
-def _scheduled_all_path_boards(max_trains, max_33rd_trains):
-    """Offline schedule version of all PATH boards (simulated-clock mode)."""
-    now = clock.now()
-    nyc = path_schedule.offline_boards(
-        [s["label"] for s in PATH_STATIONS], "nyc", now=now, max_trains=max_trains
-    )
-    thirty_third = path_schedule.offline_boards(
-        [PATH_14TH_STATION["label"]] + [s["label"] for s in PATH_33RD_STATIONS],
-        "nyc",
-        now=now,
-        max_trains=max_33rd_trains,
-    )
-    nj = path_schedule.offline_boards(
-        [s["label"] for s in PATH_NJ_STATIONS], "nj", now=now, max_trains=max_trains
-    )
-    return {"nyc": nyc, "33rd": thirty_third, "nj": nj}
-
-
 def get_all_path_boards(
     fetch_json,
     razza_fetch_json=None,
     max_trains=PATH_MAX_TRAINS,
     max_33rd_trains=PATH_33RD_MAX_TRAINS,
 ):
-    """Fetch PANYNJ once and build NYC, 33rd, and NJ boards.
-
-    When the global clock is simulated, live PANYNJ data no longer matches the
-    pretended time, so fall back to the offline PATH schedule estimate instead.
-    """
-    if clock.is_simulated():
-        return _scheduled_all_path_boards(max_trains, max_33rd_trains)
-
+    """Fetch PANYNJ once and build NYC, 33rd, and NJ boards."""
     razza_fetch = razza_fetch_json or fetch_json
     payload = None
     fetch_error = None
@@ -524,10 +497,6 @@ def get_all_path_boards(
 
 
 def get_path_nyc_boards(fetch_json, max_trains=PATH_MAX_TRAINS, panynj_payload=None):
-    if clock.is_simulated():
-        return path_schedule.offline_boards(
-            [s["label"] for s in PATH_STATIONS], "nyc", max_trains=max_trains
-        )
     boards, _payload = _load_boards(
         PATH_STATIONS,
         fetch_json,
@@ -540,12 +509,6 @@ def get_path_nyc_boards(fetch_json, max_trains=PATH_MAX_TRAINS, panynj_payload=N
 
 
 def get_path_33rd_boards(fetch_json, max_trains=PATH_33RD_MAX_TRAINS, panynj_payload=None):
-    if clock.is_simulated():
-        return path_schedule.offline_boards(
-            [PATH_14TH_STATION["label"]] + [s["label"] for s in PATH_33RD_STATIONS],
-            "nyc",
-            max_trains=max_trains,
-        )
     boards, payload = _load_boards(
         PATH_33RD_STATIONS,
         fetch_json,
@@ -566,10 +529,6 @@ def get_path_33rd_boards(fetch_json, max_trains=PATH_33RD_MAX_TRAINS, panynj_pay
 
 
 def get_path_nj_boards(fetch_json, max_trains=PATH_MAX_TRAINS, panynj_payload=None):
-    if clock.is_simulated():
-        return path_schedule.offline_boards(
-            [s["label"] for s in PATH_NJ_STATIONS], "nj", max_trains=max_trains
-        )
     boards, _payload = _load_boards(
         PATH_NJ_STATIONS,
         fetch_json,
