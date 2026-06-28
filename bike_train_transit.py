@@ -210,6 +210,24 @@ def start_debug_server(safe_mode=False):
     log_event(banner)
 
 
+def _decode_response(raw):
+    """Decode an HTTP body to str across Pythonista's quirky buffer types.
+
+    Some Pythonista builds return a buffer object whose decode() rejects the
+    ``errors`` keyword, so normalize to real bytes before decoding.
+    """
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, tuple):
+        raw = raw[0] if raw else b""
+        if isinstance(raw, str):
+            return raw
+    try:
+        return raw.decode("utf-8", "replace")
+    except (TypeError, AttributeError):
+        return bytes(raw).decode("utf-8", "replace")
+
+
 def fetch_json(url, timeout=30, retries=2):
     last_error = None
     for attempt in range(max(1, retries + 1)):
@@ -219,12 +237,7 @@ def fetch_json(url, timeout=30, retries=2):
             )
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 raw = resp.read()
-            if isinstance(raw, tuple):
-                raw = raw[0] if raw else b""
-            if isinstance(raw, str):
-                text = raw
-            else:
-                text = raw.decode("utf-8", errors="replace")
+            text = _decode_response(raw)
             payload = json.loads(text)
             if isinstance(payload, tuple):
                 raise ValueError(
@@ -291,7 +304,7 @@ def fetch_transit_payload(url):
             )
             with urllib.request.urlopen(req, timeout=TRANSIT_FETCH_TIMEOUT) as resp:
                 raw = resp.read()
-            text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+            text = _decode_response(raw)
             payload = json.loads(text)
             if isinstance(payload, (dict, list)):
                 return payload
