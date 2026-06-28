@@ -415,6 +415,12 @@ def get_path_nj_boards():
     return _get_path_nj_boards(fetch_transit_json)
 
 
+def get_light_rail_boards():
+    from lib.light_rail import get_light_rail_boards as _get_light_rail_boards
+
+    return _get_light_rail_boards(fetch_transit_json)
+
+
 def _fetch_transit_boards():
     """Fetch all transit boards in parallel; never raise."""
     from lib.parallel import run_parallel
@@ -442,6 +448,7 @@ def _fetch_transit_boards():
         "tunnels": lambda: __import__("lib.tunnel_crossings", fromlist=["get_tunnel_boards"]).get_tunnel_boards(
             fetch_transit_payload
         ),
+        "lightRail": get_light_rail_boards,
     }
     results = run_parallel(
         {key: (lambda k=key, f=fn: _wrap(k, f)) for key, fn in jobs.items()},
@@ -454,6 +461,7 @@ def _fetch_transit_boards():
     subway_boards = results.get("subway") or []
     subway_to_jc_boards = results.get("subwayToJc") or []
     tunnel_boards = results.get("tunnels") or []
+    light_rail_boards = results.get("lightRail") or []
     try:
         log_event(
             "step: transit connections (subway={} path33={})".format(
@@ -467,8 +475,27 @@ def _fetch_transit_boards():
     except Exception as exc:
         log_event("PATH+subway connection failed: {}".format(exc))
         log_event(traceback.format_exc())
+    if light_rail_boards:
+        try:
+            from lib.light_rail import apply_path_lightrail_connections
+
+            light_rail_boards = apply_path_lightrail_connections(
+                light_rail_boards, path_nj_boards
+            )
+            log_event("step: HBLR connections done ({})".format(len(light_rail_boards)))
+        except Exception as exc:
+            log_event("PATH+HBLR connection failed: {}".format(exc))
+            log_event(traceback.format_exc())
     log_event("step: transit boards assembled")
-    return path_boards, path_33rd_boards, subway_boards, path_nj_boards, subway_to_jc_boards, tunnel_boards
+    return (
+        path_boards,
+        path_33rd_boards,
+        subway_boards,
+        path_nj_boards,
+        subway_to_jc_boards,
+        tunnel_boards,
+        light_rail_boards,
+    )
 
 
 def print_subway_boards(boards, title="Subway"):
@@ -506,9 +533,15 @@ def main_cli():
     start_debug_server(safe_mode=False)
     try:
         snapshots = get_snapshots()
-        path_boards, path_33rd_boards, subway_boards, path_nj_boards, subway_to_jc_boards, tunnel_boards = (
-            _fetch_transit_boards()
-        )
+        (
+            path_boards,
+            path_33rd_boards,
+            subway_boards,
+            path_nj_boards,
+            subway_to_jc_boards,
+            tunnel_boards,
+            light_rail_boards,
+        ) = _fetch_transit_boards()
         print_snapshots(snapshots)
         print("")
         print_path_boards(path_boards)
@@ -521,6 +554,11 @@ def main_cli():
         print("")
         print_subway_boards(subway_to_jc_boards, title="Subway To JC")
         print("")
+        for board in light_rail_boards or []:
+            trains = ", ".join(
+                "%s %s" % (t.get("eta"), t.get("destination")) for t in board.get("trains") or []
+            ) or (board.get("error") or "(none)")
+            print("HBLR %s: %s" % (board.get("label"), trains))
         from lib.tunnel_crossings import print_tunnel_boards
 
         print_tunnel_boards(tunnel_boards)
@@ -963,6 +1001,7 @@ if HAS_UI:
                 path_nj_boards = []
                 subway_to_jc_boards = []
                 tunnel_boards = []
+                light_rail_boards = []
 
                 try:
                     log_event("step: fetch bikes")
@@ -1024,6 +1063,7 @@ if HAS_UI:
                         path_nj_boards,
                         subway_to_jc_boards,
                         tunnel_boards,
+                        light_rail_boards,
                     ) = _fetch_transit_boards()
                     log_event("step: transit ok")
                 except Exception as exc:
@@ -1047,6 +1087,7 @@ if HAS_UI:
                             path_nj_boards,
                             subway_to_jc_boards,
                             tunnel_boards,
+                            light_rail_boards,
                         )
                         log_event("step: finish render done")
                     except Exception as exc:
@@ -1211,6 +1252,7 @@ if HAS_UI:
             path_nj_boards=None,
             subway_to_jc_boards=None,
             tunnel_boards=None,
+            light_rail_boards=None,
             partial=False,
         ):
             from lib import app_state
@@ -1224,6 +1266,7 @@ if HAS_UI:
                 self._cache["path_nj_boards"] = path_nj_boards
                 self._cache["subway_to_jc_boards"] = subway_to_jc_boards
                 self._cache["tunnel_boards"] = tunnel_boards
+                self._cache["light_rail_boards"] = light_rail_boards
                 for snapshot in snapshots or []:
                     log_event(
                         "{} filled={} empty={}".format(
@@ -1236,6 +1279,7 @@ if HAS_UI:
                 self._log_transit_boards("SUBWAY", subway_boards)
                 self._log_transit_boards("SUBWAYJC", subway_to_jc_boards)
                 self._log_transit_boards("TUNNEL", tunnel_boards)
+                self._log_transit_boards("HBLR", light_rail_boards)
                 log_event("Refresh OK: {} stations".format(len(snapshots or [])))
                 app_state.update_refresh(
                     snapshots or self._cache.get("snapshots") or [],
@@ -1350,6 +1394,20 @@ if HAS_UI:
                 tag="NJ",
                 empty_text="No NJ trains",
             )
+
+            light_rail_boards = self._cache.get("light_rail_boards") or []
+            if light_rail_boards:
+                y += SECTION_GAP
+                y = self._append_transit_section(
+                    y,
+                    pad,
+                    inner_w,
+                    card_width,
+                    "HBLR → Bayonne",
+                    light_rail_boards,
+                    tag="↓",
+                    empty_text="No HBLR after PATH",
+                )
             return y
 
         def _paint_tunnels(self, pad, inner_w, card_width, partial=False):

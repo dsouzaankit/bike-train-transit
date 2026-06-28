@@ -35,7 +35,8 @@ PATH_NJ_STATIONS = [
     {"slug": "christopher_street", "panynj": "CHR", "label": "Christopher St"},
     {"slug": "ninth_street", "panynj": "09S", "label": "9th St"},
     {"slug": "thirty_third_street", "panynj": "33S", "label": "33rd St"},
-    {"slug": "world_trade_center", "panynj": "WTC", "label": "World Trade Center"},
+    # WTC shows Hoboken-bound trains too (transfer point for HBLR via Hoboken).
+    {"slug": "world_trade_center", "panynj": "WTC", "label": "World Trade Center", "allow_hoboken": True},
 ]
 
 _DEST_SHORT = {
@@ -186,7 +187,7 @@ def _fetch_razza_station(slug, fetch_json, direction=PATH_DIRECTION_NYC, dest_fi
     return _filter_sort_trains(trains)
 
 
-def _parse_panynj_station(code, payload, direction_filter, dest_filter=None):
+def _parse_panynj_station(code, payload, direction_filter, dest_filter=None, allow_hoboken=False):
     for result in payload.get("results") or []:
         if result.get("consideredStation") != code:
             continue
@@ -196,7 +197,7 @@ def _parse_panynj_station(code, payload, direction_filter, dest_filter=None):
                 continue
             for msg in dest.get("messages") or []:
                 headsign = msg.get("headSign") or "?"
-                if _is_hoboken_destination(headsign):
+                if not allow_hoboken and _is_hoboken_destination(headsign):
                     continue
                 if dest_filter is not None and not dest_filter(headsign):
                     continue
@@ -225,6 +226,7 @@ def _board_from_payload(
         payload,
         direction_filter,
         dest_filter=dest_filter,
+        allow_hoboken=bool(station.get("allow_hoboken")),
     )
     return {
         "label": station["label"],

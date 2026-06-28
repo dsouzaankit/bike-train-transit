@@ -10,9 +10,10 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **iPhone app** — compact 2-column Citibike grid on the **Cbike JC** tab (filled bikes and empty docks for JC stations)
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
 - **PATH + subway connections** — From JC subway cards only show trains reachable after the earliest paired PATH arrival + walk time
-- **PATH schedules** — Hoboken-origin/destination trains are excluded from all PATH boards
+- **HBLR light rail (To JC)** — Hudson-Bergen southbound (West Side Ave / 8th St) at Newport and Exchange Place, gated by PATH arrival + offset; live NJ Transit data when credentials are set, otherwise an offline schedule estimate (`~`)
+- **PATH schedules** — trains terminating at **Hoboken** are excluded, but **"via Hoboken"** routings (the overnight 33rd↔JSQ service) are kept; **World Trade Center** additionally shows Hoboken-bound trains (HBLR transfer)
 - **PATH & subway** — real-time departures in grouped sections (see [App tabs](#app-tabs) below); PATH uses one PANYNJ fetch for all boards
-- **Compact ETAs** — `5m`, `Due`, `Delay` / `~5m`; southbound **6** trains show **↓** (e.g. `14m↓` at Union Sq); fits narrow card columns without ellipsis
+- **Compact ETAs** — `5m`, `Due`, `Delay` / `~5m`; southbound **6** (Union Sq) and **4/5** (Bleecker St) trains show **↓** (e.g. `14m↓`); fits narrow card columns without ellipsis
 - **Sorted departures** — train rows on each card sorted by ascending ETA
 - **Low-count alerts** — cards highlight red when bikes or docks ≤ threshold
 - **LAN debug server** — browse logs and status from a PC on the same Wi‑Fi (`:8765`)
@@ -47,7 +48,7 @@ Bike cards paint first after refresh; transit loads in the background for the ot
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **PATH → NYC** | Grove St PATH, Newport PATH | Next NYC-bound PATH trains (Hoboken excluded) |
+| **PATH → NYC** | Grove St PATH, Newport PATH | Next NYC-bound PATH trains (Hoboken-terminating excluded; via-Hoboken kept) |
 | **PATH + Subway · 33rd St** | Grouped tiles (see table below) | 33rd PATH + northbound subway, paired by corridor |
 
 **PATH 14 St:** direct 33rd-bound arrivals at **14 St PATH** when available; otherwise estimated from **9th St** departure **+1 min** (`~`, note on card).
@@ -70,10 +71,20 @@ Transit-only tab (no bike grid) to keep scrolling short. **To JC** subway cards 
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **Subway + PATH . Nwk** | WTC Cortlandt, World Trade Center (subway + PATH) | Downtown 1 / E toward South Ferry / WTC; NJ-bound PATH at WTC |
+| **Subway + PATH . Nwk** | WTC Cortlandt, World Trade Center (subway + PATH) | Downtown 1 / E toward South Ferry / WTC; NJ-bound PATH at WTC (incl. Hoboken) |
 | **PATH → NJ** | Christopher St, 9th St, 33rd St | Next NJ-bound PATH trains |
+| **HBLR → Bayonne** | Newport, Exchange Place | Southbound light rail (West Side Ave / 8th St) catchable after the paired PATH |
 
-**World Trade Center subway:** uses direct E-line arrivals when available. If not, estimates from **Canal St** WTC-bound departures **+2 min** (shown with `~` and note “est. Canal St + 2 min”). Cards show **up to 2 ETAs per line** when multiple lines serve the station. The **PATH WTC** card (tag `NJ`) sits in this section next to the subway tiles.
+**World Trade Center subway:** uses direct E-line arrivals when available. If not, estimates from **Canal St** WTC-bound departures **+2 min** (shown with `~` and note “est. Canal St + 2 min”). Cards show **up to 2 ETAs per line** when multiple lines serve the station. The **PATH WTC** card (tag `NJ`) sits in this section next to the subway tiles, and now includes **Hoboken-bound** PATH trains (for the HBLR-via-Hoboken transfer).
+
+**HBLR filter (To JC):** same pattern as From JC — only southbound trains with `HBLR ETA ≥ paired PATH ETA + offset` are shown (earliest NJ-bound PATH at the paired station). The offset is the PATH ride + walk to the light-rail platform. Card note: `after Christopher St PATH +15`.
+
+| HBLR station | Paired PATH | Offset |
+|--------------|-------------|--------|
+| Newport | Christopher St | 15 min |
+| Exchange Place | World Trade Center | 6 min |
+
+**HBLR data source:** live NJ Transit Bus/Light-Rail API (`pcsdata.njtransit.com`, `mode=HBLR`) when developer credentials are configured (`NJTRANSIT_USERNAME`/`NJTRANSIT_PASSWORD` env vars, or a gitignored `njt_credentials.json`). When realtime is unavailable (no credentials, API error, or overnight), an **offline clock-face schedule estimate** is shown instead (marked `~`, note `sched`); no trains appear when HBLR is out of service.
 
 ### Tunnels
 
@@ -91,7 +102,8 @@ bike_train_transit/
   config.json                     # PC stations + thresholds
   debug_server.py                 # Safe mode: logs only (no UI)
   lib/
-    path_trains.py                # PATH NYC / 33rd / NJ (PANYNJ single-fetch; Hoboken filtered)
+    path_trains.py                # PATH NYC / 33rd / NJ (PANYNJ single-fetch; Hoboken-terminating filtered, via-Hoboken kept, WTC allows Hoboken)
+    light_rail.py                 # HBLR To JC boards (NJT realtime + offline schedule fallback; PATH offset filter)
     subway_trains.py              # Subway north and To JC boards
     subway_lines.py               # MTA line badge colors
     tunnel_crossings.py           # Lincoln/Holland PANYNJ crossingtimesapi.json
@@ -353,8 +365,9 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 
 | File | Configure |
 |------|-----------|
-| `path_trains.py` | PATH stations for NYC, 33rd St, and NJ boards; PANYNJ `ridepath.json` fetched once per refresh |
-| `subway_trains.py` | Subway north/Queens and To JC; `SUBWAY_PATH_WALKS` for From JC connection filtering; southbound **6** ETAs append **↓** |
+| `path_trains.py` | PATH stations for NYC, 33rd St, and NJ boards; PANYNJ `ridepath.json` fetched once per refresh; per-station `allow_hoboken` (set on WTC) |
+| `light_rail.py` | HBLR stations, PATH pairings + offsets, and the offline schedule headways; reads NJT creds from env or `njt_credentials.json` |
+| `subway_trains.py` | Subway north/Queens and To JC; `SUBWAY_PATH_WALKS` for From JC connection filtering; southbound **6** (Union Sq) and **4/5** (Bleecker St) ETAs append **↓** |
 
 ### PC email (`config.json`)
 
@@ -397,7 +410,9 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 | Email fails | Use Yahoo **app password** in `.env`, not account password |
 | `deploy.ps1`: iCloud folder not found | Enable iCloud Drive on Windows or set `iCloudDownloads` in windows config |
 | WTC subway shows `~` prefix | Estimated from Canal St +2 min — direct WTC E-line data was unavailable |
-| PATH missing Hoboken | Intentional — Hoboken origin/destination schedules are filtered out |
+| PATH missing Hoboken | Hoboken-terminating trains are filtered out; "via Hoboken" routings are kept, and World Trade Center shows Hoboken-bound trains |
+| HBLR shows `~`/`sched` | No NJT credentials (or realtime down) — offline schedule estimate. Add `NJTRANSIT_USERNAME`/`NJTRANSIT_PASSWORD` (or `njt_credentials.json`) for live data |
+| HBLR empty | No southbound trains catchable after the paired PATH + offset, or HBLR not running (overnight) |
 | Subway card is taller | One row per line (earliest ETA per line); normal when many lines serve the station |
 
 ---
