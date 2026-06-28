@@ -455,12 +455,19 @@ def _fetch_transit_boards():
     subway_to_jc_boards = results.get("subwayToJc") or []
     tunnel_boards = results.get("tunnels") or []
     try:
-        log_event("step: transit connections")
+        log_event(
+            "step: transit connections (subway={} path33={})".format(
+                len(subway_boards or []), len(path_33rd_boards or [])
+            )
+        )
         from lib.subway_trains import apply_path_subway_connections
 
         subway_boards = apply_path_subway_connections(subway_boards, path_33rd_boards)
+        log_event("step: transit connections done ({})".format(len(subway_boards or [])))
     except Exception as exc:
         log_event("PATH+subway connection failed: {}".format(exc))
+        log_event(traceback.format_exc())
+    log_event("step: transit boards assembled")
     return path_boards, path_33rd_boards, subway_boards, path_nj_boards, subway_to_jc_boards, tunnel_boards
 
 
@@ -1031,6 +1038,7 @@ if HAS_UI:
                         self._busy = False
                         app_state.set_busy(False)
                         self.refresh_btn.enabled = True
+                        log_event("step: finish render start")
                         self.render_snapshots(
                             snapshots,
                             path_boards,
@@ -1040,6 +1048,7 @@ if HAS_UI:
                             subway_to_jc_boards,
                             tunnel_boards,
                         )
+                        log_event("step: finish render done")
                     except Exception as exc:
                         self._busy = False
                         app_state.set_busy(False)
@@ -1049,6 +1058,7 @@ if HAS_UI:
                         log_event("UI finish failed: {}".format(exc))
                         log_event(traceback.format_exc())
 
+                log_event("step: scheduling finish render")
                 ui.delay(finish, 0)
 
             work()
