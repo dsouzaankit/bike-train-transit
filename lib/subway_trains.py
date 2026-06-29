@@ -35,7 +35,7 @@ NORTH_SUBWAY_ORDER = (
 
 SUBWAY_STATIONS_NORTH = [
     {"station_id": "133", "label": "Chris St", "direction": SUBWAY_DIRECTION_NORTH},
-    {"station_id": ["A32", "D20"], "label": "West 4 St", "direction": SUBWAY_DIRECTION_NORTH},
+    {"station_id": ["A32", "D20"], "label": "West 4 St", "direction": SUBWAY_DIRECTION_NORTH, "unwrap_destination": True},
 ]
 
 SUBWAY_FIFTY_FIRST = {
@@ -137,7 +137,7 @@ _HEADSIGN_SHORT = {
 }
 
 
-def _short_headsign(name):
+def _short_headsign(name, *, truncate=True):
     if not name:
         return "?"
     text = str(name).strip()
@@ -145,7 +145,7 @@ def _short_headsign(name):
         return _HEADSIGN_SHORT[text]
     if "-242 St" in text:
         return text.split("-", 1)[0]
-    if len(text) > 18:
+    if truncate and len(text) > 18:
         return text[:16] + "..."
     return text
 
@@ -168,7 +168,7 @@ def _format_eta(minutes, estimated=False):
     return prefix + "%sm" % minutes
 
 
-def _normalize_arrival(item, extra_minutes=0, estimated=False):
+def _normalize_arrival(item, extra_minutes=0, estimated=False, unwrap_destination=False):
     if not isinstance(item, dict):
         return None
     minutes = _coerce_minutes(item.get("minutesAway"))
@@ -177,7 +177,10 @@ def _normalize_arrival(item, extra_minutes=0, estimated=False):
     line = item.get("line")
     return {
         "line": str(line) if line not in (None, "") else "?",
-        "destination": _short_headsign(item.get("headsign")),
+        "destination": _short_headsign(
+            item.get("headsign"),
+            truncate=not unwrap_destination,
+        ),
         "minutes": minutes,
         "eta": _format_eta(minutes, estimated=estimated),
         "status": "ON_TIME",
@@ -236,6 +239,7 @@ def fetch_station_arrivals(
     headsign_filter=None,
     extra_minutes=0,
     estimated=False,
+    unwrap_destination=False,
 ):
     station_ids = station["station_id"]
     direction = station.get("direction", SUBWAY_DIRECTION_NORTH)
@@ -259,7 +263,7 @@ def fetch_station_arrivals(
 
     out = []
     for item in arrivals:
-        norm = _normalize_arrival(item, extra_minutes=extra_minutes, estimated=estimated)
+        norm = _normalize_arrival(item, extra_minutes=extra_minutes, estimated=estimated, unwrap_destination=unwrap_destination)
         if norm is not None:
             out.append(norm)
     out.sort(key=lambda t: t.get("minutes") if t.get("minutes") is not None else 9999)
@@ -395,6 +399,7 @@ def _load_line_board(
             headsign_filter=headsign_filter,
             extra_minutes=extra_minutes,
             estimated=estimated,
+            unwrap_destination=bool(station.get("unwrap_destination")),
         )
         trains = _trains_per_line(raw, line_specs=line_specs, per_line=per_line)
     except Exception as exc:
@@ -409,6 +414,8 @@ def _load_line_board(
         "_per_line": per_line,
         "source": "subwayapi" if raw else None,
     }
+    if station.get("unwrap_destination"):
+        board["unwrap_destination"] = True
     if extra_minutes and trains:
         board["estimated"] = estimated
     return board

@@ -13,6 +13,7 @@ from lib.subway_trains import (  # noqa: E402
     FIFTY_ST_LINE_SPECS,
     _annotate_express_local_board,
     _load_line_board,
+    _normalize_arrival,
     _trains_per_line,
 )
 

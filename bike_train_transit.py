@@ -118,7 +118,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v18"
+BUILD_TAG = "hblr-path-v19"
 
 COLORS = {
     "bg": "#0f1419",
@@ -807,8 +807,9 @@ if HAS_UI:
             self.border_width = 1
             self.border_color = "#2a3441"
             self._eta_w = eta_column_width or ETA_COLUMN_WIDTH
+            self._wrap = wrap_text or bool(board.get("unwrap_destination"))
             self.height = transit_card_height(
-                board, card_width, wrap_text=wrap_text, eta_column_width=self._eta_w
+                board, card_width, wrap_text=self._wrap, eta_column_width=self._eta_w
             )
 
             name = make_label(board["label"], font_size=13, bold=True, wrap=False)
@@ -830,8 +831,8 @@ if HAS_UI:
             self.add_subview(tag_label)
             y = 28
             if board.get("note"):
-                note = make_label(board["note"], font_size=10, color=COLORS["muted"], wrap=wrap_text)
-                if wrap_text:
+                note = make_label(board["note"], font_size=10, color=COLORS["muted"], wrap=self._wrap)
+                if self._wrap:
                     note.frame = (8, 24, card_width - 16, 0)
                     note.size_to_fit()
                     y = 24 + note.height + 6
@@ -845,8 +846,8 @@ if HAS_UI:
                 self.add_subview(line)
                 return
             if not trains:
-                line = make_label(empty_text, font_size=12, color=COLORS["muted"], wrap=wrap_text)
-                if wrap_text:
+                line = make_label(empty_text, font_size=12, color=COLORS["muted"], wrap=self._wrap)
+                if self._wrap:
                     line.frame = (8, y, card_width - 16, 0)
                     line.size_to_fit()
                 else:
@@ -868,15 +869,15 @@ if HAS_UI:
                         card_width,
                         by_line=True,
                         line_badge=line_badge,
-                        wrap_text=wrap_text,
+                        wrap_text=self._wrap,
                     )
                     eta = make_label(eta_text, font_size=14, bold=True, color=eta_color, wrap=False)
                     eta.frame = (8, y, self._eta_w - 8, row_h)
                     line_x = 8 + self._eta_w - 4
                     if line_badge:
                         line_x += _add_line_badge(self, line_val, line_x, y + 1)
-                    dest = make_label(dest_text, font_size=11, color=COLORS["muted"], wrap=wrap_text)
-                    dest.frame = (line_x, y + 2, card_width - line_x - 8, 18 if not wrap_text else row_h - 2)
+                    dest = make_label(dest_text, font_size=11, color=COLORS["muted"], wrap=self._wrap)
+                    dest.frame = (line_x, y + 2, card_width - line_x - 8, 18 if not self._wrap else row_h - 2)
                     self.add_subview(eta)
                     self.add_subview(dest)
                     y += row_h
@@ -899,7 +900,7 @@ if HAS_UI:
                     by_line=False,
                     index=index,
                     line_badge=line_badge,
-                    wrap_text=wrap_text,
+                    wrap_text=self._wrap,
                 )
                 eta = make_label(
                     eta_text,
@@ -917,10 +918,10 @@ if HAS_UI:
                     font_size=dest_size,
                     bold=(index == 0),
                     color=dest_color,
-                    wrap=wrap_text,
+                    wrap=self._wrap,
                 )
                 dest_y = y + (2 if index == 0 else 0)
-                dest_h = 20 if not wrap_text else row_h - 2
+                dest_h = 20 if not self._wrap else row_h - 2
                 dest.frame = (line_x, dest_y, card_width - line_x - 8, dest_h)
                 self.add_subview(eta)
                 self.add_subview(dest)
@@ -1351,27 +1352,29 @@ if HAS_UI:
                 board = tile[0]
                 tag = tile[1]
                 col = index % cols
-                eta_w = HBLR_PATH_ETA_WIDTH if (not wrap_text and tag == "PATH") else None
+                tile_wrap = tile[3] if len(tile) > 3 else wrap_text
+                board_wrap = tile_wrap or board.get("unwrap_destination")
+                eta_w = HBLR_PATH_ETA_WIDTH if (not board_wrap and tag == "PATH") else None
                 if col == 0:
                     row_groups.append([])
                     row_heights.append(
                         transit_card_height(
-                            board, card_width, wrap_text=wrap_text, eta_column_width=eta_w
+                            board, card_width, wrap_text=board_wrap, eta_column_width=eta_w
                         )
                     )
                 else:
                     row_heights[-1] = max(
                         row_heights[-1],
                         transit_card_height(
-                            board, card_width, wrap_text=wrap_text, eta_column_width=eta_w
+                            board, card_width, wrap_text=board_wrap, eta_column_width=eta_w
                         ),
                     )
-                row_groups[-1].append((index, tile, eta_w))
+                row_groups[-1].append((index, tile, eta_w, board_wrap))
 
             row_y = y
             for row_index, group in enumerate(row_groups):
                 row_h = row_heights[row_index]
-                for index, tile, eta_w in group:
+                for index, tile, eta_w, board_wrap in group:
                     board = tile[0]
                     tag = tile[1]
                     empty_text = tile[2] if len(tile) > 2 else "No trains"
@@ -1383,7 +1386,7 @@ if HAS_UI:
                         card_width,
                         tag=tag,
                         empty_text=resolved_empty,
-                        wrap_text=wrap_text,
+                        wrap_text=board_wrap,
                         eta_column_width=eta_w,
                     )
                     card.frame = (x, row_y, card_width, row_h)

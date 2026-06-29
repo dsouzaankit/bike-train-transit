@@ -61,6 +61,8 @@ Bike cards paint first after refresh; transit loads in the background for the ot
 |-------|------|--------|------|
 | 1 | Christopher St | Christopher St | 5 min |
 | 2 | 9th St | West 4 St | 5 min |
+
+**West 4 St** subway card uses full headsign text (no `…` chop) with wrapped destination lines.
 | 3 | 14 St PATH | 6 Av (L East/Bk), 14 St - Union Sq | 2 / 6 min |
 | 4 | — | 51 St (4/5 ↑), 50 St (A express local) | — |
 | 5 | — | Bleecker St (4/5 express local) | — |
