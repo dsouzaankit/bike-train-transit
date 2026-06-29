@@ -15,6 +15,7 @@ import os
 import urllib.parse
 import urllib.request
 
+from . import credential_paths
 from . import hblr_schedule
 from . import transit_app
 
@@ -88,17 +89,13 @@ def _load_credentials():
     if username and password:
         return username, password, token
     for name in ("njt_credentials.json", ".njt_credentials.json"):
-        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), name)
-        try:
-            with open(path, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
+        data = credential_paths.load_json_credential(name)
+        if data:
             return (
                 data.get("username"),
                 data.get("password"),
                 data.get("token"),
             )
-        except (OSError, ValueError):
-            continue
     return username, password, token
 
 
@@ -286,6 +283,7 @@ def get_hblr_board(
 
     fetch_error = None
     pool_size = max(max_trains, raw_pool)
+    transit_configured = transit_app.has_api_key()
 
     live = None
     if not force_offline:
@@ -303,6 +301,9 @@ def get_hblr_board(
                 "by_line": True,
                 "source": "transit",
             }
+
+        if transit_configured and not fetch_error:
+            fetch_error = "no matching Transit departures"
 
         username, password, token = _load_credentials()
         if token or (username and password):
@@ -336,6 +337,6 @@ def get_hblr_board(
         "note": "scheduled" if sched else "no service now",
         "source": "pdf",
     }
-    if fetch_error and not sched:
-        board["note"] = "scheduled (live fetch failed)"
+    if fetch_error:
+        board["note"] = ("sched · %s" % fetch_error) if sched else ("scheduled (%s)" % fetch_error)
     return board

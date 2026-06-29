@@ -65,7 +65,7 @@ Bike cards paint first after refresh; transit loads in the background for the ot
 | 4 | — | 51 St (4/5 ↑), 50 St (A express local) | — |
 | 5 | — | Bleecker St (4/5 express local) | — |
 
-**50 St** and **Bleecker St** only list **express** trains when they make a **local stop** (A at 50 St; 4/5 at Bleecker). When express is skipping, the card says **Express not stopping** and notes which local lines are running (e.g. `Express skip · local C/E` or `Express skip · local 6`). When express is stopping, the note is **Express local stop**.
+**51 St**, **50 St**, and **Bleecker St** only list **express** trains when they make a **local stop** (4/5 at 51 St and Bleecker; A at 50 St). When express is skipping, the card says **Express not stopping** and notes which local lines are running (e.g. `Express skip · local 6` or `Express skip · local C/E`). When express is stopping, the note is **Express local stop**.
 
 Layout on **From JC** matches these groups (two columns per row; group 3 is 14 St PATH + 6 Av, then Union Sq on the next row; groups 4–5 are subway-only).
 
@@ -98,7 +98,7 @@ Four connection sections (primary departures + catchable secondary after the off
 
 **Transit vs PDF regression:** `python tools/capture_transit_hblr_fixtures.py` saves the three upstream Transit API responses under `tests/fixtures/transit_hblr/`. `test_hblr_transit_pdf_sync.py` checks each snapshot against the PDF parser at the same `captured_at` — failing tests mean rebuild the PDF (`build_hblr_schedule.py`) or tune `hblr_schedule.py`. Weekday **9:30 AM–3:30 PM** captures only validate API fixture shape (PDF omits those times); **evening/weekend** re-captures run strict board matching.
 
-**Weekday gaps in the PDF:** many weekday columns omit midday times between AM and PM bands. The timetable footnote says trips continue every **10–20 minutes** on each route — those ranges are **intentionally not listed** and we **do not** try to reconstruct every missing slot from the PDF. Offline boards may use runtime headway only **after the last explicit time** in a pool, not to fill holes mid-day.
+**Weekday gaps in the PDF:** many weekday columns omit midday times between AM and PM bands. The timetable footnote says trips continue every **10–20 minutes** on each route — those ranges are **intentionally not listed** in the PDF. Offline boards **fill those holes** using the active daypart headway from `_SCHED_WEEKDAY` (e.g. 10 min between 9:30 AM–3:30 PM), and still extend headway **after the last explicit time** in each pool.
 
 **Offline line assignment (PDF fallback only):** the parser does **not** know Hoboken vs Tonnelle or 8th St vs West Side per timestamp. At runtime, `lib/hblr_schedule.py` assigns destinations heuristically — **northbound** labels each PDF list index per station (**Liberty State Park** and **Exchange Place** use the default Hoboken/Tonnelle cycle with a one-index phase offset at Exchange; **Newport** uses the Tonnelle-first cycle); **southbound** at Newport, Exchange Place, and Liberty State Park labels each station’s PDF `south_to_bayonne` times by **service-day order** (times sorted in the noon→02:45 window, then alternated 8th St / West Side Av). **Liberty State Park after midnight through 02:45** uses PDF list index+1 for overnight branch labels. **After 10 PM**, boards list explicit PDF departures first, then extend with 20-minute branch grids (deduped). **`minutes_until_departure()`** maps “minutes until” on the service-night timeline so afternoon PDF times are not shown as upcoming at midnight. Terminal stations (**8th Street**, **West Side Ave**) still use branch-terminal pools. Live NJT API returns the real destination per train.
 
@@ -133,7 +133,8 @@ bike_train_transit/
     parallel.py                   # Parallel on PC, sequential on Pythonista (avoids TLS-thread crash)
     app_state.py                  # Shared state for UI / LAN status.json
     shortcut_launcher.py          # Deploys app to Documents; reports direct UI-script URL; removes obsolete stub
-    local_deploy.py               # Incremental copy to On This iPhone
+    local_deploy.py               # Incremental copy to On This iPhone (incl. transit_credentials.json)
+    credential_paths.py           # Resolve API credential JSON on PC and Pythonista Documents
     file_logging.py, log_paths.py # Session logs + safe-mode preservation
     lan_debug_server.py           # LAN debug HTTP server
   tests/                          # Unit tests (HBLR, PATH transfers, weekend sync, From JC express-local)
@@ -182,7 +183,7 @@ cd "P:\all_scripts\iOS apps\bike_train_transit"
 The script:
 
 1. Removes old `bike_train_transit.zip` and `bike_train_transit\` from iCloud Downloads
-2. Stages the project (excludes logs, `windows/`, `ai/`, PC-only email files, editor junk)
+2. Stages the project (excludes logs, `windows/`, `ai/`, PC-only email files, editor junk). If present locally, **`transit_credentials.json`** and **`njt_credentials.json`** are included in the zip.
 3. Creates `bike_train_transit.zip` and copies it to `%USERPROFILE%\iCloudDrive\Downloads`
 
 Optional: set `iCloudDownloads` in `windows\bike-train-transit-windows.json` if your iCloud path differs.
@@ -198,7 +199,7 @@ On first launch the app will:
 
 - Show the **From JC** tab (default) and refresh live data; bikes appear on **Cbike JC**
 - Start the LAN debug server on port **8765**
-- Copy itself to **On This iPhone → Documents/bike_train_transit/** (for the Home Screen URL)
+- Copy itself to **On This iPhone → Documents/bike_train_transit/** (for the Home Screen URL), including **`transit_credentials.json`** / **`njt_credentials.json`** when they sit next to the main script
 - Remove the obsolete **`RunBikeTrainTransit.py`** stub if present (its `runpy` launch breaks the UI loop; the Home Screen uses the direct UI-script URL instead — see [iOS Home Screen](#ios-home-screen-one-tap-launch))
 - Log shortcut setup steps to the console and LAN log
 
@@ -297,7 +298,7 @@ Runs on the **iPhone** (not PC). Your PC reads logs over Wi‑Fi.
 | URL | Description |
 |-----|-------------|
 | `http://<phone-ip>:8765/` | HTML dashboard with live log tail |
-| `/bike_train_transit_latest.txt` | Full session log |
+| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v7`; HBLR boards log `[transit]` / `[pdf]` source) |
 | `/bike_train_transit_progress.txt` | Last 12 log lines |
 | `/status.json` | App state (stations, transit boards, active tab, errors) |
 | `/refresh` | Trigger refresh on the phone from PC |
@@ -376,7 +377,7 @@ cd "P:\all_scripts\iOS apps\bike_train_transit"
 python -m unittest discover -s tests -q
 ```
 
-Covers HBLR PDF parsing (`test_build_hblr_schedule.py`), **Transit API vs PDF sync** (`test_hblr_transit_pdf_sync.py` + `tools/capture_transit_hblr_fixtures.py`), Transit App departure parsing (`test_transit_app.py`), **evening and overnight PDF vs Google Maps reference** departures for all five stations (`test_hblr_pdf_evening_reference.py`, Sun ~8:25 PM and late-night weekday wraps), weekend southbound branch headways, HBLR↔PATH transfer offsets including post-midnight pooling (`test_light_rail_offset.py`, `test_hblr_path_sections.py`), From JC **express-local** subway cards (`test_subway_from_jc_stations.py`), and weekend **PATH↔HBLR sync models** (`test_weekend_hblr_path_sync.py`):
+Covers HBLR PDF parsing (`test_build_hblr_schedule.py`), **Transit API vs PDF sync** (`test_hblr_transit_pdf_sync.py` + `tools/capture_transit_hblr_fixtures.py` — committed snapshots, not live API on every run), Transit App departure parsing (`test_transit_app.py`), **Pythonista credential deploy** (`test_credential_paths.py`), **weekday PDF gap headway fill** (`test_hblr_schedule.py`), **evening and overnight PDF vs Google Maps reference** departures for all five stations (`test_hblr_pdf_evening_reference.py`, Sun ~8:25 PM and late-night weekday wraps), weekend southbound branch headways, HBLR↔PATH transfer offsets including post-midnight pooling (`test_light_rail_offset.py`, `test_hblr_path_sections.py`), From JC **express-local** subway cards (`test_subway_from_jc_stations.py` — **51 St**, **50 St**, **Bleecker St**), and weekend **PATH↔HBLR sync models** (`test_weekend_hblr_path_sync.py`):
 
 | Model (tests only) | Assumption |
 |--------------------|------------|
@@ -413,11 +414,13 @@ Live PATH fetching in `lib/path_trains.py` does not filter by PATH line color; N
 | `light_rail.py` | HBLR station boards by direction; Transit API key (`transit_credentials.json` / `TRANSIT_API_KEY`), optional NJT creds (`njt_credentials.json`) |
 | `transit_app.py` | Transit App v4 `/stop_departures` client; per-stop cache (~45s) to stay within 5 req/min |
 | `hblr_path.py` | HBLR↔PATH sections, transfer offset filter, HBLR→PATH **current PATH** fallback when none catchable |
-| `hblr_schedule.py` | Loads `hblr_schedule_data.json` for offline HBLR departures; PDF times have no per-line label — **northbound** PDF list index per station (LSP/Exchange default Hoboken/Tonnelle cycle; Exchange phase +1; Newport Tonnelle-first); **southbound** upstream stations label PDF columns by service-day order (`_south_labeled_explicit`; LSP index+1 only after midnight–02:45); `minutes_until_departure()` for service-night ETAs; terminals use branch-terminal pools; weekend south through **02:45** |
+| `hblr_schedule.py` | Loads `hblr_schedule_data.json` for offline HBLR departures; **weekday daytime** fills PDF midday holes with service headway; PDF times have no per-line label — **northbound** PDF list index per station (LSP/Exchange default Hoboken/Tonnelle cycle; Exchange phase +1; Newport Tonnelle-first); **southbound** upstream stations label PDF columns by service-day order (`_south_labeled_explicit`; LSP index+1 only after midnight–02:45); `minutes_until_departure()` for service-night ETAs; terminals use branch-terminal pools; weekend south through **02:45** |
 | `path_schedule.py` | Weekend PATH phase helpers for unit tests only (not wired to live UI) |
-| `subway_trains.py` | Subway north/Queens and To JC; `SUBWAY_PATH_WALKS` for From JC connection filtering; **50 St** / **Bleecker St** express-local cards; southbound **6** (Union Sq) and **4/5** (Bleecker express local) ETAs append **↓** |
+| `subway_trains.py` | Subway north/Queens and To JC; `SUBWAY_PATH_WALKS` for From JC connection filtering; **51 St** / **50 St** / **Bleecker St** express-local cards; southbound **6** (Union Sq) and **4/5** (Bleecker express local) ETAs append **↓** |
 
 Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignored) with your [Transit App API](https://transitapp.com/apis) key. `deploy.ps1` includes this file when present so the iPhone gets live HBLR ETAs.
+
+**Pythonista:** the Home Screen shortcut runs from `On My iPhone → Documents → bike_train_transit/`, not the folder you edit in the Pythonista file browser. Put `transit_credentials.json` next to `bike_train_transit.py` in your edit folder, then **run the script once** so `local_deploy` copies it to Documents. You can also create the file directly under `Documents/bike_train_transit/`. Live HBLR cards show **no `~` prefix**; `~` means PDF fallback.
 
 ### PC email (`config.json`)
 
@@ -461,7 +464,7 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 | `deploy.ps1`: iCloud folder not found | Enable iCloud Drive on Windows or set `iCloudDownloads` in windows config |
 | WTC subway shows `~` prefix | Estimated from Canal St +2 min — direct WTC E-line data was unavailable |
 | PATH missing Hoboken | Hoboken-terminating trains are filtered out; "via Hoboken" routings are kept, and World Trade Center shows Hoboken-bound trains |
-| HBLR shows `~`/`sched` | No Transit or NJT credentials (or live fetch failed) — PDF timetable fallback. Copy `transit_credentials.json.example` → `transit_credentials.json` and add your [Transit API](https://transitapp.com/apis) key |
+| HBLR shows `~`/`sched` | PDF timetable fallback — live Transit/NJT not used. On Pythonista, confirm `transit_credentials.json` is in **Documents/bike_train_transit/** (run `bike_train_transit.py` once after adding it to your edit folder). Card note may say `sched · …` if the API key was found but the fetch failed |
 | HBLR empty | No southbound trains catchable after the paired PATH + offset, or HBLR not running (overnight) |
 | Subway card is taller | One row per line (earliest ETA per line); normal when many lines serve the station |
 

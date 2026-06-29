@@ -346,16 +346,80 @@ def branch_departures_in_weekend_window(
     return result
 
 
+def _should_fill_weekday_pdf_gaps(now: datetime.datetime) -> bool:
+    """Fill PDF holes only on weekday daytime (not overnight 22:00–02:45)."""
+    if service_day_key(now) != "weekday":
+        return False
+    now_mod = now.hour * 60 + now.minute
+    return not _in_overnight_service(now_mod)
+
+
+def fill_pdf_service_gaps(
+    departures: list[int],
+    headway: int,
+    service_end: int,
+) -> list[int]:
+    """Insert headway-spaced times into weekday PDF holes (NJT footnote ranges)."""
+    if headway <= 0 or len(departures) < 2:
+        return []
+    gap_limit = headway * 2
+    extra: list[int] = []
+    for index in range(len(departures) - 1):
+        minute = departures[index]
+        nxt = departures[index + 1]
+        if nxt - minute <= gap_limit:
+            continue
+        cursor = minute + headway
+        while cursor < nxt and cursor <= service_end:
+            extra.append(cursor)
+            cursor += headway
+    return extra
+
+
+def fill_pdf_service_gap_labels(
+    departures: list[int],
+    headway: int,
+    service_end: int,
+    label_for_index,
+) -> dict[int, str]:
+    """Branch labels for synthetic gap-fill minutes (continues PDF index cycle)."""
+    if headway <= 0 or len(departures) < 2:
+        return {}
+    gap_limit = headway * 2
+    labels: dict[int, str] = {}
+    for index in range(len(departures) - 1):
+        minute = departures[index]
+        nxt = departures[index + 1]
+        if nxt - minute <= gap_limit:
+            continue
+        cursor = minute + headway
+        synth_index = index + 1
+        while cursor < nxt and cursor <= service_end:
+            labels[cursor] = label_for_index(synth_index)
+            cursor += headway
+            synth_index += 1
+    return labels
+
+
+def _merge_weekday_pdf_pool(
+    explicit: list[int],
+    now: datetime.datetime,
+    headway: int | None,
+    fill_headway: int,
+    service_end: int,
+) -> list[int]:
+    merged = sorted(set(explicit))
+    if headway and _should_fill_weekday_pdf_gaps(now):
+        merged = sorted(set(merged) | set(fill_pdf_service_gaps(merged, headway, service_end)))
+    return extend_with_headway(merged, fill_headway, service_end)
+
+
 def extend_with_headway(
     departures: list[int],
     headway: int,
     service_end: int,
 ) -> list[int]:
-    """Append headway-spaced departures after the last explicit PDF time.
-
-    Does not fill gaps mid-schedule (weekday PDF omits many midday windows per
-    the "every 10-20 minutes" footnote).
-    """
+    """Append headway-spaced departures after the last explicit PDF time."""
     if headway <= 0 or not departures:
         return list(departures)
     merged = set(departures)
@@ -396,13 +460,23 @@ def _south_upstream_trains(
     if not explicit:
         return []
 
-    labels = _south_labeled_explicit(station_label, explicit, now_mod)
+    explicit_labels = _south_labeled_explicit(station_label, explicit, now_mod)
     headway = service_headway(now)
     fill_headway = infer_headway_from_times(
         explicit,
         fallback=headway or WEEKEND_BRANCH_HEADWAY,
     )
     service_end = service_end_minute(now)
+    gap_labels = {}
+    if headway and _should_fill_weekday_pdf_gaps(now):
+        gap_labels = fill_pdf_service_gap_labels(
+            sorted(set(explicit)),
+            headway,
+            service_end,
+            lambda index: _south_dest_for_service_index(station_label, index, 0),
+        )
+    labels = dict(explicit_labels)
+    labels.update(gap_labels)
     now_continuous = clock_to_weekend_offset(now_mod)
 
     by_dest: dict[str, list[int]] = {}
@@ -431,7 +505,17 @@ def _south_upstream_trains(
                 for offset in _weekend_branch_continuous_pool(minutes)
             ]
         else:
-            clock_minutes = extend_with_headway(sorted(set(minutes)), fill_headway, service_end)
+            merged = sorted(set(minutes))
+            if headway and _should_fill_weekday_pdf_gaps(now):
+                merged = sorted(
+                    set(merged)
+                    | {
+                        minute
+                        for minute, dest in gap_labels.items()
+                        if dest == destination
+                    }
+                )
+            clock_minutes = extend_with_headway(merged, fill_headway, service_end)
         for minute in clock_minutes:
             delta = minutes_until_departure(minute, now_mod)
             if delta is None or delta in used_deltas:
@@ -525,14 +609,22 @@ def upcoming_departures(
             trains.append(_train_dict(delta, destination))
         return trains
 
+    service_end = service_end_minute(now)
     fill_headway = infer_headway_from_times(explicit, fallback=headway)
-    pool = extend_with_headway(explicit, fill_headway, service_end_minute(now))
+    pool = _merge_weekday_pdf_pool(explicit, now, headway, fill_headway, service_end)
 
-    north_labels = (
-        _north_labeled_explicit(label, explicit)
-        if travel_direction == "northbound"
-        else None
-    )
+    north_labels = None
+    if travel_direction == "northbound":
+        north_labels = dict(_north_labeled_explicit(label, explicit))
+        if headway and _should_fill_weekday_pdf_gaps(now):
+            north_labels.update(
+                fill_pdf_service_gap_labels(
+                    sorted(set(explicit)),
+                    headway,
+                    service_end,
+                    lambda index: _north_branch_for(label, index),
+                )
+            )
     fill_index = len(explicit)
 
     trains = []

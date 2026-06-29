@@ -23,22 +23,20 @@ _CACHE_TTL_SEC = 45
 _DEPARTURE_CACHE: dict[str, tuple[float, dict]] = {}
 
 
+from . import credential_paths
+
+
 def _load_api_key():
     key = os.environ.get("TRANSIT_API_KEY")
     if key:
         return key.strip()
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     for name in ("transit_credentials.json", ".transit_credentials.json"):
-        path = os.path.join(root, name)
-        try:
-            with open(path, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
+        data = credential_paths.load_json_credential(name)
+        if data:
             key = data.get("api_key") or data.get("apiKey")
             if key:
                 return str(key).strip()
-        except (OSError, ValueError):
-            continue
-    return key
+    return None
 
 
 def has_api_key():

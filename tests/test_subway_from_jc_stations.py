@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lib.subway_trains import (  # noqa: E402
     BLEECKER_LINE_SPECS,
+    FIFTY_FIRST_LINE_SPECS,
     FIFTY_ST_LINE_SPECS,
     _annotate_express_local_board,
     _load_line_board,
@@ -77,6 +78,21 @@ class ExpressLocalBoardTests(unittest.TestCase):
                 "_raw_trains": raw,
             },
             BLEECKER_LINE_SPECS,
+        )
+        self.assertEqual(board["trains"], [])
+        self.assertEqual(board["note"], "Express skip · local 6")
+        self.assertEqual(board["empty_hint"], "Express not stopping")
+
+
+    def test_fifty_first_notes_local_when_express_skips(self):
+        raw = [{"line": "6", "direction": "N", "minutes": 4, "headsign": "Pelham Bay Park"}]
+        board = _annotate_express_local_board(
+            {
+                "label": "51 St",
+                "trains": _trains_per_line(raw, line_specs=FIFTY_FIRST_LINE_SPECS),
+                "_raw_trains": raw,
+            },
+            FIFTY_FIRST_LINE_SPECS,
         )
         self.assertEqual(board["trains"], [])
         self.assertEqual(board["note"], "Express skip · local 6")

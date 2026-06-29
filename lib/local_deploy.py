@@ -8,6 +8,13 @@ import shutil
 
 LOCAL_DIR_NAME = "bike_train_transit"
 MAIN_SCRIPT = "bike_train_transit.py"
+# Copied to On This iPhone on deploy (shortcut runs from Documents, not the edit folder).
+CREDENTIAL_FILES = (
+    "transit_credentials.json",
+    ".transit_credentials.json",
+    "njt_credentials.json",
+    ".njt_credentials.json",
+)
 
 
 def local_app_dir() -> str:
@@ -62,6 +69,12 @@ def deploy_local_app(source_dir: str) -> str:
     dst_lib = os.path.join(dest, "lib")
     if os.path.isdir(src_lib):
         _sync_tree(src_lib, dst_lib)
+
+    for name in CREDENTIAL_FILES:
+        src = os.path.join(source_dir, name)
+        dst = os.path.join(dest, name)
+        if os.path.isfile(src) and _needs_copy(src, dst):
+            shutil.copy2(src, dst)
 
     for name in ("debug_server.py",):
         src = os.path.join(source_dir, name)

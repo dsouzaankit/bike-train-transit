@@ -166,6 +166,24 @@ class OfflineScheduleTrainsTests(unittest.TestCase):
         self.assertGreaterEqual(len(trains), 1)
         self.assertLessEqual(trains[0]["minutes"], 20)
 
+    def test_weekday_pdf_gap_uses_service_headway(self):
+        """Midday PDF holes (e.g. 10:23→12:43) should not show 60+ min offline ETAs."""
+        now = datetime.datetime(2026, 6, 29, 11, 24)
+        for station, direction in (
+            ("Liberty State Park", "northbound"),
+            ("Exchange Place", "northbound"),
+            ("Newport", "to_liberty_state_park"),
+        ):
+            board = _offline_board(station, direction, now=now, raw_pool=12)
+            trains = board.get("trains") or []
+            self.assertGreaterEqual(len(trains), 1, msg=f"{station} {direction}")
+            self.assertLessEqual(
+                trains[0]["minutes"],
+                15,
+                msg="%s %s first ETA %s"
+                % (station, direction, trains[0].get("minutes")),
+            )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

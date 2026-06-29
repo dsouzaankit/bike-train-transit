@@ -117,7 +117,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v6"
+BUILD_TAG = "hblr-path-v7"
 
 COLORS = {
     "bg": "#0f1419",
@@ -1136,6 +1136,18 @@ if HAS_UI:
                 if board.get("error"):
                     log_event("{} {} unavailable: {}".format(prefix, board["label"], board["error"]))
                     continue
+                if prefix == "HBLRPATH":
+                    source = board.get("source") or ("pdf" if board.get("estimated") else "live")
+                    note = board.get("note")
+                    if source != "transit" or note:
+                        log_event(
+                            "{} {} [{}]{}".format(
+                                prefix,
+                                board["label"],
+                                source,
+                                (" · %s" % note) if note else "",
+                            )
+                        )
                 for train in board.get("trains") or []:
                     line = train.get("line")
                     line_text = " %s" % line if line else ""
@@ -1257,7 +1269,7 @@ if HAS_UI:
                     (self._pick_board(subway, "14 St - Union Sq", by_line=True), "↑", "None after PATH"),
                 ],
                 [
-                    (self._pick_board(subway, "51 St", by_line=True), "↑", "No uptown trains"),
+                    (self._pick_board(subway, "51 St", by_line=True), "↑", None),
                     (self._pick_board(subway, "50 St", by_line=True), "↑", None),
                 ],
                 [

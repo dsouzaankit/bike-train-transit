@@ -585,7 +585,7 @@ def get_subway_north_boards(fetch_json):
 
     by_label["6 Av"] = _load_sixth_av_l_board(fetch_json)
     by_label["14 St - Union Sq"] = _load_union_sq_board(fetch_json)
-    by_label["51 St"] = _load_line_board(
+    by_label["51 St"] = _load_express_local_board(
         SUBWAY_FIFTY_FIRST,
         fetch_json,
         line_specs=FIFTY_FIRST_LINE_SPECS,
