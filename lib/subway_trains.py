@@ -589,7 +589,7 @@ def _is_uptown_subway_headsign(headsign):
     return not any(hint in text for hint in downtown_hints)
 
 
-def get_subway_transit_board(station, *, max_trains=3, raw_pool=6, per_line=1):
+def get_subway_transit_board(station, *, max_trains=3, raw_pool=8, per_line=1):
     """Transit App subway departures — deeper pool for HBLR-tab transfer filters."""
     from . import transit_app
     from .hblr_path import TRANSIT_TRANSFER_RAW_POOL
@@ -658,7 +658,7 @@ def _path_primary_after_lsp(lsp_primary, path_board):
             "nyc",
             dest_filter="wtc",
             max_trains=3,
-            raw_pool=6,
+            raw_pool=8,
         ),
     )
 

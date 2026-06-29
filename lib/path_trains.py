@@ -69,10 +69,25 @@ def _short_destination(name):
     if not name:
         return "?"
     text = name.strip()
+    low = text.casefold()
+    if "world trade" in low or low == "wtc":
+        return "WTC"
+    if _is_33rd_destination(text):
+        if "via hoboken" in low:
+            return "33rd via Hob"
+        return "33rd St"
+    if "journal square" in low or re.search(r"\bjsq\b", low):
+        if "via hoboken" in low:
+            return "JSQ via Hob"
+        return "JSQ"
+    if _is_hoboken_destination(text):
+        return "Hoboken"
+    if "newark" in low:
+        return "Newark"
     for full, short in _DEST_SHORT.items():
-        if text == full:
+        if low == full.casefold():
             return short
-        if text.startswith(full + " "):
+        if low.startswith(full.casefold() + " "):
             text = short + text[len(full) :]
             break
     return text.replace(" via Hoboken", " via Hob")
@@ -481,7 +496,7 @@ def get_path_transit_board(
     direction,
     dest_filter=None,
     max_trains=PATH_MAX_TRAINS,
-    raw_pool=6,
+    raw_pool=8,
 ):
     """Transit App PATH departures — deeper schedule pool for transfer filters."""
     from . import transit_app
@@ -506,6 +521,7 @@ def get_path_transit_board(
     trains = []
     for train in raw:
         entry = dict(train)
+        entry.pop("line", None)
         entry["destination"] = _short_destination(train.get("destination"))
         trains.append(entry)
     return {

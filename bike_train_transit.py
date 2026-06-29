@@ -104,6 +104,7 @@ PATH_CARD_HEIGHT = 98
 TRANSIT_LINE_ROW_HEIGHT = 22
 TUNNEL_ROW_HEIGHT = 40
 ETA_COLUMN_WIDTH = 68
+HBLR_PATH_ETA_WIDTH = 52
 SECTION_HEADER_HEIGHT = 26
 SECTION_GAP = 10
 TAB_BAR_HEIGHT = 34
@@ -117,7 +118,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v17"
+BUILD_TAG = "hblr-path-v18"
 
 COLORS = {
     "bg": "#0f1419",
@@ -702,9 +703,10 @@ if HAS_UI:
         label.size_to_fit()
         return label.height
 
-    def _train_row_height(train, card_width, *, by_line=False, index=0, line_badge=False, wrap_text=True):
+    def _train_row_height(train, card_width, *, by_line=False, index=0, line_badge=False, wrap_text=True, eta_column_width=None):
         if not wrap_text:
             return TRANSIT_LINE_ROW_HEIGHT if by_line else (28 if index == 0 else 24)
+        eta_w = eta_column_width or ETA_COLUMN_WIDTH
         eta_size = 14 if by_line else (22 if index == 0 else 14)
         dest_size = 11 if by_line else (13 if index == 0 else 11)
         eta_bold = True if by_line or index == 0 else False
@@ -713,8 +715,8 @@ if HAS_UI:
 
         eta_text = format_train_eta(train) if by_line else str(train.get("eta") or "?")
         dest_text = str(train.get("destination") or "?")
-        eta_h = _measure_text(eta_text, ETA_COLUMN_WIDTH, eta_size, eta_bold)
-        line_x = 8 + ETA_COLUMN_WIDTH - (4 if by_line else 0)
+        eta_h = _measure_text(eta_text, eta_w, eta_size, eta_bold)
+        line_x = 8 + eta_w - (4 if by_line else 0)
         if line_badge:
             line_x += 22
         dest_w = max(1, card_width - line_x - 8)
@@ -722,7 +724,7 @@ if HAS_UI:
         base = TRANSIT_LINE_ROW_HEIGHT if by_line else (28 if index == 0 else 24)
         return max(base, eta_h + 2, dest_h + 4)
 
-    def transit_card_height(board, card_width=300, wrap_text=True):
+    def transit_card_height(board, card_width=300, wrap_text=True, eta_column_width=None):
         if board.get("tunnel_card"):
             rows = len(board.get("trains") or []) or 1
             header_h = 30
@@ -752,6 +754,7 @@ if HAS_UI:
                     by_line=True,
                     line_badge=line_badge,
                     wrap_text=wrap_text,
+                    eta_column_width=eta_column_width,
                 )
             return max(PATH_CARD_HEIGHT, header_h + row_total + 10)
         row_total = 0
@@ -765,6 +768,7 @@ if HAS_UI:
                 index=index,
                 line_badge=line_badge,
                 wrap_text=wrap_text,
+                eta_column_width=eta_column_width,
             )
         return max(PATH_CARD_HEIGHT, header_h + row_total + 8)
 
@@ -788,13 +792,24 @@ if HAS_UI:
         return size + 4
 
     class TransitCard(ui.View):
-        def __init__(self, board, card_width, tag="NYC", empty_text="No trains", wrap_text=True):
+        def __init__(
+            self,
+            board,
+            card_width,
+            tag="NYC",
+            empty_text="No trains",
+            wrap_text=True,
+            eta_column_width=None,
+        ):
             super().__init__()
             self.background_color = COLORS["card"]
             self.corner_radius = 10
             self.border_width = 1
             self.border_color = "#2a3441"
-            self.height = transit_card_height(board, card_width, wrap_text=wrap_text)
+            self._eta_w = eta_column_width or ETA_COLUMN_WIDTH
+            self.height = transit_card_height(
+                board, card_width, wrap_text=wrap_text, eta_column_width=self._eta_w
+            )
 
             name = make_label(board["label"], font_size=13, bold=True, wrap=False)
             name.frame = (8, 6, card_width - 56, 18)
@@ -856,8 +871,8 @@ if HAS_UI:
                         wrap_text=wrap_text,
                     )
                     eta = make_label(eta_text, font_size=14, bold=True, color=eta_color, wrap=False)
-                    eta.frame = (8, y, ETA_COLUMN_WIDTH - 8, row_h)
-                    line_x = 8 + ETA_COLUMN_WIDTH - 4
+                    eta.frame = (8, y, self._eta_w - 8, row_h)
+                    line_x = 8 + self._eta_w - 4
                     if line_badge:
                         line_x += _add_line_badge(self, line_val, line_x, y + 1)
                     dest = make_label(dest_text, font_size=11, color=COLORS["muted"], wrap=wrap_text)
@@ -893,8 +908,8 @@ if HAS_UI:
                     color=eta_color,
                     wrap=False,
                 )
-                eta.frame = (8, y, ETA_COLUMN_WIDTH, row_h)
-                line_x = 8 + ETA_COLUMN_WIDTH
+                eta.frame = (8, y, self._eta_w, row_h)
+                line_x = 8 + self._eta_w
                 if line_badge:
                     line_x += _add_line_badge(self, line_val, line_x, y + (2 if index == 0 else 0))
                 dest = make_label(
@@ -1334,21 +1349,32 @@ if HAS_UI:
             row_heights = []
             for index, tile in enumerate(tiles):
                 board = tile[0]
+                tag = tile[1]
                 col = index % cols
+                eta_w = HBLR_PATH_ETA_WIDTH if (not wrap_text and tag == "PATH") else None
                 if col == 0:
                     row_groups.append([])
-                    row_heights.append(transit_card_height(board, card_width, wrap_text=wrap_text))
+                    row_heights.append(
+                        transit_card_height(
+                            board, card_width, wrap_text=wrap_text, eta_column_width=eta_w
+                        )
+                    )
                 else:
                     row_heights[-1] = max(
                         row_heights[-1],
-                        transit_card_height(board, card_width, wrap_text=wrap_text),
+                        transit_card_height(
+                            board, card_width, wrap_text=wrap_text, eta_column_width=eta_w
+                        ),
                     )
-                row_groups[-1].append((index, tile))
+                row_groups[-1].append((index, tile, eta_w))
 
             row_y = y
             for row_index, group in enumerate(row_groups):
                 row_h = row_heights[row_index]
-                for index, (board, tag, empty_text) in group:
+                for index, tile, eta_w in group:
+                    board = tile[0]
+                    tag = tile[1]
+                    empty_text = tile[2] if len(tile) > 2 else "No trains"
                     col = index % cols
                     x = pad + col * (card_width + CARD_GAP)
                     resolved_empty = empty_text or board.get("empty_hint") or "No trains"
@@ -1358,6 +1384,7 @@ if HAS_UI:
                         tag=tag,
                         empty_text=resolved_empty,
                         wrap_text=wrap_text,
+                        eta_column_width=eta_w,
                     )
                     card.frame = (x, row_y, card_width, row_h)
                     self.scroll.add_subview(card)

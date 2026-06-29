@@ -90,11 +90,11 @@ Four connection sections (primary departures + catchable secondary after the off
 | **PATH WTC → HBLR** | World Trade Center PATH (NJ-bound) | Exchange Place HBLR → Liberty State Pk | 7 min |
 | **PATH 33rd St → HBLR** | Christopher St PATH (NJ-bound) | Newport HBLR → Liberty State Pk | 13 min |
 
-**HBLR → PATH:** Exchange and Newport PATH cards show departures **catchable after LSP + offset** (11 / 21 min). PANYNJ first, then **Transit API** (filter pool **6**). Cards stay empty when nothing is reachable from LSP — no misleading raw PATH ETAs.
+**HBLR → PATH:** Exchange and Newport PATH cards show departures **catchable after LSP + offset** (11 / 21 min). PANYNJ first, then **Transit API** (filter pool **8**). Cards stay empty when nothing is reachable from LSP — no misleading raw PATH ETAs.
 
 **PATH → HBLR:** secondary HBLR uses **Transit App → PDF** (NJT live middle step unavailable — see below). If nothing is catchable, live boards show **current HBLR** (`· current HBLR`).
 
-**PATH + Subway via WTC:** subway timing chains from **LSP HBLR +11** to catchable Exchange PATH (WTC-bound), then **+8** walk at WTC. When PANYNJ or the subway API pool is too shallow, **Transit API** retries Exchange PATH and/or WTC subway stops (filter pool **6**); otherwise **current subway** (`· current subway`).
+**PATH + Subway via WTC:** subway timing chains from **LSP HBLR +11** to catchable Exchange PATH (WTC-bound), then **+8** walk at WTC. When PANYNJ or the subway API pool is too shallow, **Transit API** retries Exchange PATH and/or WTC subway stops (filter pool **8**); otherwise **current subway** (`· current subway`).
 
 **HBLR data source (first match wins):** **[Transit App API](https://api-doc.transitapp.com/v4.html)** when `TRANSIT_API_KEY` or gitignored `transit_credentials.json` is set (real-time ETAs, 5 req/min free tier); otherwise **`lib/hblr_schedule_data.json`** — PDF timetable for **8th Street, West Side Ave, Liberty State Park, Exchange Place, and Newport**, both **north (Hoboken/Tonnelle)** and **south (Bayonne branches)** directions (marked `~`). Rebuild with `python tools/build_hblr_schedule.py` on PC when NJT updates the timetable.
 
@@ -117,9 +117,9 @@ Requires `TRANSIT_API_KEY` or gitignored `transit_credentials.json`. Other tabs 
 | Tab / section | Card | Role |
 |---------------|------|------|
 | **HBLR → PATH** | **Liberty State Park** HBLR | **Primary** live source (Transit App → PDF) |
-| **HBLR → PATH** | **Exchange Place** PATH · **Newport PATH** | **Transfer retry** only — PANYNJ first; if offset filter finds nothing in the shallow pool, fetch up to **6** departures from Transit (`PATH:554` Exchange, `PATH:520` Newport), then filter **LSP +11 / +21**. Empty if still nothing catchable (no `· current PATH`) |
+| **HBLR → PATH** | **Exchange Place** PATH · **Newport PATH** | **Transfer retry** only — PANYNJ first; if offset filter finds nothing in the shallow pool, fetch up to **8** departures from Transit (`PATH:554` Exchange, `PATH:520` Newport), then filter **LSP +11 / +21**. Empty if still nothing catchable (no `· current PATH`) |
 | **PATH + Subway via WTC** | Exchange PATH timing (hidden) | **Transfer retry** — LSP **+11** chain, then Transit `PATH:554` if needed |
-| **PATH + Subway via WTC** | **WTC Cortlandt** ↑ · **WTC** ↑ | **Transfer retry** — subway API first; Transit `MTAS:19443` / `MTAS:19012` if pool too shallow for **Exchange +8** filter (pool **6**). May show `· current subway` when PATH is catchable but subway pool is thin |
+| **PATH + Subway via WTC** | **WTC Cortlandt** ↑ · **WTC** ↑ | **Transfer retry** — subway API first; Transit `MTAS:19443` / `MTAS:19012` if pool too shallow for **Exchange +8** filter (pool **8**). May show `· current subway` when PATH is catchable but subway pool is thin |
 | **PATH WTC → HBLR** | **Exchange Place** HBLR | **Primary** live source (Transit `NJTR:3076` → PDF). **No** extra Transit retry on the transfer filter |
 | **PATH 33rd St → HBLR** | **Newport** HBLR | **Primary** live source (Transit `NJTR:3079` → PDF). **No** extra Transit retry on the transfer filter |
 
