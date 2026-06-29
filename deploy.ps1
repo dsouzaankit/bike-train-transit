@@ -103,11 +103,24 @@ Copy-Item -LiteralPath $TempZip -Destination $DestZip -Force
 Remove-Item -LiteralPath $TempZip -Force
 
 $SizeMb = [math]::Round((Get-Item -LiteralPath $DestZip).Length / 1MB, 2)
+$MainPy = Join-Path $ProjectRoot "bike_train_transit.py"
+$BuildTag = ""
+if (Test-Path -LiteralPath $MainPy) {
+    $mainText = Get-Content -LiteralPath $MainPy -Raw
+    if ($mainText -match 'BUILD_TAG = "([^"]+)"') {
+        $BuildTag = $Matches[1]
+    }
+}
 Write-Host ""
 Write-Host "Done. $DestZip ($SizeMb MB)"
+Write-Host ""
+Write-Host "Deployed from: $ProjectRoot"
+if ($BuildTag) {
+    Write-Host "BUILD_TAG: $BuildTag  (LAN log should show build=$BuildTag after you run on iPhone)"
+}
 Write-Host ""
 Write-Host "Next on iPhone:"
 Write-Host "  Files -> iCloud Drive -> Downloads"
 Write-Host "  Tap $ZipName to unzip, copy $ProjectName into Pythonista"
-Write-Host "  Run bike_train_transit.py (deploys to On This iPhone + installs launcher)"
-Write-Host "  Shortcut URL: pythonista3://RunBikeTrainTransit.py?action=run"
+Write-Host "  Run bike_train_transit.py once (copies to On This iPhone/Documents)"
+Write-Host "  Shortcut URL: pythonista3://bike_train_transit/bike_train_transit.py?action=run"

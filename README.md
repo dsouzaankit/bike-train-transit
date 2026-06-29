@@ -88,7 +88,9 @@ Four connection sections (primary departures + catchable secondary after the off
 | **PATH WTC → HBLR** | World Trade Center PATH (NJ-bound) | Exchange Place HBLR → Liberty State Pk | 7 min |
 | **PATH 33rd St → HBLR** | Christopher St PATH (NJ-bound) | Newport HBLR → Liberty State Pk | 13 min |
 
-**HBLR data source:** live NJ Transit Bus/Light-Rail API when credentials are configured; otherwise **`lib/hblr_schedule_data.json`** (parsed from the [official HBLR PDF](https://content.njtransit.com/sites/default/files/pdfs/rail/2025/07/10002/hblr.pdf), marked `~`). Rebuild with `python tools/build_hblr_schedule.py` on PC when NJT updates the timetable.
+**HBLR data source:** live NJ Transit Bus/Light-Rail API when credentials are configured; otherwise **`lib/hblr_schedule_data.json`** — PDF timetable for **8th Street, West Side Ave, Liberty State Park, Exchange Place, and Newport**, both **north (Hoboken/Tonnelle)** and **south (Bayonne branches)** directions (marked `~`). Rebuild with `python tools/build_hblr_schedule.py` on PC when NJT updates the timetable.
+
+**Weekend southbound (PDF fallback):** 20-minute headway from noon–2 a.m.; **8th St** and **West Side Av** branches are paired (West Side departs **5 min** after 8th St toward Liberty State Park at Newport and Exchange Place). Live PATH boards are unchanged; weekend **PATH↔HBLR timing assumptions** are validated in unit tests only (see [Unit tests](#unit-tests)).
 
 ### Tunnels
 
@@ -109,7 +111,8 @@ bike_train_transit/
     path_trains.py                # PATH NYC / 33rd / NJ (PANYNJ single-fetch; Hoboken-terminating filtered, via-Hoboken kept, WTC allows Hoboken)
     hblr_path.py                  # HBLR↔PATH tab: four transfer pairs + offset filter
     hblr_schedule.py              # Load pre-parsed HBLR PDF timetable (hblr_schedule_data.json)
-    hblr_schedule_data.json       # Southbound Newport/Exchange Place times (built on PC)
+    hblr_schedule_data.json       # HBLR PDF times: 5 stations × 2 directions (built on PC)
+    path_schedule.py              # Test-only weekend PATH phase model (not used by live UI)
     light_rail.py                 # HBLR station fetch (NJT realtime + PDF fallback)
     subway_trains.py              # Subway north and To JC boards
     subway_lines.py               # MTA line badge colors
@@ -120,7 +123,7 @@ bike_train_transit/
     local_deploy.py               # Incremental copy to On This iPhone
     file_logging.py, log_paths.py # Session logs + safe-mode preservation
     lan_debug_server.py           # LAN debug HTTP server
-  tests/                          # Unit tests (HBLR offset, PDF schedule)
+  tests/                          # Unit tests (HBLR schedule, transfer offsets, weekend sync)
   tools/
     build_hblr_schedule.py        # PC-only: parse NJT HBLR PDF → hblr_schedule_data.json
   windows/                        # PC helpers for LAN debug URLs, deploy config
@@ -158,7 +161,7 @@ Do this **after** force quitting Pythonista and **before** running `deploy.ps1` 
 ### 3. Run deploy on the PC
 
 ```powershell
-cd P:\all_scripts\bike_train_transit
+cd "P:\all_scripts\iOS apps\bike_train_transit"
 .\deploy.ps1
 ```
 
@@ -328,7 +331,7 @@ Optional. Sends email via Yahoo SMTP when thresholds are hit (or every run if co
 ### Setup
 
 ```powershell
-cd P:\all_scripts\bike_train_transit
+cd "P:\all_scripts\iOS apps\bike_train_transit"
 copy .env.example .env
 # Edit .env — Yahoo address + app password (not your normal login password)
 ```
@@ -351,6 +354,23 @@ python bike_train_transit.py --cli
 ```
 
 Prints both **From JC** and **To JC** transit boards to the terminal.
+
+### Unit tests
+
+```powershell
+cd "P:\all_scripts\iOS apps\bike_train_transit"
+python -m unittest discover -s tests -q
+```
+
+Covers HBLR PDF parsing, weekend southbound branch headways, HBLR↔PATH transfer offsets, and weekend **PATH↔HBLR sync models** in `tests/test_weekend_hblr_path_sync.py`:
+
+| Model (tests only) | Assumption |
+|--------------------|------------|
+| West Side Av @ Newport / Exchange | Departs **5 min** after 8th St toward Liberty State Park |
+| PATH 33rd @ Newport | Every **10 min** (12p–9p); every other arrival aligns with **20 min** West Side HBLR |
+| PATH Newark-line WTC @ Exchange | Every **20 min** (12p–11p); matches **8th St** HBLR (not Hoboken-line WTC) |
+
+Live PATH fetching in `lib/path_trains.py` does not filter by PATH line color; Newark vs Hoboken distinction is documented and checked only in tests.
 
 ---
 
@@ -378,7 +398,8 @@ Prints both **From JC** and **To JC** transit boards to the terminal.
 | `path_trains.py` | PATH stations for NYC, 33rd St, and NJ boards; PANYNJ `ridepath.json` fetched once per refresh; per-station `allow_hoboken` (set on WTC) |
 | `light_rail.py` | HBLR station boards by direction; NJT creds from env or `njt_credentials.json` |
 | `hblr_path.py` | Four HBLR↔PATH transfer sections and offset filtering |
-| `hblr_schedule.py` | Loads `hblr_schedule_data.json` for offline HBLR departures |
+| `hblr_schedule.py` | Loads `hblr_schedule_data.json` for offline HBLR departures; weekend southbound branch pairing |
+| `path_schedule.py` | Weekend PATH phase helpers for unit tests only (not wired to live UI) |
 | `subway_trains.py` | Subway north/Queens and To JC; `SUBWAY_PATH_WALKS` for From JC connection filtering; southbound **6** (Union Sq) and **4/5** (Bleecker St) ETAs append **↓** |
 
 ### PC email (`config.json`)

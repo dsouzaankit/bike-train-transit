@@ -25,7 +25,7 @@ PATH_EXCHANGE_STATION = {
 }
 
 PATH_33RD_STATIONS = [
-    {"slug": "christopher_street", "panynj": "CHR", "label": "Christopher St"},
+    {"slug": "christopher_street", "panynj": "CHR", "label": "Chris St"},
     {"slug": "ninth_street", "panynj": "09S", "label": "9th St"},
 ]
 
@@ -38,11 +38,11 @@ PATH_14TH_STATION = {
 NINTH_ST_ESTIMATE_TO_14TH_MINUTES = 1
 
 PATH_NJ_STATIONS = [
-    {"slug": "christopher_street", "panynj": "CHR", "label": "Christopher St"},
+    {"slug": "christopher_street", "panynj": "CHR", "label": "Chris St"},
     {"slug": "ninth_street", "panynj": "09S", "label": "9th St"},
     {"slug": "thirty_third_street", "panynj": "33S", "label": "33rd St"},
     # WTC shows Hoboken-bound trains too (transfer point for HBLR via Hoboken).
-    {"slug": "world_trade_center", "panynj": "WTC", "label": "World Trade Center", "allow_hoboken": True},
+    {"slug": "world_trade_center", "panynj": "WTC", "label": "WTC", "allow_hoboken": True},
 ]
 
 _DEST_SHORT = {

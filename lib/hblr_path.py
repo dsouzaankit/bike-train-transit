@@ -44,7 +44,7 @@ HBLR_PATH_SECTIONS = (
         "title": "PATH WTC → HBLR",
         "primary": {
             "mode": "path",
-            "station": "World Trade Center",
+            "station": "WTC",
             "direction": "nj",
         },
         "secondary": {
@@ -59,7 +59,7 @@ HBLR_PATH_SECTIONS = (
         "title": "PATH 33rd St → HBLR",
         "primary": {
             "mode": "path",
-            "station": "Christopher St",
+            "station": "Chris St",
             "direction": "nj",
         },
         "secondary": {
@@ -107,6 +107,7 @@ def apply_transfer_filter(primary_board, secondary_board, offset, primary_short,
     return new_board
 
 
+def _path_board_for_spec(spec, path_bundle, fetch_json=None):
     from lib.path_trains import get_path_station_board
 
     station = spec["station"]

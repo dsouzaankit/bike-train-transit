@@ -38,9 +38,9 @@ class TransferFilterTests(unittest.TestCase):
         self.assertEqual(out["note"], "after LSP HBLR +11")
 
     def test_path_to_hblr_offset(self):
-        primary = _board("World Trade Center", [3])
+        primary = _board("WTC", [3])
         secondary = _board("Exchange Place", [5, 9, 12], raw=[5, 9, 12])
-        out = apply_transfer_filter(primary, secondary, 7, "World Trade Center", "Exchange Place HBLR")
+        out = apply_transfer_filter(primary, secondary, 7, "WTC", "Exchange Place HBLR")
         self.assertEqual(_mins(out), [12])
 
     def test_newport_33rd_offset(self):
@@ -50,10 +50,10 @@ class TransferFilterTests(unittest.TestCase):
         self.assertEqual(_mins(out), [25])
 
     def test_no_primary_yields_note(self):
-        primary = _board("Christopher St", [])
+        primary = _board("Chris St", [])
         secondary = _board("Newport", [10, 20])
-        out = apply_transfer_filter(primary, secondary, 13, "Christopher St", "Newport HBLR")
-        self.assertEqual(out["note"], "no Christopher St yet")
+        out = apply_transfer_filter(primary, secondary, 13, "Chris St", "Newport HBLR")
+        self.assertEqual(out["note"], "no Chris St yet")
         self.assertEqual(_mins(out), [10, 20])
 
     def test_caps_to_max_trains(self):

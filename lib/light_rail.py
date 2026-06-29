@@ -35,6 +35,16 @@ LIBERTY_STATE_PARK_DESTINATIONS = (
 )
 
 HBLR_STATIONS = {
+    "8th Street": {
+        "label": "8th Street",
+        "njt_stop": "8th Street",
+        "phase": 0,
+    },
+    "West Side Ave": {
+        "label": "West Side Ave",
+        "njt_stop": "West Side Avenue",
+        "phase": 0,
+    },
     "Liberty State Park": {
         "label": "Liberty State Park",
         "njt_stop": "Liberty State Park",
@@ -223,10 +233,12 @@ def _fetch_station_departures(station, token, direction):
 
 
 def _offline_trains(station, direction, now=None, count=12):
-    schedule_key = HBLR_DIRECTIONS.get(direction, {}).get("schedule_key")
-    if schedule_key == "southbound" and station["label"] in ("Newport", "Exchange Place"):
-        return hblr_schedule.upcoming_departures(station, now=now, count=count)
-    return hblr_schedule.upcoming_departures(station, now=now, count=count)
+    return hblr_schedule.upcoming_departures(
+        station,
+        travel_direction=direction,
+        now=now,
+        count=count,
+    )
 
 
 def get_hblr_board(

@@ -112,7 +112,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "transit-tunnels-v1"
+BUILD_TAG = "hblr-path-v5"
 
 COLORS = {
     "bg": "#0f1419",
@@ -183,10 +183,10 @@ def setup_debug(mode="full"):
     )
 
 
-def _local_ip():
-    from lib.net_util import get_lan_debug_ip
+def _lan_debug_url(path="/"):
+    from lib.net_util import format_lan_debug_url
 
-    return get_lan_debug_ip(LISTEN_HOST)
+    return format_lan_debug_url(LAN_DEBUG_PORT, path, listen_host=LISTEN_HOST)
 
 
 def debug_status():
@@ -208,8 +208,7 @@ def start_debug_server(safe_mode=False):
         status_fn=debug_status,
     )
     _debug_started = True
-    ip = _local_ip()
-    banner = "LAN debug: http://{}:{}/".format(ip, LAN_DEBUG_PORT)
+    banner = "LAN debug: " + _lan_debug_url()
     print(banner, flush=True)
     log_event(banner)
 
@@ -1233,8 +1232,8 @@ if HAS_UI:
 
             groups = (
                 [
-                    (self._pick_board(path33, "Christopher St"), "33", "No 33rd St"),
-                    (self._pick_board(subway, "Christopher St", by_line=True), "↑", "None after PATH"),
+                    (self._pick_board(path33, "Chris St"), "33", "No 33rd St"),
+                    (self._pick_board(subway, "Chris St", by_line=True), "↑", "None after PATH"),
                 ],
                 [
                     (self._pick_board(path33, "9th St"), "33", "No 33rd St"),
@@ -1389,9 +1388,9 @@ if HAS_UI:
 
             subway_boards = self._cache.get("subway_to_jc_boards") or []
             path_nj_boards = self._cache.get("path_nj_boards") or []
-            wtc_path = self._pick_board(path_nj_boards, "World Trade Center")
+            wtc_path = self._pick_board(path_nj_boards, "WTC")
             path_nj_rest = [
-                board for board in path_nj_boards if board.get("label") != "World Trade Center"
+                board for board in path_nj_boards if board.get("label") != "WTC"
             ]
 
             header = SectionHeader("Subway + PATH . Nwk")
@@ -1546,14 +1545,14 @@ else:
 def main_safe(port):
     from lib.file_logging import setup_safe_mode_logging
     from lib.lan_debug_server import run_lan_debug_server
+    from lib.log_paths import LATEST_LOG, log_dir
     import asyncio
 
     setup_safe_mode_logging(port)
     print("Safe mode — LAN log server only (no Bike Train Transit UI)", flush=True)
-    from lib.log_paths import log_dir
-
     print("Log dir:", log_dir(), flush=True)
-    print("Open http://<phone-ip>:{}/".format(port), flush=True)
+    print("Open", _lan_debug_url(), flush=True)
+    print("Log", _lan_debug_url("/" + LATEST_LOG), flush=True)
     asyncio.run(run_lan_debug_server(LISTEN_HOST, port, safe_mode=True))
 
 

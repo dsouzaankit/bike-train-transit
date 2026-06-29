@@ -24,14 +24,16 @@ def _parse_port() -> int:
 def run_safe_mode(port: int | None = None) -> None:
     from lib.file_logging import setup_safe_mode_logging
     from lib.lan_debug_server import run_lan_debug_server
-    from lib.log_paths import ensure_log_dirs
+    from lib.log_paths import LATEST_LOG, ensure_log_dirs
+    from lib.net_util import format_lan_debug_url
 
     port = LAN_DEBUG_PORT if port is None else port
     ensure_log_dirs()
     setup_safe_mode_logging(port)
     print("Safe mode — LAN log server only (no Bike Train Transit UI)", flush=True)
     print("Log dir:", ensure_log_dirs(), flush=True)
-    print("Open http://<phone-ip>:{}/".format(port), flush=True)
+    print("Open", format_lan_debug_url(port, listen_host=LISTEN_HOST), flush=True)
+    print("Log", format_lan_debug_url(port, "/" + LATEST_LOG, listen_host=LISTEN_HOST), flush=True)
     try:
         asyncio.run(run_lan_debug_server(LISTEN_HOST, port, safe_mode=True))
     except KeyboardInterrupt:

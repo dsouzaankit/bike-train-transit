@@ -15,14 +15,14 @@ TO_JC_ETAS_PER_LINE = 2
 
 # Subway station -> (PATH 33rd board label, walk minutes from PATH platform).
 SUBWAY_PATH_WALKS = {
-    "Christopher St": ("Christopher St", 5),
+    "Chris St": ("Chris St", 5),
     "West 4 St": ("9th St", 5),
     "6 Av": ("14 St PATH", 2),
     "14 St - Union Sq": ("14 St PATH", 6),
 }
 
 NORTH_SUBWAY_ORDER = (
-    "Christopher St",
+    "Chris St",
     "West 4 St",
     "6 Av",
     "14 St - Union Sq",
@@ -32,7 +32,7 @@ NORTH_SUBWAY_ORDER = (
 )
 
 SUBWAY_STATIONS_NORTH = [
-    {"station_id": "133", "label": "Christopher St", "direction": SUBWAY_DIRECTION_NORTH},
+    {"station_id": "133", "label": "Chris St", "direction": SUBWAY_DIRECTION_NORTH},
     {"station_id": ["A32", "D20"], "label": "West 4 St", "direction": SUBWAY_DIRECTION_NORTH},
 ]
 
@@ -74,7 +74,7 @@ SUBWAY_WTC_CORTLANDT = {
 
 SUBWAY_WTC_E = {
     "station_id": "E01",
-    "label": "World Trade Center",
+    "label": "WTC",
     "direction": SUBWAY_DIRECTION_SOUTH,
 }
 
@@ -356,7 +356,7 @@ def _load_world_trade_center_board(fetch_json, per_line=TO_JC_ETAS_PER_LINE):
         trains = _trains_per_line(trains, per_line=per_line)
         if trains:
             return {
-                "label": "World Trade Center",
+                "label": SUBWAY_WTC_E["label"],
                 "trains": trains,
                 "by_line": True,
                 "error": None,
@@ -386,7 +386,7 @@ def _load_world_trade_center_board(fetch_json, per_line=TO_JC_ETAS_PER_LINE):
         trains = _trains_per_line(raw, per_line=per_line)
         if trains:
             return {
-                "label": "World Trade Center",
+                "label": SUBWAY_WTC_E["label"],
                 "trains": trains,
                 "by_line": True,
                 "error": None,
@@ -398,7 +398,7 @@ def _load_world_trade_center_board(fetch_json, per_line=TO_JC_ETAS_PER_LINE):
             error = str(exc)
 
     return {
-        "label": "World Trade Center",
+        "label": SUBWAY_WTC_E["label"],
         "trains": [],
         "by_line": True,
         "error": error or "No WTC-bound trains",

@@ -39,3 +39,14 @@ def get_lan_debug_ip(fallback: str = "0.0.0.0") -> str:
     if routed:
         return routed
     return fallback
+
+
+def format_lan_debug_url(
+    port: int,
+    path: str = "/",
+    listen_host: str = "0.0.0.0",
+) -> str:
+    """http://<resolved-lan-ip>:port/path for console + log banners."""
+    if not path.startswith("/"):
+        path = "/" + path
+    return "http://{}:{}{}".format(get_lan_debug_ip(listen_host), port, path)
