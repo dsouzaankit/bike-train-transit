@@ -118,7 +118,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v19"
+BUILD_TAG = "hblr-path-v20"
 
 COLORS = {
     "bg": "#0f1419",
@@ -489,6 +489,7 @@ def _fetch_transit_boards():
     if hblr_path_sections:
         lsp_primary = (hblr_path_sections[0] or {}).get("primary")
     try:
+        from lib.hblr_path import HBLR_PATH_MAX_TRAINS
         from lib.path_trains import get_exchange_place_wtc_board
         from lib.subway_trains import (
             apply_exchange_wtc_subway_connections,
@@ -498,6 +499,7 @@ def _fetch_transit_boards():
         path_exchange_wtc = get_exchange_place_wtc_board(
             fetch_transit_json,
             panynj_payload=path_bundle.get("_payload"),
+            max_trains=HBLR_PATH_MAX_TRAINS,
         )
         subway_wtc_north = apply_exchange_wtc_subway_connections(
             path_exchange_wtc,
@@ -807,7 +809,7 @@ if HAS_UI:
             self.border_width = 1
             self.border_color = "#2a3441"
             self._eta_w = eta_column_width or ETA_COLUMN_WIDTH
-            self._wrap = wrap_text or bool(board.get("unwrap_destination"))
+            self._wrap = wrap_text
             self.height = transit_card_height(
                 board, card_width, wrap_text=self._wrap, eta_column_width=self._eta_w
             )
@@ -1353,7 +1355,7 @@ if HAS_UI:
                 tag = tile[1]
                 col = index % cols
                 tile_wrap = tile[3] if len(tile) > 3 else wrap_text
-                board_wrap = tile_wrap or board.get("unwrap_destination")
+                board_wrap = tile_wrap
                 eta_w = HBLR_PATH_ETA_WIDTH if (not board_wrap and tag == "PATH") else None
                 if col == 0:
                     row_groups.append([])
@@ -1395,11 +1397,23 @@ if HAS_UI:
             return row_y
 
         def _paint_via_wtc_subway_section(self, y, pad, inner_w, card_width):
-            """Subway only — Exchange PATH timing is in HBLR → PATH above."""
+            """Exchange PATH (raw) + northbound WTC subway after LSP/Exchange chain."""
             header = SectionHeader("PATH + Subway via WTC")
             header.frame = (pad, y, inner_w, SECTION_HEADER_HEIGHT)
             self.scroll.add_subview(header)
             y += SECTION_HEADER_HEIGHT + CARD_GAP
+
+            path_exchange = self._cache.get("path_exchange_wtc")
+            if path_exchange:
+                y = self._append_tile_row(
+                    y,
+                    pad,
+                    inner_w,
+                    card_width,
+                    [(path_exchange, "PATH", "No WTC trains")],
+                    wrap_text=False,
+                )
+                y += CARD_GAP
 
             wtc_north = self._cache.get("subway_wtc_north") or []
             tiles = (
@@ -1514,6 +1528,8 @@ if HAS_UI:
                         for key in ("primary", "secondary"):
                             self._log_transit_boards("HBLRPATH", [section.get(key)])
                 if path_exchange_wtc or subway_wtc_north:
+                    if path_exchange_wtc:
+                        self._log_transit_boards("HBLRPATH", [path_exchange_wtc])
                     self._log_transit_boards("HBLRPATH", subway_wtc_north)
                 log_event("Refresh OK: {} stations".format(len(snapshots or [])))
                 app_state.update_refresh(
