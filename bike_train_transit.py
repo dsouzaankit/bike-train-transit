@@ -117,7 +117,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v8"
+BUILD_TAG = "hblr-path-v12"
 
 COLORS = {
     "bg": "#0f1419",
@@ -692,16 +692,51 @@ if HAS_UI:
             label.frame = (0, 4, 300, 18)
             self.add_subview(label)
 
-    def transit_card_height(board):
+    def make_label(text, font_size=16, bold=False, color=COLORS["text"], align=ui.ALIGN_LEFT):
+        label = ui.Label()
+        label.text = text
+        label.font = ("<system-bold>" if bold else "<system>", font_size)
+        label.text_color = color
+        label.alignment = align
+        label.number_of_lines = 0
+        return label
+
+    def _measure_text(text, width, font_size=11, bold=False):
+        label = make_label(str(text or ""), font_size=font_size, bold=bold)
+        label.frame = (0, 0, max(1, width), 0)
+        label.size_to_fit()
+        return label.height
+
+    def _train_row_height(train, card_width, *, by_line=False, index=0, line_badge=False):
+        eta_size = 14 if by_line else (22 if index == 0 else 14)
+        dest_size = 11 if by_line else (13 if index == 0 else 11)
+        eta_bold = True if by_line or index == 0 else False
+        dest_bold = by_line or index == 0
+        from lib.subway_trains import format_train_eta
+
+        eta_text = format_train_eta(train) if by_line else str(train.get("eta") or "?")
+        dest_text = str(train.get("destination") or "?")
+        eta_h = _measure_text(eta_text, ETA_COLUMN_WIDTH, eta_size, eta_bold)
+        line_x = 8 + ETA_COLUMN_WIDTH - (4 if by_line else 0)
+        if line_badge:
+            line_x += 22
+        dest_w = max(1, card_width - line_x - 8)
+        dest_h = _measure_text(dest_text, dest_w, dest_size, dest_bold)
+        base = TRANSIT_LINE_ROW_HEIGHT if by_line else (28 if index == 0 else 24)
+        return max(base, eta_h + 2, dest_h + 4)
+
+    def transit_card_height(board, card_width=300):
         if board.get("tunnel_card"):
             rows = len(board.get("trains") or []) or 1
-            note_h = 0
             header_h = 30
             if board.get("error") and not board.get("trains"):
                 return header_h + 24
             return header_h + rows * TUNNEL_ROW_HEIGHT + 10
 
-        note_h = 12 if board.get("note") else 0
+        inner_w = max(1, card_width - 16)
+        note_h = 0
+        if board.get("note"):
+            note_h = _measure_text(board.get("note"), inner_w, 10) + 6
         header_h = 28 + note_h
         if board.get("error"):
             return max(PATH_CARD_HEIGHT, header_h + 20)
@@ -709,8 +744,29 @@ if HAS_UI:
         if not trains:
             return max(PATH_CARD_HEIGHT, header_h + 20)
         if board.get("by_line") is True:
-            return max(PATH_CARD_HEIGHT, header_h + len(trains) * TRANSIT_LINE_ROW_HEIGHT + 10)
-        return max(PATH_CARD_HEIGHT, header_h + min(len(trains), 3) * 26 + 8)
+            row_total = 0
+            for train in trains:
+                line_val = train.get("line")
+                line_badge = line_val not in (None, "", "?")
+                row_total += _train_row_height(
+                    train,
+                    card_width,
+                    by_line=True,
+                    line_badge=line_badge,
+                )
+            return max(PATH_CARD_HEIGHT, header_h + row_total + 10)
+        row_total = 0
+        for index, train in enumerate(trains[:3]):
+            line_val = train.get("line")
+            line_badge = line_val not in (None, "", "?")
+            row_total += _train_row_height(
+                train,
+                card_width,
+                by_line=False,
+                index=index,
+                line_badge=line_badge,
+            )
+        return max(PATH_CARD_HEIGHT, header_h + row_total + 8)
 
     def _add_line_badge(parent, line_val, x, y, size=18):
         from lib.subway_lines import subway_line_color, subway_line_text_color
@@ -738,7 +794,7 @@ if HAS_UI:
             self.corner_radius = 10
             self.border_width = 1
             self.border_color = "#2a3441"
-            self.height = transit_card_height(board)
+            self.height = transit_card_height(board, card_width)
 
             name = make_label(board["label"], font_size=13, bold=True)
             name.frame = (8, 6, card_width - 56, 18)
@@ -760,9 +816,10 @@ if HAS_UI:
             y = 28
             if board.get("note"):
                 note = make_label(board["note"], font_size=10, color=COLORS["muted"])
-                note.frame = (8, 24, card_width - 16, 12)
+                note.frame = (8, 24, card_width - 16, 0)
+                note.size_to_fit()
                 self.add_subview(note)
-                y = 36
+                y = 24 + note.height + 6
             if error:
                 line = make_label("Unavailable", font_size=12, color=COLORS["bad"])
                 line.frame = (8, y, card_width - 16, 16)
@@ -770,7 +827,8 @@ if HAS_UI:
                 return
             if not trains:
                 line = make_label(empty_text, font_size=12, color=COLORS["muted"])
-                line.frame = (8, y, card_width - 16, 16)
+                line.frame = (8, y, card_width - 16, 0)
+                line.size_to_fit()
                 self.add_subview(line)
                 return
 
@@ -781,17 +839,24 @@ if HAS_UI:
                     eta_color = COLORS["text"]
                     if train.get("status") == "DELAYED" or "delay" in eta_text.lower():
                         eta_color = COLORS["warn"]
-                    eta = make_label(eta_text, font_size=14, bold=True, color=eta_color)
-                    eta.frame = (8, y, ETA_COLUMN_WIDTH - 8, 20)
-                    line_x = 8 + ETA_COLUMN_WIDTH - 4
                     line_val = train.get("line")
-                    if line_val not in (None, "", "?"):
+                    line_badge = line_val not in (None, "", "?")
+                    row_h = _train_row_height(
+                        train,
+                        card_width,
+                        by_line=True,
+                        line_badge=line_badge,
+                    )
+                    eta = make_label(eta_text, font_size=14, bold=True, color=eta_color)
+                    eta.frame = (8, y, ETA_COLUMN_WIDTH - 8, row_h)
+                    line_x = 8 + ETA_COLUMN_WIDTH - 4
+                    if line_badge:
                         line_x += _add_line_badge(self, line_val, line_x, y + 1)
                     dest = make_label(dest_text, font_size=11, color=COLORS["muted"])
-                    dest.frame = (line_x, y + 2, card_width - line_x - 8, 18)
+                    dest.frame = (line_x, y + 1, card_width - line_x - 8, row_h - 2)
                     self.add_subview(eta)
                     self.add_subview(dest)
-                    y += TRANSIT_LINE_ROW_HEIGHT
+                    y += row_h
                 return
 
             for index, train in enumerate(trains[:3]):
@@ -803,16 +868,24 @@ if HAS_UI:
                 dest_text = str(train.get("destination") or "?")
                 if train.get("status") == "DELAYED" or "delay" in eta_text.lower():
                     eta_color = COLORS["warn"]
+                line_val = train.get("line")
+                line_badge = line_val not in (None, "", "?")
+                row_h = _train_row_height(
+                    train,
+                    card_width,
+                    by_line=False,
+                    index=index,
+                    line_badge=line_badge,
+                )
                 eta = make_label(
                     eta_text,
                     font_size=eta_size,
                     bold=(index == 0),
                     color=eta_color,
                 )
-                eta.frame = (8, y, ETA_COLUMN_WIDTH, 24 if index == 0 else 18)
+                eta.frame = (8, y, ETA_COLUMN_WIDTH, row_h)
                 line_x = 8 + ETA_COLUMN_WIDTH
-                line_val = train.get("line")
-                if line_val not in (None, "", "?"):
+                if line_badge:
                     line_x += _add_line_badge(self, line_val, line_x, y + (2 if index == 0 else 0))
                 dest = make_label(
                     dest_text,
@@ -820,10 +893,10 @@ if HAS_UI:
                     bold=(index == 0),
                     color=dest_color,
                 )
-                dest.frame = (line_x, y + (2 if index == 0 else 0), card_width - line_x - 8, 20)
+                dest.frame = (line_x, y + (2 if index == 0 else 0), card_width - line_x - 8, row_h - 2)
                 self.add_subview(eta)
                 self.add_subview(dest)
-                y += 28 if index == 0 else 24
+                y += row_h
 
     class TunnelCard(ui.View):
         def __init__(self, board, card_width):
@@ -832,7 +905,7 @@ if HAS_UI:
             self.corner_radius = 10
             self.border_width = 1
             self.border_color = "#2a3441"
-            self.height = transit_card_height(board)
+            self.height = transit_card_height(board, card_width)
 
             name = make_label(board["label"], font_size=15, bold=True)
             name.frame = (12, 8, card_width - 24, 20)
@@ -1212,10 +1285,10 @@ if HAS_UI:
             for index, board in enumerate(boards):
                 col = index % cols
                 if col == 0:
-                    row_heights.append(transit_card_height(board))
+                    row_heights.append(transit_card_height(board, card_width))
                     row_boards.append([])
                 else:
-                    row_heights[-1] = max(row_heights[-1], transit_card_height(board))
+                    row_heights[-1] = max(row_heights[-1], transit_card_height(board, card_width))
                 row_boards[-1].append((index, board))
 
             row_y = y
@@ -1269,26 +1342,28 @@ if HAS_UI:
                 row_y += row_h + CARD_GAP
             return row_y
 
-        def _append_wtc_path_subway_row(self, y, pad, inner_w, card_width, path_tile, subway_tiles):
-            """PATH card (left half); two subway cards side by side on the right half."""
-            path_board, path_tag, path_empty = path_tile
-            row_h = transit_card_height(path_board)
-            for board, _tag, _empty in subway_tiles:
-                row_h = max(row_h, transit_card_height(board))
+        def _paint_via_wtc_subway_section(self, y, pad, inner_w, card_width):
+            """Subway only — Exchange PATH timing is in HBLR → PATH above."""
+            header = SectionHeader("PATH + Subway via WTC")
+            header.frame = (pad, y, inner_w, SECTION_HEADER_HEIGHT)
+            self.scroll.add_subview(header)
+            y += SECTION_HEADER_HEIGHT + CARD_GAP
 
-            path_empty = path_empty or path_board.get("empty_hint") or "No trains"
-            path_card = TransitCard(path_board, card_width, tag=path_tag, empty_text=path_empty)
-            path_card.frame = (pad, y, card_width, row_h)
-            self.scroll.add_subview(path_card)
-
-            subway_w = (card_width - CARD_GAP) // 2
-            right_x = pad + card_width + CARD_GAP
-            for index, (board, tag, empty_text) in enumerate(subway_tiles):
-                resolved_empty = empty_text or board.get("empty_hint") or "No trains"
-                card = TransitCard(board, subway_w, tag=tag, empty_text=resolved_empty)
-                card.frame = (right_x + index * (subway_w + CARD_GAP), y, subway_w, row_h)
-                self.scroll.add_subview(card)
-            return y + row_h + CARD_GAP
+            wtc_north = self._cache.get("subway_wtc_north") or []
+            tiles = (
+                (
+                    self._pick_board(wtc_north, "WTC Cortlandt", by_line=True),
+                    "↑",
+                    "None after PATH",
+                ),
+                (
+                    self._pick_board(wtc_north, "WTC", by_line=True),
+                    "↑",
+                    "None after PATH",
+                ),
+            )
+            y = self._append_tile_row(y, pad, inner_w, card_width, tiles)
+            return y + SECTION_GAP
 
         def _append_from_jc_transit(self, y, pad, inner_w, card_width):
             y = self._append_transit_section(
@@ -1336,38 +1411,6 @@ if HAS_UI:
             for group in groups:
                 y = self._append_tile_row(y, pad, inner_w, card_width, group)
                 y += CARD_GAP
-
-            y += SECTION_GAP - CARD_GAP
-            header = SectionHeader("PATH + Subway via WTC")
-            header.frame = (pad, y, inner_w, SECTION_HEADER_HEIGHT)
-            self.scroll.add_subview(header)
-            y += SECTION_HEADER_HEIGHT + CARD_GAP
-
-            wtc_north = self._cache.get("subway_wtc_north") or []
-            y = self._append_wtc_path_subway_row(
-                y,
-                pad,
-                inner_w,
-                card_width,
-                (
-                    self._cache.get("path_exchange_wtc")
-                    or {"label": "Exchange Place", "trains": [], "error": None},
-                    "WTC",
-                    "No WTC trains",
-                ),
-                (
-                    (
-                        self._pick_board(wtc_north, "WTC Cortlandt", by_line=True),
-                        "↑",
-                        "None after PATH",
-                    ),
-                    (
-                        self._pick_board(wtc_north, "WTC", by_line=True),
-                        "↑",
-                        "None after PATH",
-                    ),
-                ),
-            )
             return y + pad
 
         def render_snapshots(
@@ -1418,6 +1461,8 @@ if HAS_UI:
                     else:
                         for key in ("primary", "secondary"):
                             self._log_transit_boards("HBLRPATH", [section.get(key)])
+                if path_exchange_wtc or subway_wtc_north:
+                    self._log_transit_boards("HBLRPATH", subway_wtc_north)
                 log_event("Refresh OK: {} stations".format(len(snapshots or [])))
                 app_state.update_refresh(
                     snapshots or self._cache.get("snapshots") or [],
@@ -1554,7 +1599,7 @@ if HAS_UI:
 
                 if section.get("layout") == "shared_primary":
                     primary = section.get("primary") or {}
-                    card_h = transit_card_height(primary)
+                    card_h = transit_card_height(primary, inner_w)
                     card = TransitCard(primary, inner_w, tag="HBLR", empty_text="No departures")
                     card.frame = (pad, y, inner_w, card_h)
                     self.scroll.add_subview(card)
@@ -1570,7 +1615,7 @@ if HAS_UI:
                             board["note"] = path_label
                         tiles.append((board, "PATH", "None catchable"))
                     y = self._append_tile_row(y, pad, inner_w, card_width, tiles)
-                    y += SECTION_GAP
+                    y = self._paint_via_wtc_subway_section(y, pad, inner_w, card_width)
                     continue
 
                 primary = section.get("primary") or {}
@@ -1589,7 +1634,7 @@ if HAS_UI:
                     ],
                 )
                 y += SECTION_GAP
-            return y
+            return y + pad
 
         def _paint_tunnels(self, pad, inner_w, card_width, partial=False):
             y = pad

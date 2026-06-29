@@ -572,19 +572,20 @@ def apply_path_subway_connections(subway_boards, path_33rd_boards):
 
 def apply_exchange_wtc_subway_connections(path_board, subway_boards):
     """Northbound WTC subway cards after Exchange Place PATH + walk."""
-    from lib.hblr_path import apply_transfer_filter
+    from lib.hblr_path import resolve_transfer_board
 
     connected = []
     for board in subway_boards or []:
-        connected.append(
-            apply_transfer_filter(
-                path_board,
-                board,
-                EXCHANGE_WTC_PATH_WALK,
-                "Exchange",
-                board.get("label", "Subway"),
-            )
+        filtered, _ = resolve_transfer_board(
+            path_board,
+            board,
+            EXCHANGE_WTC_PATH_WALK,
+            "Exchange",
+            board.get("label", "Subway"),
+            fallback_current=True,
+            fallback_suffix="subway",
         )
+        connected.append(filtered)
     return connected
 
 

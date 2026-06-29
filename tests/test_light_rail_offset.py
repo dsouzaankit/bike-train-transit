@@ -4,12 +4,14 @@
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lib.hblr_path import (  # noqa: E402
     HBLR_PATH_MAX_TRAINS,
     apply_transfer_filter,
+    resolve_transfer_board,
 )
 
 
@@ -117,6 +119,76 @@ class TransferFilterTests(unittest.TestCase):
         )
         self.assertEqual(_mins(out), [])
         self.assertEqual(out["note"], "sched · after LSP HBLR +21")
+
+
+class ResolveTransferBoardTests(unittest.TestCase):
+    def test_transit_retry_on_hblr_secondary(self):
+        primary = _board("WTC", [3])
+        secondary = _board("Exchange Place", [5, 9], raw=[5, 9], source="njt")
+        transit_board = _board(
+            "Exchange Place",
+            [12, 18],
+            raw=[12, 18, 24],
+            source="transit",
+        )
+        with mock.patch("lib.light_rail.get_hblr_transit_board", return_value=transit_board):
+            out, _ = resolve_transfer_board(
+                primary,
+                secondary,
+                7,
+                "WTC",
+                "Exchange Place HBLR",
+                secondary_mode="hblr",
+                hblr_secondary_spec={
+                    "station": "Exchange Place",
+                    "direction": "to_liberty_state_park",
+                },
+                fallback_current=True,
+                fallback_suffix="HBLR",
+            )
+        self.assertEqual(_mins(out), [12, 18, 24])
+
+    def test_hblr_fallback_shows_current_when_transit_unavailable(self):
+        primary = _board("WTC", [3])
+        secondary = _board("Exchange Place", [5, 9], raw=[5, 9], source="njt")
+        with mock.patch("lib.light_rail.get_hblr_transit_board", return_value=None):
+            out, _ = resolve_transfer_board(
+                primary,
+                secondary,
+                7,
+                "WTC",
+                "Exchange Place HBLR",
+                secondary_mode="hblr",
+                hblr_secondary_spec={
+                    "station": "Exchange Place",
+                    "direction": "to_liberty_state_park",
+                },
+                fallback_current=True,
+                fallback_suffix="HBLR",
+            )
+        self.assertEqual(_mins(out), [5, 9])
+        self.assertEqual(out["note"], "after WTC +7 · current HBLR")
+
+    def test_no_hblr_fallback_for_pdf_secondary(self):
+        primary = _board("WTC", [3])
+        secondary = _board("Exchange Place", [5, 9], raw=[5, 9], estimated=True, source="pdf")
+        with mock.patch("lib.light_rail.get_hblr_transit_board", return_value=None):
+            out, _ = resolve_transfer_board(
+                primary,
+                secondary,
+                7,
+                "WTC",
+                "Exchange Place HBLR",
+                secondary_mode="hblr",
+                hblr_secondary_spec={
+                    "station": "Exchange Place",
+                    "direction": "to_liberty_state_park",
+                },
+                fallback_current=True,
+                fallback_suffix="HBLR",
+            )
+        self.assertEqual(_mins(out), [])
+        self.assertEqual(out["note"], "sched · after WTC +7")
 
 
 if __name__ == "__main__":

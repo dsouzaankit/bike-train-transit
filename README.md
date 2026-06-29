@@ -9,11 +9,11 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **Five tabs** — **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, and **Tunnels**
 - **iPhone app** — compact 2-column Citibike grid on the **Cbike JC** tab (filled bikes and empty docks for JC stations)
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
-- **PATH + subway connections** — From JC **33rd St** subway cards only show trains reachable after the earliest paired PATH arrival + walk time; **PATH + Subway via WTC** (last section) pairs Exchange Place PATH → WTC with northbound **WTC Cortlandt** / **WTC** subway (+8 min)
-- **HBLR ↔ PATH tab** — timed transfers between HBLR and PATH; outbound **HBLR → PATH** shows LSP once with Exchange/Newport PATH side by side; live PATH ETAs fall back to **current PATH** when none meet the transfer offset
+- **PATH + subway connections** — From JC **33rd St** subway cards only show trains reachable after the earliest paired PATH arrival + walk time; **HBLR↔PATH** has **PATH + Subway via WTC** under **HBLR → PATH** (**WTC Cortlandt** / **WTC** northbound, +8 min after Exchange PATH)
+- **HBLR ↔ PATH tab** — timed transfers between HBLR and PATH; outbound **HBLR → PATH** shows LSP once with Exchange/Newport PATH side by side; when no train meets the transfer offset, retries **Transit API** for HBLR timing, then falls back to **current PATH / HBLR / subway** realtime ETAs (card note: `· current …`)
 - **PATH schedules** — trains terminating at **Hoboken** are excluded, but **"via Hoboken"** routings (the overnight 33rd↔JSQ service) are kept; **World Trade Center** additionally shows Hoboken-bound trains (HBLR transfer)
 - **PATH & subway** — real-time departures in grouped sections (see [App tabs](#app-tabs) below); PATH uses one PANYNJ fetch for all boards
-- **Compact ETAs** — `5m`, `Due`, `Delay` / `~5m`; southbound **6** (Union Sq) and **4/5** (Bleecker St express local) trains show **↓** (e.g. `14m↓`); fits narrow card columns without ellipsis
+- **Compact ETAs** — `5m`, `Due`, `Delay` / `~5m`; southbound **6** (Union Sq) and **4/5** (Bleecker St express local) trains show **↓** (e.g. `14m↓`); card notes and destinations **wrap** within narrow columns (taller cards when needed)
 - **Sorted departures** — train rows on each card sorted by ascending ETA
 - **Low-count alerts** — cards highlight red when bikes or docks ≤ threshold
 - **LAN debug server** — browse logs and status from a PC on the same Wi‑Fi (`:8765`)
@@ -55,13 +55,10 @@ Bike cards paint first after refresh; transit loads in the background for the ot
 
 **PATH 14 St:** direct 33rd-bound arrivals at **14 St PATH** when available; otherwise estimated from **9th St** departure **+1 min** (`~`, note on card).
 
-**PATH + Subway via WTC** (last section on **From JC**): one row — **Exchange Place** PATH → WTC on the left (standard half-width card); **WTC Cortlandt** ↑ and **WTC** ↑ side by side on the right. Subway cards use `earliest Exchange PATH WTC + 8 min` (`after Exchange +8`).
-
 **Subway filter (33rd St):** only trains with `subway ETA ≥ paired PATH ETA + walk` are shown (earliest PATH arrival at the paired station). ETAs are **minutes from now** from the subway API — not adjusted. Card note: `after PATH 9th +5 walk`.
 
 | Group | PATH | Subway | Walk |
 |-------|------|--------|------|
-| WTC | Exchange Place → WTC | WTC Cortlandt ↑, WTC ↑ | 8 min |
 | 1 | Christopher St | Christopher St | 5 min |
 | 2 | 9th St | West 4 St | 5 min |
 | 3 | 14 St PATH | 6 Av (L East/Bk), 14 St - Union Sq | 2 / 6 min |
@@ -70,7 +67,7 @@ Bike cards paint first after refresh; transit loads in the background for the ot
 
 **51 St**, **50 St**, and **Bleecker St** only list **express** trains when they make a **local stop** (4/5 at 51 St and Bleecker; A at 50 St). When express is skipping, the card says **Express not stopping** and notes which local lines are running (e.g. `Express skip · local 6` or `Express skip · local C/E`). When express is stopping, the note is **Express local stop**.
 
-Layout on **From JC**: **PATH → NYC**, then **PATH + Subway · 33rd St** tile groups (two columns per row), then **PATH + Subway via WTC** at the bottom (PATH left; both WTC subway cards on one line at right).
+Layout on **From JC**: **PATH → NYC**, then **PATH + Subway · 33rd St** tile groups (two columns per row).
 
 Transit-only tab (no bike grid) to keep scrolling short. **To JC** subway cards show **up to 2 ETAs per line** when available.
 
@@ -93,7 +90,11 @@ Four connection sections (primary departures + catchable secondary after the off
 | **PATH WTC → HBLR** | World Trade Center PATH (NJ-bound) | Exchange Place HBLR → Liberty State Pk | 7 min |
 | **PATH 33rd St → HBLR** | Christopher St PATH (NJ-bound) | Newport HBLR → Liberty State Pk | 13 min |
 
-**HBLR → PATH:** secondary PATH cards prefer departures **after LSP + offset**. If live PANYNJ has PATH trains but none are catchable yet, the card still shows **current PATH** ETAs (note: `· current PATH`). Scheduled-only PATH (`~`) does not use this fallback.
+**HBLR → PATH:** secondary PATH cards prefer departures **after LSP + offset**. If nothing is catchable from live PANYNJ PATH, the card shows **current PATH** ETAs (note: `· current PATH`). Scheduled-only PATH (`~`) does not use this fallback. When neither PATH tile has catchable trains and LSP was not from Transit, LSP is re-fetched from **Transit API** and both PATH connections are rebuilt.
+
+**PATH → HBLR:** secondary HBLR cards prefer departures **after PATH + offset**. If the initial HBLR source (NJT or PDF) has nothing catchable, the filter **retries Transit API** for that stop; if that also fails, live NJT/Transit HBLR shows **current HBLR** (`· current HBLR`). PDF-only (`~`) boards stay empty when nothing is catchable.
+
+**PATH + Subway via WTC** (directly under **HBLR → PATH**): **WTC Cortlandt** ↑ and **WTC** ↑ only (Exchange PATH is already on the row above). Subway ETAs use `earliest Exchange PATH WTC + 8 min` (`after Exchange +8`). When nothing is catchable, shows **current subway** (`· current subway`).
 
 **HBLR data source (first match wins):** **[Transit App API](https://api-doc.transitapp.com/v4.html)** when `TRANSIT_API_KEY` or gitignored `transit_credentials.json` is set (real-time ETAs, 5 req/min free tier); else live **NJ Transit** Bus/Light-Rail API when `njt_credentials.json` is configured; otherwise **`lib/hblr_schedule_data.json`** — PDF timetable for **8th Street, West Side Ave, Liberty State Park, Exchange Place, and Newport**, both **north (Hoboken/Tonnelle)** and **south (Bayonne branches)** directions (marked `~`). Rebuild with `python tools/build_hblr_schedule.py` on PC when NJT updates the timetable.
 
@@ -301,7 +302,7 @@ Runs on the **iPhone** (not PC). Your PC reads logs over Wi‑Fi.
 | URL | Description |
 |-----|-------------|
 | `http://<phone-ip>:8765/` | HTML dashboard with live log tail |
-| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v7`; HBLR boards log `[transit]` / `[pdf]` source) |
+| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v12`; HBLR boards log `[transit]` / `[pdf]` source) |
 | `/bike_train_transit_progress.txt` | Last 12 log lines |
 | `/status.json` | App state (stations, transit boards, active tab, errors) |
 | `/refresh` | Trigger refresh on the phone from PC |
@@ -413,13 +414,13 @@ Live PATH fetching in `lib/path_trains.py` does not filter by PATH line color; N
 
 | File | Configure |
 |------|-----------|
-| `path_trains.py` | PATH stations for NYC, 33rd St, and NJ boards; **Exchange Place → WTC** for From JC via-WTC section; PANYNJ `ridepath.json` fetched once per refresh; per-station `allow_hoboken` (set on WTC) |
-| `light_rail.py` | HBLR station boards by direction; Transit API key (`transit_credentials.json` / `TRANSIT_API_KEY`), optional NJT creds (`njt_credentials.json`) |
+| `path_trains.py` | PATH stations for NYC, 33rd St, and NJ boards; **Exchange Place → WTC** for HBLR tab via-WTC section; PANYNJ `ridepath.json` fetched once per refresh; per-station `allow_hoboken` (set on WTC) |
+| `light_rail.py` | HBLR station boards by direction; Transit API key (`transit_credentials.json` / `TRANSIT_API_KEY`), optional NJT creds (`njt_credentials.json`); `get_hblr_transit_board()` for transfer-filter Transit retry |
 | `transit_app.py` | Transit App v4 `/stop_departures` client; per-stop cache (~45s) to stay within 5 req/min |
-| `hblr_path.py` | HBLR↔PATH sections, transfer offset filter, HBLR→PATH **current PATH** fallback when none catchable |
+| `hblr_path.py` | HBLR↔PATH sections, `resolve_transfer_board()` (offset filter → Transit retry → **current PATH/HBLR/subway** fallback) |
 | `hblr_schedule.py` | Loads `hblr_schedule_data.json` for offline HBLR departures; **weekday daytime** fills PDF midday holes with service headway; PDF times have no per-line label — **northbound** PDF list index per station (LSP/Exchange default Hoboken/Tonnelle cycle; Exchange phase +1; Newport Tonnelle-first); **southbound** upstream stations label PDF columns by service-day order (`_south_labeled_explicit`; LSP index+1 only after midnight–02:45); `minutes_until_departure()` for service-night ETAs; terminals use branch-terminal pools; weekend south through **02:45** |
 | `path_schedule.py` | Weekend PATH phase helpers for unit tests only (not wired to live UI) |
-| `subway_trains.py` | Subway north/Queens and To JC; `SUBWAY_PATH_WALKS` for **33rd St** connection filtering; **PATH + Subway via WTC** (`get_wtc_north_boards`, +8 min after Exchange PATH); **51 St** / **50 St** / **Bleecker St** express-local cards; southbound **6** (Union Sq) and **4/5** (Bleecker express local) ETAs append **↓** |
+| `subway_trains.py` | Subway north/Queens and To JC; `SUBWAY_PATH_WALKS` for **33rd St** connection filtering; **PATH + Subway via WTC** on HBLR tab (`get_wtc_north_boards`, +8 min after Exchange PATH); **51 St** / **50 St** / **Bleecker St** express-local cards; southbound **6** (Union Sq) and **4/5** (Bleecker express local) ETAs append **↓** |
 
 Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignored) with your [Transit App API](https://transitapp.com/apis) key. `deploy.ps1` includes this file when present so the iPhone gets live HBLR ETAs.
 
@@ -468,7 +469,7 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 | WTC subway shows `~` prefix | Estimated from Canal St +2 min — direct WTC E-line data was unavailable |
 | PATH missing Hoboken | Hoboken-terminating trains are filtered out; "via Hoboken" routings are kept, and World Trade Center shows Hoboken-bound trains |
 | HBLR shows `~`/`sched` | PDF timetable fallback — live Transit/NJT not used. On Pythonista, confirm `transit_credentials.json` is in **Documents/bike_train_transit/** (run `bike_train_transit.py` once after adding it to your edit folder). Card note may say `sched · …` if the API key was found but the fetch failed |
-| HBLR empty | No southbound trains catchable after the paired PATH + offset, or HBLR not running (overnight) |
+| HBLR empty / “None catchable” | No train meets **after … +N** from the primary; check card note — `· current PATH/HBLR/subway` means realtime fallback. PDF (`~`) secondaries stay empty when nothing is catchable |
 | Subway card is taller | One row per line (earliest ETA per line); normal when many lines serve the station |
 
 ---
