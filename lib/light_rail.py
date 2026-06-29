@@ -268,33 +268,6 @@ def _offline_trains(station, direction, now=None, count=12):
     )
 
 
-def get_hblr_transit_board(
-    station_label,
-    direction,
-    now=None,
-    max_trains=3,
-    raw_pool=36,
-):
-    """Transit API only — used when transfer filter needs a deeper realtime pool."""
-    station = HBLR_STATIONS.get(station_label)
-    if station is None or not transit_app.has_api_key():
-        return None
-    try:
-        live = _fetch_transit_departures(station, direction, max(max_trains, raw_pool))
-    except Exception:
-        return None
-    if not live:
-        return None
-    return {
-        "label": station["label"],
-        "trains": live[:max_trains],
-        "_raw_trains": live,
-        "error": None,
-        "by_line": True,
-        "source": "transit",
-    }
-
-
 def get_hblr_board(
     station_label,
     direction,

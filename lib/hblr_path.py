@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 HBLR_PATH_MAX_TRAINS = 3
+TRANSIT_TRANSFER_RAW_POOL = 6
+HBLR_LSP_EXCHANGE_OFFSET = 11
 
 _LSP_PRIMARY = {
     "mode": "hblr",
@@ -121,7 +123,7 @@ def apply_transfer_filter(
         for train in source
         if train.get("minutes") is not None and train.get("minutes") >= threshold
     ]
-    note = "after %s +%s" % (primary_short, offset)
+    note = "%s +%s" % (primary_short, offset)
     if secondary_board and secondary_board.get("estimated"):
         note = "sched · " + note
     if catchable:
@@ -149,18 +151,18 @@ def resolve_transfer_board(
     primary_short,
     secondary_short,
     *,
-    secondary_mode="generic",
-    hblr_secondary_spec=None,
+    transit_primary_fetcher=None,
+    transit_secondary_fetcher=None,
     fallback_current=False,
     fallback_suffix="PATH",
-    now=None,
 ):
-    """Realtime filter, Transit retry for HBLR, then live realtime fallback."""
+    """Realtime filter, Transit retry for PATH/subway, then live realtime fallback."""
+    primary = primary_board
 
-    def _filter(primary, secondary, *, fallback=False):
+    def _filter(primary_b, secondary_b, *, fallback=False):
         return apply_transfer_filter(
-            primary,
-            secondary,
+            primary_b,
+            secondary_b,
             offset,
             primary_short,
             secondary_short,
@@ -168,34 +170,38 @@ def resolve_transfer_board(
             fallback_suffix=fallback_suffix,
         )
 
-    result = _filter(primary_board, secondary_board)
+    result = _filter(primary, secondary_board)
     if _is_catchable_board(result):
-        return result, primary_board
+        return result
 
     from . import transit_app
-    from .light_rail import get_hblr_transit_board
 
     if (
-        secondary_mode == "hblr"
+        transit_primary_fetcher
         and transit_app.has_api_key()
-        and hblr_secondary_spec
+        and (primary or {}).get("source") != "transit"
+    ):
+        transit_primary = transit_primary_fetcher()
+        if transit_primary:
+            result = _filter(transit_primary, secondary_board)
+            if _is_catchable_board(result):
+                return result
+            primary = transit_primary
+
+    if (
+        transit_secondary_fetcher
+        and transit_app.has_api_key()
         and (secondary_board or {}).get("source") != "transit"
     ):
-        transit_secondary = get_hblr_transit_board(
-            hblr_secondary_spec["station"],
-            hblr_secondary_spec["direction"],
-            now=now,
-            max_trains=HBLR_PATH_MAX_TRAINS,
-            raw_pool=36,
-        )
+        transit_secondary = transit_secondary_fetcher()
         if transit_secondary:
-            result = _filter(primary_board, transit_secondary)
+            result = _filter(primary, transit_secondary)
             if _is_catchable_board(result):
-                return result, primary_board
+                return result
 
     if fallback_current and _is_live_realtime_board(secondary_board):
-        return _filter(primary_board, secondary_board, fallback=True), primary_board
-    return result, primary_board
+        return _filter(primary, secondary_board, fallback=True)
+    return result
 
 
 def _path_board_for_spec(spec, path_bundle, fetch_json=None):
@@ -216,6 +222,26 @@ def _path_board_for_spec(spec, path_bundle, fetch_json=None):
     )
 
 
+def _path_transit_fetcher(spec):
+    from lib.path_trains import get_path_transit_board
+
+    def _fetch():
+        return get_path_transit_board(
+            spec["station"],
+            spec["direction"],
+            dest_filter=spec.get("dest_filter"),
+            max_trains=HBLR_PATH_MAX_TRAINS,
+            raw_pool=TRANSIT_TRANSFER_RAW_POOL,
+        )
+
+    return _fetch
+
+
+def get_lsp_primary_board(now=None):
+    """Liberty State Park northbound — primary for HBLR → PATH and WTC subway chain."""
+    return _hblr_board_for_spec(_LSP_PRIMARY, now=now)
+
+
 def _hblr_board_for_spec(spec, now=None):
     from lib.light_rail import get_hblr_board
 
@@ -230,49 +256,27 @@ def _hblr_board_for_spec(spec, now=None):
 
 def _build_hblr_to_path_section(path_bundle, fetch_json=None, now=None):
     primary = _hblr_board_for_spec(_LSP_PRIMARY, now=now)
-
-    def _connections_for(primary_board):
-        built = []
-        for cfg in _HBLR_TO_PATH_CONNECTIONS:
-            secondary_spec = cfg["secondary"]
-            secondary_raw = _path_board_for_spec(secondary_spec, path_bundle, fetch_json)
-            secondary, _ = resolve_transfer_board(
-                primary_board,
-                secondary_raw,
-                secondary_spec["offset"],
-                "LSP HBLR",
-                secondary_spec["station"].replace(" PATH", ""),
-                fallback_current=True,
-                fallback_suffix="PATH",
-                now=now,
-            )
-            built.append(
-                {
-                    "id": cfg["id"],
-                    "path_label": cfg["path_label"],
-                    "board": secondary,
-                }
-            )
-        return built
-
-    connections = _connections_for(primary)
-    if not any(_is_catchable_board(conn["board"]) for conn in connections):
-        from . import transit_app
-        from .light_rail import get_hblr_transit_board
-
-        if transit_app.has_api_key() and primary.get("source") != "transit":
-            transit_primary = get_hblr_transit_board(
-                _LSP_PRIMARY["station"],
-                _LSP_PRIMARY["direction"],
-                now=now,
-                max_trains=HBLR_PATH_MAX_TRAINS,
-                raw_pool=36,
-            )
-            if transit_primary:
-                upgraded = _connections_for(transit_primary)
-                if any(_is_catchable_board(conn["board"]) for conn in upgraded):
-                    primary = transit_primary
-                    connections = upgraded
+    connections = []
+    for cfg in _HBLR_TO_PATH_CONNECTIONS:
+        secondary_spec = cfg["secondary"]
+        secondary_raw = _path_board_for_spec(secondary_spec, path_bundle, fetch_json)
+        secondary = resolve_transfer_board(
+            primary,
+            secondary_raw,
+            secondary_spec["offset"],
+            "LSP HBLR",
+            secondary_spec["station"].replace(" PATH", ""),
+            transit_secondary_fetcher=_path_transit_fetcher(secondary_spec),
+            fallback_current=True,
+            fallback_suffix="PATH",
+        )
+        connections.append(
+            {
+                "id": cfg["id"],
+                "path_label": cfg["path_label"],
+                "board": secondary,
+            }
+        )
     return {
         "id": "hblr_to_path",
         "title": "HBLR → PATH",
@@ -294,17 +298,14 @@ def build_hblr_path_sections(path_bundle, fetch_json=None, now=None):
         primary_short = primary_spec["station"].replace(" PATH", "")
         secondary_short = secondary_spec["station"] + " HBLR"
 
-        secondary, _primary = resolve_transfer_board(
+        secondary = resolve_transfer_board(
             primary,
             secondary_raw,
             secondary_spec["offset"],
             primary_short,
             secondary_short,
-            secondary_mode="hblr",
-            hblr_secondary_spec=secondary_spec,
             fallback_current=True,
             fallback_suffix="HBLR",
-            now=now,
         )
 
         sections.append(

@@ -100,6 +100,13 @@ def parse_route_departures(payload, dest_ok, *, now_epoch=None, max_trains=12):
     for route in payload.get("route_departures") or []:
         if not isinstance(route, dict):
             continue
+        route_line = route.get("route_short_name")
+        if route_line in (None, ""):
+            boxed = route.get("compact_display_short_name") or route.get("route_display_short_name")
+            if isinstance(boxed, dict):
+                elements = boxed.get("elements") or []
+                if elements:
+                    route_line = elements[0]
         for merged in route.get("merged_itineraries") or []:
             if not isinstance(merged, dict):
                 continue
@@ -147,7 +154,7 @@ def parse_route_departures(payload, dest_ok, *, now_epoch=None, max_trains=12):
                     status = "REALTIME"
                 trains.append(
                     {
-                        "line": None,
+                        "line": str(route_line).strip() if route_line not in (None, "") else None,
                         "destination": headsign,
                         "minutes": minutes,
                         "eta": eta,

@@ -78,6 +78,7 @@ SUBWAY_WTC_CORTLANDT_NORTH = {
     "station_id": "138",
     "label": "WTC Cortlandt",
     "direction": SUBWAY_DIRECTION_NORTH,
+    "transit_stop_id": "MTAS:19443",
 }
 
 SUBWAY_WTC_E = {
@@ -90,6 +91,7 @@ SUBWAY_WTC_E_NORTH = {
     "station_id": "E01",
     "label": "WTC",
     "direction": SUBWAY_DIRECTION_NORTH,
+    "transit_stop_id": "MTAS:19012",
 }
 
 SUBWAY_CANAL_ACE = {
@@ -405,6 +407,7 @@ def _load_line_board(
         "_raw_trains": raw,
         "_line_specs": line_specs,
         "_per_line": per_line,
+        "source": "subwayapi" if raw else None,
     }
     if extra_minutes and trains:
         board["estimated"] = estimated
@@ -558,7 +561,7 @@ def apply_path_subway_connections(subway_boards, path_33rd_boards):
             catchable = _trains_per_line(filtered, per_line=per_line)
 
         short_path = path_label.replace(" PATH", "")
-        note = "after PATH %s +%s walk" % (short_path, walk)
+        note = "PATH %s +%s" % (short_path, walk)
         if label == "6 Av":
             note = "L East/Bk · " + note
         new_board = dict(board)
@@ -570,21 +573,171 @@ def apply_path_subway_connections(subway_boards, path_33rd_boards):
     return connected
 
 
-def apply_exchange_wtc_subway_connections(path_board, subway_boards):
-    """Northbound WTC subway cards after Exchange Place PATH + walk."""
-    from lib.hblr_path import resolve_transfer_board
+def _is_uptown_subway_headsign(headsign):
+    text = (headsign or "").casefold()
+    if _is_south_ferry_headsign(headsign):
+        return False
+    downtown_hints = (
+        "downtown",
+        "brooklyn",
+        "euclid",
+        "stillwell",
+        "flatbush",
+        "new lots",
+        "canarsie",
+    )
+    return not any(hint in text for hint in downtown_hints)
+
+
+def get_subway_transit_board(station, *, max_trains=3, raw_pool=6, per_line=1):
+    """Transit App subway departures — deeper pool for HBLR-tab transfer filters."""
+    from . import transit_app
+    from .hblr_path import TRANSIT_TRANSFER_RAW_POOL
+
+    if not transit_app.has_api_key():
+        return None
+    stop_id = station.get("transit_stop_id")
+    if not stop_id:
+        return None
+    cap = TRANSIT_TRANSFER_RAW_POOL
+    pool = max(max_trains, min(cap, raw_pool))
+    line_specs = None
+    label = station.get("label")
+    if label == "WTC Cortlandt":
+        line_specs = [("1", SUBWAY_DIRECTION_NORTH)]
+    elif label == "WTC":
+        line_specs = [
+            ("A", SUBWAY_DIRECTION_NORTH),
+            ("C", SUBWAY_DIRECTION_NORTH),
+            ("E", SUBWAY_DIRECTION_NORTH),
+        ]
+    try:
+        payload = transit_app.fetch_stop_departures(stop_id, max_departures=pool)
+        raw = transit_app.parse_route_departures(
+            payload,
+            _is_uptown_subway_headsign,
+            max_trains=pool,
+        )
+        for train in raw:
+            train["direction"] = SUBWAY_DIRECTION_NORTH
+            line = normalize_line(train.get("line"))
+            if line not in (None, "", "?"):
+                train["line"] = line
+    except Exception:
+        return None
+    if not raw:
+        return None
+    trains = _trains_per_line(raw, line_specs=line_specs, per_line=per_line)
+    return {
+        "label": station["label"],
+        "trains": trains[:max_trains],
+        "_raw_trains": raw,
+        "by_line": True,
+        "error": None,
+        "source": "transit",
+        "_line_specs": line_specs,
+        "_per_line": per_line,
+    }
+
+
+def _path_primary_after_lsp(lsp_primary, path_board):
+    """Exchange PATH WTC departures catchable after LSP HBLR + offset."""
+    from lib.hblr_path import (
+        HBLR_LSP_EXCHANGE_OFFSET,
+        TRANSIT_TRANSFER_RAW_POOL,
+        apply_transfer_filter,
+    )
+    from lib.path_trains import get_path_transit_board
+
+    def _catchable(primary_b, path_b):
+        return apply_transfer_filter(
+            primary_b,
+            path_b,
+            HBLR_LSP_EXCHANGE_OFFSET,
+            "LSP HBLR",
+            "Exchange",
+            fallback_current=False,
+        )
+
+    for path_b in (path_board,):
+        chained = _catchable(lsp_primary, path_b)
+        if chained.get("trains"):
+            return {
+                **path_b,
+                "trains": chained["trains"],
+                "_raw_trains": chained["trains"],
+            }
+    transit_path = get_path_transit_board(
+        "Exchange Place",
+        "nyc",
+        dest_filter="wtc",
+        max_trains=3,
+        raw_pool=TRANSIT_TRANSFER_RAW_POOL,
+    )
+    if transit_path:
+        chained = _catchable(lsp_primary, transit_path)
+        if chained.get("trains"):
+            return {
+                **transit_path,
+                "trains": chained["trains"],
+                "_raw_trains": chained["trains"],
+            }
+    return {
+        **(path_board or {"label": "Exchange Place", "trains": []}),
+        "trains": [],
+        "_raw_trains": [],
+    }
+
+
+def apply_exchange_wtc_subway_connections(path_board, subway_boards, lsp_primary=None):
+    """Northbound WTC subway cards after LSP → Exchange PATH + walk."""
+    from lib.hblr_path import (
+        HBLR_LSP_EXCHANGE_OFFSET,
+        TRANSIT_TRANSFER_RAW_POOL,
+        resolve_transfer_board,
+    )
+    from lib.path_trains import get_path_transit_board
+
+    path_primary = (
+        _path_primary_after_lsp(lsp_primary, path_board) if lsp_primary else path_board
+    )
+    lsp_note = (
+        "LSP HBLR +%s · " % HBLR_LSP_EXCHANGE_OFFSET if lsp_primary else ""
+    )
 
     connected = []
     for board in subway_boards or []:
-        filtered, _ = resolve_transfer_board(
-            path_board,
+        label = board.get("label")
+        station = SUBWAY_WTC_CORTLANDT_NORTH if label == "WTC Cortlandt" else SUBWAY_WTC_E_NORTH
+        if lsp_primary and not path_primary.get("trains"):
+            empty = dict(board)
+            empty["trains"] = []
+            empty["note"] = lsp_note + "no Exchange yet"
+            connected.append(empty)
+            continue
+        path_transit_fetcher = None
+        if not lsp_primary:
+            path_transit_fetcher = lambda: get_path_transit_board(
+                "Exchange Place",
+                "nyc",
+                dest_filter="wtc",
+                max_trains=3,
+                raw_pool=TRANSIT_TRANSFER_RAW_POOL,
+            )
+        allow_fallback = not lsp_primary or bool(path_primary.get("trains"))
+        filtered = resolve_transfer_board(
+            path_primary,
             board,
             EXCHANGE_WTC_PATH_WALK,
             "Exchange",
             board.get("label", "Subway"),
-            fallback_current=True,
+            transit_primary_fetcher=path_transit_fetcher,
+            transit_secondary_fetcher=lambda st=station: get_subway_transit_board(st),
+            fallback_current=allow_fallback,
             fallback_suffix="subway",
         )
+        if lsp_note and filtered.get("note"):
+            filtered["note"] = lsp_note + filtered["note"]
         connected.append(filtered)
     return connected
 

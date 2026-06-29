@@ -15,19 +15,22 @@ PATH_33RD_MAX_TRAINS = 1
 # slug = path.api.razza.dev name; panynj = ridepath.json consideredStation code
 PATH_STATIONS = [
     {"slug": "grove_street", "panynj": "GRV", "label": "Grove St PATH"},
-    {"slug": "newport", "panynj": "NEW", "label": "Newport PATH"},
+    {"slug": "newport", "panynj": "NEW", "label": "Newport PATH", "transit_stop_id": "PATH:520"},
 ]
 
 PATH_EXCHANGE_STATION = {
     "slug": "exchange_place",
     "panynj": "EXP",
     "label": "Exchange Place",
+    "transit_stop_id": "PATH:554",
 }
 
 PATH_33RD_STATIONS = [
     {"slug": "christopher_street", "panynj": "CHR", "label": "Chris St"},
     {"slug": "ninth_street", "panynj": "09S", "label": "9th St"},
 ]
+
+PATH_CHRISTOPHER_TRANSIT_STOP = "PATH:552"
 
 PATH_14TH_STATION = {
     "slug": "fourteenth_street",
@@ -38,11 +41,10 @@ PATH_14TH_STATION = {
 NINTH_ST_ESTIMATE_TO_14TH_MINUTES = 1
 
 PATH_NJ_STATIONS = [
-    {"slug": "christopher_street", "panynj": "CHR", "label": "Chris St"},
+    {"slug": "christopher_street", "panynj": "CHR", "label": "Chris St", "transit_stop_id": PATH_CHRISTOPHER_TRANSIT_STOP},
     {"slug": "ninth_street", "panynj": "09S", "label": "9th St"},
     {"slug": "thirty_third_street", "panynj": "33S", "label": "33rd St"},
-    # WTC shows Hoboken-bound trains too (transfer point for HBLR via Hoboken).
-    {"slug": "world_trade_center", "panynj": "WTC", "label": "WTC", "allow_hoboken": True},
+    {"slug": "world_trade_center", "panynj": "WTC", "label": "WTC", "allow_hoboken": True, "transit_stop_id": "PATH:553"},
 ]
 
 _DEST_SHORT = {
@@ -448,6 +450,74 @@ def _dest_filter_fn(name):
     return None
 
 
+def _is_nj_transit_headsign(headsign):
+    """NJ-bound PATH from Manhattan — exclude WTC / 33rd headsigns."""
+    if _is_wtc_destination(headsign) or _is_33rd_destination(headsign):
+        return False
+    text = (headsign or "").casefold()
+    nj_hints = (
+        "newark",
+        "hoboken",
+        "journal square",
+        "newport",
+        "harrison",
+        "grove",
+    )
+    return any(hint in text for hint in nj_hints)
+
+
+def _transit_dest_ok(direction, dest_filter):
+    if direction == "nj":
+        return _is_nj_transit_headsign
+    if dest_filter == "wtc":
+        return _is_wtc_destination
+    if dest_filter == "33rd":
+        return _is_33rd_destination
+    return lambda headsign: _is_wtc_destination(headsign) or _is_33rd_destination(headsign)
+
+
+def get_path_transit_board(
+    station_label,
+    direction,
+    dest_filter=None,
+    max_trains=PATH_MAX_TRAINS,
+    raw_pool=6,
+):
+    """Transit App PATH departures — deeper schedule pool for transfer filters."""
+    from . import transit_app
+    from .hblr_path import TRANSIT_TRANSFER_RAW_POOL
+
+    station = _PATH_STATION_LOOKUP.get(station_label)
+    if station is None or not transit_app.has_api_key():
+        return None
+    stop_id = station.get("transit_stop_id")
+    if not stop_id:
+        return None
+    cap = TRANSIT_TRANSFER_RAW_POOL
+    pool = max(max_trains, min(cap, raw_pool))
+    try:
+        payload = transit_app.fetch_stop_departures(stop_id, max_departures=pool)
+        dest_ok = _transit_dest_ok(direction, dest_filter)
+        raw = transit_app.parse_route_departures(payload, dest_ok, max_trains=pool)
+    except Exception:
+        return None
+    if not raw:
+        return None
+    trains = []
+    for train in raw:
+        entry = dict(train)
+        entry["destination"] = _short_destination(train.get("destination"))
+        trains.append(entry)
+    return {
+        "label": station["label"],
+        "trains": trains[:max_trains],
+        "_raw_trains": trains,
+        "by_line": False,
+        "error": None,
+        "source": "transit",
+    }
+
+
 def get_path_station_board(
     station_label,
     direction,
@@ -501,6 +571,7 @@ def get_path_station_board(
         "_raw_trains": trains,
         "by_line": False,
         "error": error if not trains else None,
+        "source": "panynj" if trains else None,
     }
     if not trains and fetch_json is not None:
         board = _maybe_enrich_with_razza(
