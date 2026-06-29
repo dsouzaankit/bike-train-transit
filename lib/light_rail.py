@@ -4,6 +4,7 @@
 Data source (first match wins):
   1. Transit App API (transit_credentials.json / TRANSIT_API_KEY) — real-time ETAs
   2. NJ Transit Bus/Light-Rail API (njt_credentials.json) — optional fallback
+     (code retained; NJT developer API tokens are currently unavailable for HBLR)
   3. Parsed PDF timetable in hblr_schedule_data.json
 """
 
