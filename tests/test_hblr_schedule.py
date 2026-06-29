@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Tests for HBLR PDF timetable loading and offline departure lookup."""
+"""Tests for HBLR PDF timetable loading and offline departure lookup.
+
+Transit vs PDF sync: tests/test_hblr_transit_pdf_sync.py (fixtures from
+tools/capture_transit_hblr_fixtures.py).
+"""
 
 import datetime
 import os
@@ -10,6 +14,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lib import hblr_schedule  # noqa: E402
 from lib.light_rail import get_hblr_board  # noqa: E402
+
+
+def _offline_board(*args, **kwargs):
+    kwargs.setdefault("force_offline", True)
+    return get_hblr_board(*args, **kwargs)
 
 
 class HblrScheduleDataTests(unittest.TestCase):
@@ -85,7 +94,7 @@ class WeekendBranchHeadwayTests(unittest.TestCase):
             datetime.datetime(2026, 6, 28, 1, 0),
         )
         for now in samples:
-            board = get_hblr_board(
+            board = _offline_board(
                 "Newport",
                 "to_liberty_state_park",
                 now=now,
@@ -105,7 +114,7 @@ class WeekendBranchHeadwayTests(unittest.TestCase):
 class OfflineScheduleTrainsTests(unittest.TestCase):
     def test_south_uses_pdf_times(self):
         now = datetime.datetime(2026, 6, 22, 8, 0)
-        board = get_hblr_board("Newport", "to_liberty_state_park", now=now, raw_pool=12)
+        board = _offline_board("Newport", "to_liberty_state_park", now=now, raw_pool=12)
         trains = board.get("trains") or []
         self.assertGreaterEqual(len(trains), 3)
         self.assertIn(trains[0]["destination"], ("8th St", "West Side Av"))
@@ -122,7 +131,7 @@ class OfflineScheduleTrainsTests(unittest.TestCase):
 
     def test_north_at_lsp_uses_pdf_not_headway_only(self):
         now = datetime.datetime(2026, 6, 22, 8, 0)
-        board = get_hblr_board("Liberty State Park", "northbound", now=now, raw_pool=12)
+        board = _offline_board("Liberty State Park", "northbound", now=now, raw_pool=12)
         trains = board.get("trains") or []
         self.assertGreaterEqual(len(trains), 3)
         self.assertIn(trains[0]["destination"], ("Hoboken", "Tonnelle Av"))
@@ -134,7 +143,7 @@ class OfflineScheduleTrainsTests(unittest.TestCase):
     def test_branch_lines_twenty_min_apart(self):
         """Each southern branch should keep ~20 min spacing, not combined trunk headway."""
         now = datetime.datetime(2026, 6, 28, 19, 0)  # Sunday 7pm
-        board = get_hblr_board(
+        board = _offline_board(
             "Newport", "to_liberty_state_park", now=now, max_trains=8, raw_pool=12
         )
         by_dest: dict[str, list[int]] = {}
@@ -152,7 +161,7 @@ class OfflineScheduleTrainsTests(unittest.TestCase):
         # Weekday PDF lists sparse afternoon times; headway fill applies after the
         # last explicit departure in the parsed pool (here ~4:34 PM at Exchange).
         now = datetime.datetime(2026, 6, 22, 16, 40)
-        board = get_hblr_board("Exchange Place", "to_liberty_state_park", now=now, raw_pool=12)
+        board = _offline_board("Exchange Place", "to_liberty_state_park", now=now, raw_pool=12)
         trains = board.get("trains") or []
         self.assertGreaterEqual(len(trains), 1)
         self.assertLessEqual(trains[0]["minutes"], 20)

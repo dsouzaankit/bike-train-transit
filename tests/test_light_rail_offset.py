@@ -69,6 +69,7 @@ class TransferFilterTests(unittest.TestCase):
             now=now,
             max_trains=3,
             raw_pool=36,
+            force_offline=True,
         )
         raw = secondary.get("_raw_trains") or []
         self.assertGreater(len(raw), 6, msg="expected wrapped overnight pool")

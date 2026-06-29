@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "captured_at": 1782745396,
+  "fixtures": [
+    {
+      "id": "lsp_northbound",
+      "station": "Liberty State Park",
+      "direction": "northbound",
+      "global_stop_id": "NJTR:3072",
+      "captured_at": 1782745396,
+      "file": "lsp_northbound.json"
+    },
+    {
+      "id": "exchange_southbound",
+      "station": "Exchange Place",
+      "direction": "to_liberty_state_park",
+      "global_stop_id": "NJTR:3076",
+      "captured_at": 1782745396,
+      "file": "exchange_southbound.json"
+    },
+    {
+      "id": "newport_southbound",
+      "station": "Newport",
+      "direction": "to_liberty_state_park",
+      "global_stop_id": "NJTR:3079",
+      "captured_at": 1782745396,
+      "file": "newport_southbound.json"
+    }
+  ]
+}

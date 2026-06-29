@@ -1,0 +1,897 @@
+{
+  "id": "lsp_northbound",
+  "station": "Liberty State Park",
+  "direction": "northbound",
+  "global_stop_id": "NJTR:3072",
+  "captured_at": 1782745396,
+  "payload": {
+    "route_departures": [
+      {
+        "alerts": [
+          {
+            "active_periods": [
+              {
+                "end": null,
+                "start": 1783180800
+              }
+            ],
+            "cause": "UNKNOWN_CAUSE",
+            "created_at": 1782473820,
+            "description": "Hudson-Bergen Light Rail: Schedule Changes due to Independence Day Celebration \u2013 Saturday, July 4, 2026\n\n<link|https://www.njtransit.com/node/2124447|More information at NJTransit.com|Tap Service Alert Link>",
+            "effect": "MODIFIED_SERVICE",
+            "informed_entities": [
+              {
+                "global_route_id": "NJTR:156744"
+              }
+            ],
+            "severity": "Info",
+            "title": "Modified Service"
+          },
+          {
+            "active_periods": [
+              {
+                "end": null,
+                "start": 1783180800
+              }
+            ],
+            "cause": "UNKNOWN_CAUSE",
+            "created_at": 1782414360,
+            "description": "Hudson-Bergen Light Rail: Schedule Changes due to Independence Day Celebration \u2013 Saturday, July 4, 2026\n\n<link|https://www.njtransit.com/node/2124102|More information at NJTransit.com|Tap Service Alert Link>",
+            "effect": "MODIFIED_SERVICE",
+            "informed_entities": [
+              {
+                "global_route_id": "NJTR:156744"
+              }
+            ],
+            "severity": "Info",
+            "title": "Modified Service"
+          },
+          {
+            "active_periods": [
+              {
+                "end": null,
+                "start": null
+              }
+            ],
+            "cause": "TECHNICAL_PROBLEM",
+            "created_at": 1782742500,
+            "description": "UPDATE: Garfield Avenue Station: Elevator Returned to Service - Effective Immediately\n\n<link|https://www.njtransit.com/node/2125917|More information at NJTransit.com|Tap Service Alert Link>",
+            "effect": "ACCESSIBILITY_ISSUE",
+            "informed_entities": [
+              {
+                "global_route_id": "NJTR:156744",
+                "global_stop_id": "NJTR:3113"
+              }
+            ],
+            "severity": "Warning",
+            "title": "Limited step-free accessibility"
+          }
+        ],
+        "compact_display_short_name": {
+          "boxed_text": "",
+          "elements": [
+            "vehicle-rail-njtlr",
+            "",
+            null
+          ],
+          "route_name_redundancy": false
+        },
+        "fares": [],
+        "global_route_id": "NJTR:156744",
+        "global_stop_id": "NJTR:3072",
+        "merged_itineraries": [
+          {
+            "closest_stop": {
+              "city_name": "",
+              "global_stop_id": "NJTR:3072",
+              "location_type": 0,
+              "parent_station": null,
+              "raw_stop_id": "36998",
+              "route_type": 0,
+              "rt_stop_id": "36998",
+              "stop_code": "30837",
+              "stop_lat": 40.71037898787209,
+              "stop_lon": -74.05581006103856,
+              "stop_name": "Liberty State Park-Ride",
+              "wheelchair_boarding": 0
+            },
+            "direction_id": 0,
+            "itineraries": [
+              {
+                "branch_code": "",
+                "canonical_itinerary": true,
+                "direction_headsign": "Hoboken Terminal",
+                "direction_id": 0,
+                "headsign": "Hoboken Terminal",
+                "internal_itinerary_id": "46",
+                "is_active": true,
+                "merged_headsign": "Hoboken Terminal"
+              }
+            ],
+            "schedule_items": [
+              {
+                "arrival_time": 1782745380,
+                "departure_time": 1782745380,
+                "internal_itinerary_id": "46",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "808",
+                "scheduled_arrival_time": 1782745380,
+                "scheduled_departure_time": 1782745380,
+                "trip_search_key": "NJTR:52020423:46:4:21",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782746580,
+                "departure_time": 1782746580,
+                "internal_itinerary_id": "46",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "809",
+                "scheduled_arrival_time": 1782746580,
+                "scheduled_departure_time": 1782746580,
+                "trip_search_key": "NJTR:52020423:46:4:22",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782747780,
+                "departure_time": 1782747780,
+                "internal_itinerary_id": "46",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "810",
+                "scheduled_arrival_time": 1782747780,
+                "scheduled_departure_time": 1782747780,
+                "trip_search_key": "NJTR:52020423:46:4:23",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782748980,
+                "departure_time": 1782748980,
+                "internal_itinerary_id": "46",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "811",
+                "scheduled_arrival_time": 1782748980,
+                "scheduled_departure_time": 1782748980,
+                "trip_search_key": "NJTR:52020423:46:4:24",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782750180,
+                "departure_time": 1782750180,
+                "internal_itinerary_id": "46",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "812",
+                "scheduled_arrival_time": 1782750180,
+                "scheduled_departure_time": 1782750180,
+                "trip_search_key": "NJTR:52020423:46:4:25",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782751380,
+                "departure_time": 1782751380,
+                "internal_itinerary_id": "46",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "813",
+                "scheduled_arrival_time": 1782751380,
+                "scheduled_departure_time": 1782751380,
+                "trip_search_key": "NJTR:52020423:46:4:26",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782752580,
+                "departure_time": 1782752580,
+                "internal_itinerary_id": "46",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "814",
+                "scheduled_arrival_time": 1782752580,
+                "scheduled_departure_time": 1782752580,
+                "trip_search_key": "NJTR:52020423:46:4:27",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782753780,
+                "departure_time": 1782753780,
+                "internal_itinerary_id": "46",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "815",
+                "scheduled_arrival_time": 1782753780,
+                "scheduled_departure_time": 1782753780,
+                "trip_search_key": "NJTR:52020423:46:4:28",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782754980,
+                "departure_time": 1782754980,
+                "internal_itinerary_id": "46",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "816",
+                "scheduled_arrival_time": 1782754980,
+                "scheduled_departure_time": 1782754980,
+                "trip_search_key": "NJTR:52020423:46:4:29",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782756180,
+                "departure_time": 1782756180,
+                "internal_itinerary_id": "46",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "817",
+                "scheduled_arrival_time": 1782756180,
+                "scheduled_departure_time": 1782756180,
+                "trip_search_key": "NJTR:52020423:46:4:30",
+                "wheelchair_accessible": 0
+              }
+            ]
+          },
+          {
+            "closest_stop": {
+              "city_name": "",
+              "global_stop_id": "NJTR:3072",
+              "location_type": 0,
+              "parent_station": null,
+              "raw_stop_id": "36998",
+              "route_type": 0,
+              "rt_stop_id": "36998",
+              "stop_code": "30837",
+              "stop_lat": 40.71037898787209,
+              "stop_lon": -74.05581006103856,
+              "stop_name": "Liberty State Park-Ride",
+              "wheelchair_boarding": 0
+            },
+            "direction_id": 1,
+            "itineraries": [
+              {
+                "branch_code": "",
+                "canonical_itinerary": true,
+                "direction_headsign": "8th Street",
+                "direction_id": 1,
+                "headsign": "8th Street",
+                "internal_itinerary_id": "48",
+                "is_active": true,
+                "merged_headsign": "8th Street"
+              },
+              {
+                "branch_code": "",
+                "canonical_itinerary": true,
+                "direction_headsign": "8th Street",
+                "direction_id": 1,
+                "headsign": "8th Street Light Rail Station",
+                "internal_itinerary_id": "52",
+                "is_active": true,
+                "merged_headsign": "8th Street Light Rail Station"
+              },
+              {
+                "branch_code": "",
+                "canonical_itinerary": true,
+                "direction_headsign": "8th Street",
+                "direction_id": 1,
+                "headsign": "22nd Street Light Rail Station",
+                "internal_itinerary_id": "54",
+                "is_active": true,
+                "merged_headsign": "22nd Street Light Rail Station"
+              }
+            ],
+            "schedule_items": [
+              {
+                "arrival_time": 1782745920,
+                "departure_time": 1782745920,
+                "internal_itinerary_id": "48",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1124",
+                "scheduled_arrival_time": 1782745920,
+                "scheduled_departure_time": 1782745920,
+                "trip_search_key": "NJTR:52020423:48:4:28",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782747120,
+                "departure_time": 1782747120,
+                "internal_itinerary_id": "48",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1125",
+                "scheduled_arrival_time": 1782747120,
+                "scheduled_departure_time": 1782747120,
+                "trip_search_key": "NJTR:52020423:48:4:29",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782748320,
+                "departure_time": 1782748320,
+                "internal_itinerary_id": "48",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1126",
+                "scheduled_arrival_time": 1782748320,
+                "scheduled_departure_time": 1782748320,
+                "trip_search_key": "NJTR:52020423:48:4:30",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782749520,
+                "departure_time": 1782749520,
+                "internal_itinerary_id": "48",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1127",
+                "scheduled_arrival_time": 1782749520,
+                "scheduled_departure_time": 1782749520,
+                "trip_search_key": "NJTR:52020423:48:4:31",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782750720,
+                "departure_time": 1782750720,
+                "internal_itinerary_id": "48",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1128",
+                "scheduled_arrival_time": 1782750720,
+                "scheduled_departure_time": 1782750720,
+                "trip_search_key": "NJTR:52020423:48:4:32",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782751920,
+                "departure_time": 1782751920,
+                "internal_itinerary_id": "48",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1129",
+                "scheduled_arrival_time": 1782751920,
+                "scheduled_departure_time": 1782751920,
+                "trip_search_key": "NJTR:52020423:48:4:33",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782753120,
+                "departure_time": 1782753120,
+                "internal_itinerary_id": "48",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1130",
+                "scheduled_arrival_time": 1782753120,
+                "scheduled_departure_time": 1782753120,
+                "trip_search_key": "NJTR:52020423:48:4:34",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782754320,
+                "departure_time": 1782754320,
+                "internal_itinerary_id": "48",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1131",
+                "scheduled_arrival_time": 1782754320,
+                "scheduled_departure_time": 1782754320,
+                "trip_search_key": "NJTR:52020423:48:4:35",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782764340,
+                "departure_time": 1782764340,
+                "internal_itinerary_id": "54",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1190",
+                "scheduled_arrival_time": 1782764340,
+                "scheduled_departure_time": 1782764340,
+                "trip_search_key": "NJTR:52020423:54:4:8",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782764760,
+                "departure_time": 1782764760,
+                "internal_itinerary_id": "52",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1173",
+                "scheduled_arrival_time": 1782764760,
+                "scheduled_departure_time": 1782764760,
+                "trip_search_key": "NJTR:52020423:52:4:4",
+                "wheelchair_accessible": 0
+              }
+            ]
+          }
+        ],
+        "mode_name": "Light rail",
+        "real_time_route_id": "Hudson-Bergen Light Rail",
+        "route_color": "00adee",
+        "route_display_short_name": {
+          "boxed_text": "Hudson-Bergen",
+          "elements": [
+            "vehicle-rail-njtlr",
+            "",
+            null
+          ],
+          "route_name_redundancy": false
+        },
+        "route_image": "",
+        "route_long_name": "8th Street - Hoboken Terminal",
+        "route_network_id": "NJ Transit|New Jersey",
+        "route_network_name": "NJ Transit",
+        "route_short_name": "Hudson-Bergen",
+        "route_text_color": "ffffff",
+        "route_timezone": "America/New_York",
+        "route_type": 0,
+        "sorting_key": "Hudson-Bergen",
+        "tts_long_name": "8th Street - Hoboken Terminal",
+        "tts_short_name": "Hudson-Bergen line",
+        "vehicle": {
+          "image": "vehicle-rail-njtlr",
+          "name": "train",
+          "name_inflection": "n"
+        }
+      },
+      {
+        "alerts": [
+          {
+            "active_periods": [
+              {
+                "end": null,
+                "start": 1783180800
+              }
+            ],
+            "cause": "UNKNOWN_CAUSE",
+            "created_at": 1782414360,
+            "description": "Hudson-Bergen Light Rail: Schedule Changes due to Independence Day Celebration \u2013 Saturday, July 4, 2026\n\n<link|https://www.njtransit.com/node/2124102|More information at NJTransit.com|Tap Service Alert Link>",
+            "effect": "MODIFIED_SERVICE",
+            "informed_entities": [
+              {
+                "global_route_id": "NJTR:156743"
+              }
+            ],
+            "severity": "Info",
+            "title": "Modified Service"
+          },
+          {
+            "active_periods": [
+              {
+                "end": null,
+                "start": null
+              }
+            ],
+            "cause": "TECHNICAL_PROBLEM",
+            "created_at": 1782742500,
+            "description": "UPDATE: Garfield Avenue Station: Elevator Returned to Service - Effective Immediately\n\n<link|https://www.njtransit.com/node/2125917|More information at NJTransit.com|Tap Service Alert Link>",
+            "effect": "ACCESSIBILITY_ISSUE",
+            "informed_entities": [
+              {
+                "global_route_id": "NJTR:156743",
+                "global_stop_id": "NJTR:3083"
+              },
+              {
+                "global_route_id": "NJTR:156743",
+                "global_stop_id": "NJTR:3130"
+              }
+            ],
+            "severity": "Warning",
+            "title": "Limited step-free accessibility"
+          },
+          {
+            "active_periods": [
+              {
+                "end": null,
+                "start": 1783180800
+              }
+            ],
+            "cause": "UNKNOWN_CAUSE",
+            "created_at": 1782473820,
+            "description": "Hudson-Bergen Light Rail: Schedule Changes due to Independence Day Celebration \u2013 Saturday, July 4, 2026\n\n<link|https://www.njtransit.com/node/2124447|More information at NJTransit.com|Tap Service Alert Link>",
+            "effect": "MODIFIED_SERVICE",
+            "informed_entities": [
+              {
+                "global_route_id": "NJTR:156743"
+              }
+            ],
+            "severity": "Info",
+            "title": "Modified Service"
+          }
+        ],
+        "compact_display_short_name": {
+          "boxed_text": "",
+          "elements": [
+            "vehicle-rail-njtlr",
+            "",
+            null
+          ],
+          "route_name_redundancy": false
+        },
+        "fares": [],
+        "global_route_id": "NJTR:156743",
+        "global_stop_id": "NJTR:3072",
+        "merged_itineraries": [
+          {
+            "closest_stop": {
+              "city_name": "",
+              "global_stop_id": "NJTR:3072",
+              "location_type": 0,
+              "parent_station": null,
+              "raw_stop_id": "36998",
+              "route_type": 0,
+              "rt_stop_id": "36998",
+              "stop_code": "30837",
+              "stop_lat": 40.71037898787209,
+              "stop_lon": -74.05581006103856,
+              "stop_name": "Liberty State Park-Ride",
+              "wheelchair_boarding": 0
+            },
+            "direction_id": 0,
+            "itineraries": [
+              {
+                "branch_code": "",
+                "canonical_itinerary": true,
+                "direction_headsign": "Tonnelle Avenue",
+                "direction_id": 0,
+                "headsign": "Tonnelle Avenue",
+                "internal_itinerary_id": "61",
+                "is_active": true,
+                "merged_headsign": "Tonnelle Avenue"
+              },
+              {
+                "branch_code": "",
+                "canonical_itinerary": true,
+                "direction_headsign": "Tonnelle Avenue",
+                "direction_id": 0,
+                "headsign": "Tonnelle Avenue",
+                "internal_itinerary_id": "63",
+                "is_active": false,
+                "merged_headsign": "Tonnelle Avenue"
+              }
+            ],
+            "schedule_items": [
+              {
+                "arrival_time": 1782745920,
+                "departure_time": 1782745920,
+                "internal_itinerary_id": "61",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "895",
+                "scheduled_arrival_time": 1782745920,
+                "scheduled_departure_time": 1782745920,
+                "trip_search_key": "NJTR:52020423:61:4:31",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782747120,
+                "departure_time": 1782747120,
+                "internal_itinerary_id": "61",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "896",
+                "scheduled_arrival_time": 1782747120,
+                "scheduled_departure_time": 1782747120,
+                "trip_search_key": "NJTR:52020423:61:4:32",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782748320,
+                "departure_time": 1782748320,
+                "internal_itinerary_id": "61",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "897",
+                "scheduled_arrival_time": 1782748320,
+                "scheduled_departure_time": 1782748320,
+                "trip_search_key": "NJTR:52020423:61:4:33",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782749520,
+                "departure_time": 1782749520,
+                "internal_itinerary_id": "61",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "898",
+                "scheduled_arrival_time": 1782749520,
+                "scheduled_departure_time": 1782749520,
+                "trip_search_key": "NJTR:52020423:61:4:34",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782750720,
+                "departure_time": 1782750720,
+                "internal_itinerary_id": "61",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "899",
+                "scheduled_arrival_time": 1782750720,
+                "scheduled_departure_time": 1782750720,
+                "trip_search_key": "NJTR:52020423:61:4:35",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782751920,
+                "departure_time": 1782751920,
+                "internal_itinerary_id": "61",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "900",
+                "scheduled_arrival_time": 1782751920,
+                "scheduled_departure_time": 1782751920,
+                "trip_search_key": "NJTR:52020423:61:4:36",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782753120,
+                "departure_time": 1782753120,
+                "internal_itinerary_id": "61",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "901",
+                "scheduled_arrival_time": 1782753120,
+                "scheduled_departure_time": 1782753120,
+                "trip_search_key": "NJTR:52020423:61:4:37",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782754320,
+                "departure_time": 1782754320,
+                "internal_itinerary_id": "61",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "902",
+                "scheduled_arrival_time": 1782754320,
+                "scheduled_departure_time": 1782754320,
+                "trip_search_key": "NJTR:52020423:61:4:38",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782755520,
+                "departure_time": 1782755520,
+                "internal_itinerary_id": "61",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "903",
+                "scheduled_arrival_time": 1782755520,
+                "scheduled_departure_time": 1782755520,
+                "trip_search_key": "NJTR:52020423:61:4:39",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1783157700,
+                "departure_time": 1783157700,
+                "internal_itinerary_id": "63",
+                "is_cancelled": false,
+                "is_last": true,
+                "is_real_time": false,
+                "rt_trip_id": "431",
+                "scheduled_arrival_time": 1783157700,
+                "scheduled_departure_time": 1783157700,
+                "trip_search_key": "NJTR:52020423:63:9:0",
+                "wheelchair_accessible": 0
+              }
+            ]
+          },
+          {
+            "closest_stop": {
+              "city_name": "",
+              "global_stop_id": "NJTR:3072",
+              "location_type": 0,
+              "parent_station": null,
+              "raw_stop_id": "36998",
+              "route_type": 0,
+              "rt_stop_id": "36998",
+              "stop_code": "30837",
+              "stop_lat": 40.71037898787209,
+              "stop_lon": -74.05581006103856,
+              "stop_name": "Liberty State Park-Ride",
+              "wheelchair_boarding": 0
+            },
+            "direction_id": 1,
+            "itineraries": [
+              {
+                "branch_code": "",
+                "canonical_itinerary": true,
+                "direction_headsign": "West Side Avenue",
+                "direction_id": 1,
+                "headsign": "West Side Avenue",
+                "internal_itinerary_id": "62",
+                "is_active": true,
+                "merged_headsign": "West Side Avenue"
+              }
+            ],
+            "schedule_items": [
+              {
+                "arrival_time": 1782745440,
+                "departure_time": 1782745440,
+                "internal_itinerary_id": "62",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1240",
+                "scheduled_arrival_time": 1782745440,
+                "scheduled_departure_time": 1782745440,
+                "trip_search_key": "NJTR:52020423:62:4:31",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782746640,
+                "departure_time": 1782746640,
+                "internal_itinerary_id": "62",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1241",
+                "scheduled_arrival_time": 1782746640,
+                "scheduled_departure_time": 1782746640,
+                "trip_search_key": "NJTR:52020423:62:4:32",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782747840,
+                "departure_time": 1782747840,
+                "internal_itinerary_id": "62",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1242",
+                "scheduled_arrival_time": 1782747840,
+                "scheduled_departure_time": 1782747840,
+                "trip_search_key": "NJTR:52020423:62:4:33",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782749040,
+                "departure_time": 1782749040,
+                "internal_itinerary_id": "62",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1243",
+                "scheduled_arrival_time": 1782749040,
+                "scheduled_departure_time": 1782749040,
+                "trip_search_key": "NJTR:52020423:62:4:34",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782750240,
+                "departure_time": 1782750240,
+                "internal_itinerary_id": "62",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1244",
+                "scheduled_arrival_time": 1782750240,
+                "scheduled_departure_time": 1782750240,
+                "trip_search_key": "NJTR:52020423:62:4:35",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782751440,
+                "departure_time": 1782751440,
+                "internal_itinerary_id": "62",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1245",
+                "scheduled_arrival_time": 1782751440,
+                "scheduled_departure_time": 1782751440,
+                "trip_search_key": "NJTR:52020423:62:4:36",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782752640,
+                "departure_time": 1782752640,
+                "internal_itinerary_id": "62",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1246",
+                "scheduled_arrival_time": 1782752640,
+                "scheduled_departure_time": 1782752640,
+                "trip_search_key": "NJTR:52020423:62:4:37",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782753840,
+                "departure_time": 1782753840,
+                "internal_itinerary_id": "62",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1247",
+                "scheduled_arrival_time": 1782753840,
+                "scheduled_departure_time": 1782753840,
+                "trip_search_key": "NJTR:52020423:62:4:38",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782755040,
+                "departure_time": 1782755040,
+                "internal_itinerary_id": "62",
+                "is_cancelled": false,
+                "is_last": false,
+                "is_real_time": false,
+                "rt_trip_id": "1248",
+                "scheduled_arrival_time": 1782755040,
+                "scheduled_departure_time": 1782755040,
+                "trip_search_key": "NJTR:52020423:62:4:39",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1782756240,
+                "departure_time": 1782756240,
+                "internal_itinerary_id": "62",
+                "is_cancelled": false,
+                "is_last": true,
+                "is_real_time": false,
+                "rt_trip_id": "1249",
+                "scheduled_arrival_time": 1782756240,
+                "scheduled_departure_time": 1782756240,
+                "trip_search_key": "NJTR:52020423:62:4:40",
+                "wheelchair_accessible": 0
+              }
+            ]
+          }
+        ],
+        "mode_name": "Light rail",
+        "real_time_route_id": "Hudson-Bergen Light Rail",
+        "route_color": "f99618",
+        "route_display_short_name": {
+          "boxed_text": "Hudson-Bergen",
+          "elements": [
+            "vehicle-rail-njtlr",
+            "",
+            null
+          ],
+          "route_name_redundancy": false
+        },
+        "route_image": "",
+        "route_long_name": "West Side Avenue - Tonnelle Avenue",
+        "route_network_id": "NJ Transit|New Jersey",
+        "route_network_name": "NJ Transit",
+        "route_short_name": "Hudson-Bergen",
+        "route_text_color": "ffffff",
+        "route_timezone": "America/New_York",
+        "route_type": 0,
+        "sorting_key": "Hudson-Bergen",
+        "tts_long_name": "West Side Avenue - Tonnelle Avenue",
+        "tts_short_name": "Hudson-Bergen line",
+        "vehicle": {
+          "image": "vehicle-rail-njtlr",
+          "name": "train",
+          "name_inflection": "n"
+        }
+      }
+    ]
+  }
+}

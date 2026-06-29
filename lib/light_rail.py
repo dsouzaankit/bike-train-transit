@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """Hudson-Bergen Light Rail (HBLR) departures for the HBLR↔PATH tab.
 
-Data source: NJ Transit Bus/Light-Rail API at pcsdata.njtransit.com (requires
-free developer credentials). Without credentials, falls back to the parsed PDF
-timetable in hblr_schedule_data.json where available, else headway estimates.
+Data source (first match wins):
+  1. Transit App API (transit_credentials.json / TRANSIT_API_KEY) — real-time ETAs
+  2. NJ Transit Bus/Light-Rail API (njt_credentials.json) — optional fallback
+  3. Parsed PDF timetable in hblr_schedule_data.json
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import urllib.parse
 import urllib.request
 
 from . import hblr_schedule
+from . import transit_app
 
 NJT_BASE = "https://pcsdata.njtransit.com"
 NJT_AUTH_PATH = "/api/BUSDV2/authenticateUser"
@@ -35,6 +37,7 @@ LIBERTY_STATE_PARK_DESTINATIONS = (
 )
 
 HBLR_STATIONS = {
+    # Bayonne/JC branch terminals — PDF offline schedule only (not shown in UI).
     "8th Street": {
         "label": "8th Street",
         "njt_stop": "8th Street",
@@ -45,19 +48,23 @@ HBLR_STATIONS = {
         "njt_stop": "West Side Avenue",
         "phase": 0,
     },
+    # Upstream stations — live boards (Transit → NJT → PDF) for HBLR↔PATH tab.
     "Liberty State Park": {
         "label": "Liberty State Park",
         "njt_stop": "Liberty State Park",
+        "transit_stop_id": "NJTR:3072",
         "phase": 0,
     },
     "Exchange Place": {
         "label": "Exchange Place",
         "njt_stop": "Exchange Place",
+        "transit_stop_id": "NJTR:3076",
         "phase": 3,
     },
     "Newport": {
         "label": "Newport",
         "njt_stop": "Newport",
+        "transit_stop_id": "NJTR:3079",
         "phase": 0,
     },
 }
@@ -96,6 +103,8 @@ def _load_credentials():
 
 
 def has_credentials():
+    if transit_app.has_api_key():
+        return True
     username, password, token = _load_credentials()
     return bool(token) or bool(username and password)
 
@@ -185,7 +194,28 @@ def _short_destination(name):
         return "8th St"
     if "bayonne" in low:
         return "8th St"
+    if "hoboken" in low:
+        return "Hoboken"
+    if "tonnelle" in low:
+        return "Tonnelle Av"
     return text or "?"
+
+
+def _fetch_transit_departures(station, direction, count):
+    stop_id = station.get("transit_stop_id")
+    if not stop_id or not transit_app.has_api_key():
+        return None
+    dest_ok = _destination_filter(direction)
+    payload = transit_app.fetch_stop_departures(stop_id, max_departures=count)
+    raw = transit_app.parse_route_departures(payload, dest_ok, max_trains=count)
+    if not raw:
+        return None
+    trains = []
+    for train in raw:
+        entry = dict(train)
+        entry["destination"] = _short_destination(train.get("destination"))
+        trains.append(entry)
+    return trains
 
 
 def _fetch_station_departures(station, token, direction):
@@ -247,33 +277,53 @@ def get_hblr_board(
     now=None,
     max_trains=3,
     raw_pool=12,
+    force_offline=False,
 ):
     """Single HBLR station board for a travel direction. Never raises."""
     station = HBLR_STATIONS.get(station_label)
     if station is None:
         return {"label": station_label, "trains": [], "error": "Unknown station"}
 
-    username, password, token = _load_credentials()
-    live = None
-    auth_error = None
-    if token or (username and password):
-        try:
-            if not token:
-                token = _authenticate(username, password)
-            if not token:
-                raise RuntimeError("NJT auth returned no token")
-            live = _fetch_station_departures(station, token, direction)
-        except Exception as exc:
-            auth_error = str(exc)
+    fetch_error = None
+    pool_size = max(max_trains, raw_pool)
 
-    if live:
-        return {
-            "label": station["label"],
-            "trains": live[:max_trains],
-            "_raw_trains": live,
-            "error": None,
-            "by_line": True,
-        }
+    live = None
+    if not force_offline:
+        try:
+            live = _fetch_transit_departures(station, direction, pool_size)
+        except Exception as exc:
+            fetch_error = str(exc)
+
+        if live:
+            return {
+                "label": station["label"],
+                "trains": live[:max_trains],
+                "_raw_trains": live,
+                "error": None,
+                "by_line": True,
+                "source": "transit",
+            }
+
+        username, password, token = _load_credentials()
+        if token or (username and password):
+            try:
+                if not token:
+                    token = _authenticate(username, password)
+                if not token:
+                    raise RuntimeError("NJT auth returned no token")
+                live = _fetch_station_departures(station, token, direction)
+                if live:
+                    return {
+                        "label": station["label"],
+                        "trains": live[:max_trains],
+                        "_raw_trains": live,
+                        "error": None,
+                        "by_line": True,
+                        "source": "njt",
+                    }
+            except Exception as exc:
+                if not fetch_error:
+                    fetch_error = str(exc)
 
     sched = _offline_trains(station, direction, now=now, count=raw_pool)
     board = {
@@ -284,7 +334,8 @@ def get_hblr_board(
         "by_line": True,
         "estimated": True,
         "note": "scheduled" if sched else "no service now",
+        "source": "pdf",
     }
-    if auth_error and not sched:
-        board["note"] = "scheduled (NJT auth failed)"
+    if fetch_error and not sched:
+        board["note"] = "scheduled (live fetch failed)"
     return board

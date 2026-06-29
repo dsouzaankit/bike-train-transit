@@ -8,3 +8,5 @@ citibike_alert/logs/
 bike_train_transit/bike_train_transit/
 njt_credentials.json
 .njt_credentials.json
+transit_credentials.json
+.transit_credentials.json
