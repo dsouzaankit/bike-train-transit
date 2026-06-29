@@ -154,6 +154,49 @@ class HblrPdfEveningReferenceTests(unittest.TestCase):
         self.assertIn(("Tonnelle Av", 30), pairs)
         self.assertIn(("Hoboken", 36), pairs)
 
+    def test_lsp_south_evening_branch_labels(self):
+        """LSP south ~8:25 PM: 8th St then West Side Av at +37 / +42."""
+        now = datetime.datetime(2026, 6, 28, 20, 25)
+        board = get_hblr_board(
+            "Liberty State Park",
+            "to_liberty_state_park",
+            now=now,
+            max_trains=10,
+            raw_pool=36,
+        )
+        pairs = [(t["destination"], t["minutes"]) for t in board.get("trains") or []]
+        self.assertIn(("8th St", 37), pairs)
+        self.assertIn(("West Side Av", 42), pairs)
+
+    def test_lsp_overnight_south_8th_at_1244_am(self):
+        """Weekday midnight: 8th St at 12:44 AM (not West Side)."""
+        now = datetime.datetime(2026, 6, 29, 0, 0)
+        board = get_hblr_board(
+            "Liberty State Park",
+            "to_liberty_state_park",
+            now=now,
+            max_trains=10,
+            raw_pool=36,
+        )
+        pairs = [(t["destination"], t["minutes"]) for t in board.get("trains") or []]
+        self.assertIn(("8th St", 44), pairs)
+        self.assertNotIn(("West Side Av", 44), pairs)
+
+    def test_newport_overnight_explicit_times(self):
+        """Weekday ~midnight: Newport uses PDF times (8th ~12:38 AM from 23:50)."""
+        now = datetime.datetime(2026, 6, 29, 23, 50)
+        board = get_hblr_board(
+            "Newport",
+            "to_liberty_state_park",
+            now=now,
+            max_trains=12,
+            raw_pool=36,
+        )
+        pairs = [(t["destination"], t["minutes"]) for t in board.get("trains") or []]
+        self.assertIn(("8th St", 48), pairs)
+        for _dest, delta in pairs:
+            self.assertGreaterEqual(delta, 0)
+
     def test_exchange_place_north_branch_labels_exchanged(self):
         """Exchange Place north: Tonnelle then Hoboken per PDF cycle."""
         now = datetime.datetime(2026, 6, 28, 20, 25)
@@ -167,6 +210,22 @@ class HblrPdfEveningReferenceTests(unittest.TestCase):
         pairs = [(t["destination"], t["minutes"]) for t in board.get("trains") or []]
         self.assertIn(("Tonnelle Av", 39), pairs)
         self.assertIn(("Hoboken", 44), pairs)
+
+    def test_exchange_place_overnight_south_8th_at_1244_am(self):
+        """Weekday ~midnight: 8th St at 12:44 AM (Gmaps), not afternoon ghost times."""
+        now = datetime.datetime(2026, 6, 29, 23, 50)
+        board = get_hblr_board(
+            "Exchange Place",
+            "to_liberty_state_park",
+            now=now,
+            max_trains=12,
+            raw_pool=36,
+        )
+        pairs = [(t["destination"], t["minutes"]) for t in board.get("trains") or []]
+        self.assertIn(("8th St", 54), pairs)
+        self.assertNotIn(("West Side Av", 54), pairs)
+        for _dest, delta in pairs:
+            self.assertGreaterEqual(delta, 0, msg="no negative ETAs: %s" % pairs)
 
     def test_newport_matches_manual_evening_reference(self):
         """Newport north/south labels and times vs Google Maps / PDF (Sun ~8:25 PM)."""

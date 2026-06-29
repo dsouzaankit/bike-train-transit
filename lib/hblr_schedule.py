@@ -56,7 +56,7 @@ _STATION_NORTH_BRANCH_PHASE = {
     "Exchange Place": 1,
     "Newport": 0,
 }
-# Southbound: split merged PDF times by index; 8th St first in each pair (index % 2).
+# Southbound: merged PDF times split by service-day order (see _south_labeled_explicit).
 _STATION_SOUTH_BRANCH_PHASE: dict[str, int] = {}
 _UPSTREAM_SOUTH_STATIONS = frozenset(
     label for label, offsets in SOUTH_BRANCH_OFFSETS.items() if max(offsets.values()) > 0
@@ -87,6 +87,81 @@ BRANCH_TERMINAL_PHASE_LAG = {
 }
 # Continuous minutes from noon: 0 = 12:00, 720 = 00:00, 885 = 02:45.
 WEEKEND_WINDOW_SPAN = (24 * 60 - WEEKEND_WINDOW_NOON) + WEEKEND_WINDOW_END
+
+
+def minutes_until_departure(
+    clock_minute: int,
+    now_mod: int,
+    *,
+    after_midnight_end: int = WEEKEND_WINDOW_END,
+) -> int | None:
+    """Minutes until departure on the PDF service-night timeline."""
+    now_off = clock_to_weekend_offset(now_mod)
+    dep_off = clock_to_weekend_offset(clock_minute)
+    if now_off is not None and dep_off is not None:
+        if dep_off >= now_off:
+            if (
+                clock_minute <= after_midnight_end
+                and clock_minute < now_mod
+                and now_mod < 22 * 60
+            ):
+                return None
+            return dep_off - now_off
+        if (
+            now_mod >= 22 * 60
+            and clock_minute <= after_midnight_end
+            and dep_off < now_off
+        ):
+            return dep_off - now_off
+        return None
+    if clock_minute >= now_mod:
+        return clock_minute - now_mod
+    if now_mod >= 22 * 60 and clock_minute <= after_midnight_end:
+        return clock_minute + 24 * 60 - now_mod
+    return None
+
+
+def _south_dest_for_service_index(
+    station_label: str,
+    index: int,
+    clock_minute: int,
+) -> str:
+    phase = _STATION_SOUTH_BRANCH_PHASE.get(station_label, 0)
+    return _SOUTH_BRANCHES[(index + phase) % len(_SOUTH_BRANCHES)]
+
+
+def _south_labeled_explicit(
+    station_label: str,
+    explicit: list[int],
+    now_mod: int | None = None,
+) -> dict[int, str]:
+    """Map each PDF station time to 8th St / West Side Av."""
+    if (
+        station_label == "Liberty State Park"
+        and now_mod is not None
+        and _in_overnight_service(now_mod)
+    ):
+        # LSP after ~10 PM: PDF list index + 1 (matches Gmaps overnight branch labels).
+        return {minute: _SOUTH_BRANCHES[(index + 1) % 2] for index, minute in enumerate(explicit)}
+
+    labels: dict[int, str] = {}
+    in_window: list[tuple[int, int]] = []
+    for minute in explicit:
+        offset = clock_to_weekend_offset(minute)
+        if offset is not None:
+            in_window.append((offset, minute))
+    in_window.sort()
+    for index, (_, minute) in enumerate(in_window):
+        labels[minute] = _south_dest_for_service_index(station_label, index, minute)
+    outside = sorted(minute for minute in explicit if clock_to_weekend_offset(minute) is None)
+    base = len(in_window)
+    for offset, minute in enumerate(outside):
+        labels[minute] = _south_dest_for_service_index(station_label, base + offset, minute)
+    return labels
+
+
+def _in_overnight_service(now_mod: int) -> bool:
+    return now_mod <= WEEKEND_WINDOW_END or now_mod >= 22 * 60
 
 
 def _load_data() -> dict | None:
@@ -314,11 +389,7 @@ def _south_upstream_trains(
     if not explicit:
         return []
 
-    by_dest: dict[str, list[int]] = {}
-    for index, minute in enumerate(explicit):
-        destination = _south_branch_for(station_label, index)
-        by_dest.setdefault(destination, []).append(minute)
-
+    labels = _south_labeled_explicit(station_label, explicit, now_mod)
     headway = service_headway(now)
     fill_headway = infer_headway_from_times(
         explicit,
@@ -327,9 +398,27 @@ def _south_upstream_trains(
     service_end = service_end_minute(now)
     now_continuous = clock_to_weekend_offset(now_mod)
 
+    by_dest: dict[str, list[int]] = {}
+    for minute, destination in labels.items():
+        by_dest.setdefault(destination, []).append(minute)
+
+    use_branch_grid = (
+        service_day_key(now) == "weekend" and now_continuous is not None
+    ) or _in_overnight_service(now_mod)
+
     trains: list[dict] = []
+    used_deltas: set[int] = set()
+
+    if now_mod >= 22 * 60:
+        for minute, destination in labels.items():
+            delta = minutes_until_departure(minute, now_mod)
+            if delta is None:
+                continue
+            trains.append(_train_dict(delta, destination))
+            used_deltas.add(delta)
+
     for destination, minutes in by_dest.items():
-        if service_day_key(now) == "weekend" and now_continuous is not None:
+        if use_branch_grid:
             clock_minutes = [
                 weekend_offset_to_clock(offset)
                 for offset in _weekend_branch_continuous_pool(minutes)
@@ -337,10 +426,12 @@ def _south_upstream_trains(
         else:
             clock_minutes = extend_with_headway(sorted(set(minutes)), fill_headway, service_end)
         for minute in clock_minutes:
-            delta = minute - now_mod
-            if delta < 0:
+            delta = minutes_until_departure(minute, now_mod)
+            if delta is None or delta in used_deltas:
                 continue
             trains.append(_train_dict(delta, destination))
+            used_deltas.add(delta)
+
     trains.sort(key=lambda item: (item["minutes"], item["destination"]))
     return trains[: max(1, count)]
 
@@ -415,25 +506,33 @@ def upcoming_departures(
         return []
 
     explicit = departure_minutes(label, travel_direction, now)
-    if explicit:
-        fill_headway = infer_headway_from_times(explicit, fallback=headway)
-        now_mod = now.hour * 60 + now.minute
-        pool = extend_with_headway(explicit, fill_headway, service_end_minute(now))
-        deltas = [minute - now_mod for minute in pool if minute >= now_mod]
-    else:
+    now_mod = now.hour * 60 + now.minute
+    if not explicit:
         deltas = _headway_deltas(station, now, headway, count)
+        trains = []
+        for index, delta in enumerate(deltas[: max(1, count)]):
+            if travel_direction == "northbound":
+                destination = _north_branch_for(label, index)
+            else:
+                destination = _SOUTH_BRANCHES[index % len(_SOUTH_BRANCHES)]
+            trains.append(_train_dict(delta, destination))
+        return trains
 
-    branches = (
-        _north_branches_for(label)
-        if travel_direction == "northbound"
-        else _SOUTH_BRANCHES
-    )
+    fill_headway = infer_headway_from_times(explicit, fallback=headway)
+    pool = extend_with_headway(explicit, fill_headway, service_end_minute(now))
+
     trains = []
-    for index, delta in enumerate(deltas[: max(1, count)]):
+    upcoming: list[tuple[int, int]] = []
+    for minute in pool:
+        delta = minutes_until_departure(minute, now_mod)
+        if delta is not None:
+            upcoming.append((delta, minute))
+
+    for index, (delta, _minute) in enumerate(upcoming[: max(1, count)]):
         if travel_direction == "northbound":
             destination = _north_branch_for(label, index)
         else:
-            destination = branches[index % len(branches)]
+            destination = _SOUTH_BRANCHES[index % len(_SOUTH_BRANCHES)]
         trains.append(_train_dict(delta, destination))
     return trains
 

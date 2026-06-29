@@ -46,6 +46,8 @@ STATIONS = [
     "Washington St",
     "City Hall",
     "Grove St PATH",
+    "Liberty Light Rail",
+    "Exchange Pl",
     "JC Medical Center",
 ]
 # Shorter labels for compact UI (same order as STATIONS). Use \n for a two-line name.
@@ -59,12 +61,14 @@ STATION_LABELS = [
     "Washington St",
     "City Hall",
     "Grove St PATH",
+    "Liberty\nLight Rail",
+    "Exchange Pl",
     "JC\nMedical Center",
 ]
 # Snapshot indices (matches STATIONS order above):
 #   0 Dixon Mills  1 Montgomery  |  2 Brunswick  3 Monmouth  4 Jersey & 6th
 #   5 Newport PATH  6 Washington  |  7 City Hall  8 Grove St PATH
-#   9 JC Medical Center (own row)
+#   9 Liberty Light Rail  10 Exchange Pl  |  11 JC Medical Center (own row)
 #
 # Group 1 — 6th St (2x2, empty cell beside Jersey)
 # Group 2 — Newport PATH, Washington St
@@ -74,7 +78,8 @@ GRID_GROUPS = [
     [(2, 3), (4, None)],   # Group 1
     [(5, 6)],              # Group 2
     [(7, 8)],              # City Hall, Grove St PATH
-    [(9, None)],           # JC Medical Center
+    [(9, 10)],             # Liberty Light Rail, Exchange Pl
+    [(11, None)],          # JC Medical Center
 ]
 
 

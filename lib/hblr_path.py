@@ -153,7 +153,7 @@ def _hblr_board_for_spec(spec, now=None):
         spec["direction"],
         now=now,
         max_trains=HBLR_PATH_MAX_TRAINS,
-        raw_pool=12,
+        raw_pool=36,
     )
 
 

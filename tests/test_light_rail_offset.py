@@ -56,6 +56,27 @@ class TransferFilterTests(unittest.TestCase):
         self.assertEqual(out["note"], "no Chris St yet")
         self.assertEqual(_mins(out), [10, 20])
 
+    def test_newport_catchable_after_midnight_wrap(self):
+        """Late evening: HBLR pool must include post-midnight PDF times for PATH +13."""
+        import datetime
+
+        from lib.light_rail import get_hblr_board
+
+        now = datetime.datetime(2026, 6, 28, 23, 32)
+        secondary = get_hblr_board(
+            "Newport",
+            "to_liberty_state_park",
+            now=now,
+            max_trains=3,
+            raw_pool=36,
+        )
+        raw = secondary.get("_raw_trains") or []
+        self.assertGreater(len(raw), 6, msg="expected wrapped overnight pool")
+        self.assertGreater(max(t["minutes"] for t in raw), 30)
+        primary = _board("Chris St", [9], raw=[9])
+        out = apply_transfer_filter(primary, secondary, 13, "Chris St", "Newport HBLR")
+        self.assertTrue(out["trains"], msg="PATH+13 should match overnight HBLR")
+
     def test_caps_to_max_trains(self):
         primary = _board("WTC", [0])
         secondary = _board("Exchange Place", list(range(7, 20)), raw=list(range(7, 20)))
