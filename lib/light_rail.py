@@ -30,6 +30,12 @@ SOUTHBOUND_DESTINATIONS = (
     "8th st",
     "8th street",
     "bayonne",
+    "22nd",
+)
+
+NORTHBOUND_DESTINATIONS = (
+    "hoboken",
+    "tonnelle",
 )
 
 LIBERTY_STATE_PARK_DESTINATIONS = (
@@ -156,12 +162,8 @@ def _is_southbound_destination(name):
 
 
 def _is_northbound_destination(name):
-    if _is_southbound_destination(name):
-        return False
     text = (name or "").casefold()
-    if any(token in text for token in LIBERTY_STATE_PARK_DESTINATIONS):
-        return False
-    return bool(text.strip())
+    return any(token in text for token in NORTHBOUND_DESTINATIONS)
 
 
 def _is_towards_liberty_state_park(name):
@@ -195,6 +197,8 @@ def _short_destination(name):
         return "Hoboken"
     if "tonnelle" in low:
         return "Tonnelle Av"
+    if "22nd" in low:
+        return "22nd St"
     return text or "?"
 
 
@@ -210,6 +214,7 @@ def _fetch_transit_departures(station, direction, count):
     trains = []
     for train in raw:
         entry = dict(train)
+        entry.pop("line", None)
         entry["destination"] = _short_destination(train.get("destination"))
         trains.append(entry)
     return trains

@@ -92,6 +92,24 @@ def _minutes_until(departure_epoch, now_epoch=None):
     return max(0, (delta + 59) // 60)
 
 
+def _route_display_line(route):
+    """Human-readable route label — skip Transit icon tokens like vehicle-rail-njtlr."""
+    line = route.get("route_short_name")
+    if line not in (None, ""):
+        text = str(line).strip()
+        if text and not text.startswith("vehicle-"):
+            return text
+    boxed = route.get("compact_display_short_name") or route.get("route_display_short_name")
+    if isinstance(boxed, dict):
+        for element in boxed.get("elements") or []:
+            if element is None:
+                continue
+            text = str(element).strip()
+            if text and not text.startswith("vehicle-"):
+                return text
+    return None
+
+
 def parse_route_departures(payload, dest_ok, *, now_epoch=None, max_trains=12):
     """Flatten v4 stop_departures into sorted train dicts for one direction filter."""
     now_epoch = now_epoch if now_epoch is not None else time.time()
@@ -100,13 +118,7 @@ def parse_route_departures(payload, dest_ok, *, now_epoch=None, max_trains=12):
     for route in payload.get("route_departures") or []:
         if not isinstance(route, dict):
             continue
-        route_line = route.get("route_short_name")
-        if route_line in (None, ""):
-            boxed = route.get("compact_display_short_name") or route.get("route_display_short_name")
-            if isinstance(boxed, dict):
-                elements = boxed.get("elements") or []
-                if elements:
-                    route_line = elements[0]
+        route_line = _route_display_line(route)
         for merged in route.get("merged_itineraries") or []:
             if not isinstance(merged, dict):
                 continue
@@ -154,7 +166,7 @@ def parse_route_departures(payload, dest_ok, *, now_epoch=None, max_trains=12):
                     status = "REALTIME"
                 trains.append(
                     {
-                        "line": str(route_line).strip() if route_line not in (None, "") else None,
+                        "line": route_line,
                         "destination": headsign,
                         "minutes": minutes,
                         "eta": eta,

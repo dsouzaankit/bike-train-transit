@@ -119,6 +119,28 @@ class TransitAppParseTests(unittest.TestCase):
         self.assertIn("Hoboken Terminal", dests)
         self.assertIn("Tonnelle Avenue", dests)
         self.assertNotIn("8th Street", dests)
+        self.assertNotIn("22nd Street Light Rail Station", dests)
+
+    def test_northbound_rejects_22nd_street(self):
+        self.assertFalse(_is_northbound_destination("22nd Street Light Rail Station"))
+        self.assertTrue(_is_towards_liberty_state_park("22nd Street Light Rail Station"))
+
+    def test_route_display_line_skips_vehicle_icon(self):
+        from lib.transit_app import _route_display_line
+
+        line = _route_display_line(
+            {
+                "route_short_name": None,
+                "compact_display_short_name": {
+                    "elements": ["vehicle-rail-njtlr", "", None],
+                },
+            }
+        )
+        self.assertIsNone(line)
+        self.assertEqual(
+            _route_display_line({"route_short_name": "Hudson-Bergen"}),
+            "Hudson-Bergen",
+        )
 
     def test_southbound_filters_bayonne_branches(self):
         now = 2000000000 - 120
@@ -154,6 +176,7 @@ class TransitAppParseTests(unittest.TestCase):
             trains = _fetch_transit_departures(station, "northbound", 6)
         self.assertTrue(trains)
         self.assertEqual(trains[0]["destination"], "Hoboken")
+        self.assertNotIn("line", trains[0])
         fetch_mock.assert_called_once()
 
 

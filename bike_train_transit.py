@@ -117,7 +117,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v16"
+BUILD_TAG = "hblr-path-v17"
 
 COLORS = {
     "bg": "#0f1419",
