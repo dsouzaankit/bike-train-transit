@@ -44,16 +44,48 @@ SOUTH_BRANCH_DEST = {
 }
 
 _NORTH_BRANCHES = ("Hoboken", "Tonnelle Av")
+_EXCHANGED_NORTH_BRANCHES = ("Tonnelle Av", "Hoboken")
+# PDF north columns: Tonnelle/Hoboken cycle; phase aligns list index to branch per station.
+_STATION_NORTH_BRANCHES = {
+    "Liberty State Park": _EXCHANGED_NORTH_BRANCHES,
+    "Exchange Place": _EXCHANGED_NORTH_BRANCHES,
+    "Newport": _EXCHANGED_NORTH_BRANCHES,
+}
+_STATION_NORTH_BRANCH_PHASE = {
+    "Liberty State Park": 0,
+    "Exchange Place": 1,
+    "Newport": 0,
+}
+# Southbound: split merged PDF times by index; 8th St first in each pair (index % 2).
+_STATION_SOUTH_BRANCH_PHASE: dict[str, int] = {}
+_UPSTREAM_SOUTH_STATIONS = frozenset(
+    label for label, offsets in SOUTH_BRANCH_OFFSETS.items() if max(offsets.values()) > 0
+)
+
+
+def _north_branches_for(station_label: str) -> tuple[str, ...]:
+    return _STATION_NORTH_BRANCHES.get(station_label, _NORTH_BRANCHES)
+
+
+def _north_branch_for(station_label: str, index: int) -> str:
+    branches = _north_branches_for(station_label)
+    phase = _STATION_NORTH_BRANCH_PHASE.get(station_label, 0)
+    return branches[(index + phase) % len(branches)]
+
+
+def _south_branch_for(station_label: str, index: int) -> str:
+    phase = _STATION_SOUTH_BRANCH_PHASE.get(station_label, 0)
+    return _SOUTH_BRANCHES[(index + phase) % len(_SOUTH_BRANCHES)]
 _DEFAULT_BRANCH_HEADWAY = 20
 WEEKEND_BRANCH_HEADWAY = 20
 WEEKEND_WINDOW_NOON = 12 * 60
-WEEKEND_WINDOW_END = 2 * 60  # 02:00
+WEEKEND_WINDOW_END = 2 * 60 + 45  # 02:45
 WEST_SIDE_TERMINAL_PHASE_LAG = 4  # vs 8th St; +1 min run-time diff => +5 at Newport/Exchange
 BRANCH_TERMINAL_PHASE_LAG = {
     "8th Street": 0,
     "West Side Ave": WEST_SIDE_TERMINAL_PHASE_LAG,
 }
-# Continuous minutes from noon: 0 = 12:00, 720 = 00:00, 840 = 02:00.
+# Continuous minutes from noon: 0 = 12:00, 720 = 00:00, 885 = 02:45.
 WEEKEND_WINDOW_SPAN = (24 * 60 - WEEKEND_WINDOW_NOON) + WEEKEND_WINDOW_END
 
 
@@ -237,7 +269,11 @@ def extend_with_headway(
     headway: int,
     service_end: int,
 ) -> list[int]:
-    """Append headway-spaced departures after the last explicit PDF time."""
+    """Append headway-spaced departures after the last explicit PDF time.
+
+    Does not fill gaps mid-schedule (weekday PDF omits many midday windows per
+    the "every 10-20 minutes" footnote).
+    """
     if headway <= 0 or not departures:
         return list(departures)
     merged = set(departures)
@@ -267,12 +303,57 @@ def _train_dict(minutes: int, destination: str) -> dict:
     }
 
 
+def _south_upstream_trains(
+    station_label: str,
+    now: datetime.datetime,
+    count: int,
+) -> list[dict]:
+    """Southbound at Newport / Exchange / LSP: use that station's PDF column."""
+    now_mod = now.hour * 60 + now.minute
+    explicit = departure_minutes(station_label, "to_liberty_state_park", now)
+    if not explicit:
+        return []
+
+    by_dest: dict[str, list[int]] = {}
+    for index, minute in enumerate(explicit):
+        destination = _south_branch_for(station_label, index)
+        by_dest.setdefault(destination, []).append(minute)
+
+    headway = service_headway(now)
+    fill_headway = infer_headway_from_times(
+        explicit,
+        fallback=headway or WEEKEND_BRANCH_HEADWAY,
+    )
+    service_end = service_end_minute(now)
+    now_continuous = clock_to_weekend_offset(now_mod)
+
+    trains: list[dict] = []
+    for destination, minutes in by_dest.items():
+        if service_day_key(now) == "weekend" and now_continuous is not None:
+            clock_minutes = [
+                weekend_offset_to_clock(offset)
+                for offset in _weekend_branch_continuous_pool(minutes)
+            ]
+        else:
+            clock_minutes = extend_with_headway(sorted(set(minutes)), fill_headway, service_end)
+        for minute in clock_minutes:
+            delta = minute - now_mod
+            if delta < 0:
+                continue
+            trains.append(_train_dict(delta, destination))
+    trains.sort(key=lambda item: (item["minutes"], item["destination"]))
+    return trains[: max(1, count)]
+
+
 def _south_branch_trains(
     station_label: str,
     now: datetime.datetime,
     count: int,
 ) -> list[dict]:
     """8th St and West Side Ave each keep their own ~20 min PDF branch schedule."""
+    if station_label in _UPSTREAM_SOUTH_STATIONS:
+        return _south_upstream_trains(station_label, now, count)
+
     now_mod = now.hour * 60 + now.minute
     now_continuous = clock_to_weekend_offset(now_mod)
     offsets = SOUTH_BRANCH_OFFSETS.get(station_label, {})
@@ -342,10 +423,17 @@ def upcoming_departures(
     else:
         deltas = _headway_deltas(station, now, headway, count)
 
-    branches = _NORTH_BRANCHES if travel_direction == "northbound" else _SOUTH_BRANCHES
+    branches = (
+        _north_branches_for(label)
+        if travel_direction == "northbound"
+        else _SOUTH_BRANCHES
+    )
     trains = []
     for index, delta in enumerate(deltas[: max(1, count)]):
-        destination = branches[index % len(branches)]
+        if travel_direction == "northbound":
+            destination = _north_branch_for(label, index)
+        else:
+            destination = branches[index % len(branches)]
         trains.append(_train_dict(delta, destination))
     return trains
 

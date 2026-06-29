@@ -60,8 +60,28 @@ STATIONS = (
 )
 
 
+PHASE_MORNING = "morning"
+PHASE_AFTERNOON = "afternoon"
+PHASE_LATENIGHT = "latenight"
+
+# After ~10 PM, the next 12xx block is midnight (12:xx AM), not noon.
+_EVENING_THRESHOLD = 22 * 60
+# Early-morning reset runs through 02:45 AM per the PDF footnote.
+_LATE_NIGHT_END = 2 * 60 + 45
+
+
+def _late_night_clock(hour: int, minute: int) -> int | None:
+    """Map a post-midnight token to minutes from midnight, or None past 02:45."""
+    if hour == 12:
+        return minute
+    clock = hour * 60 + minute
+    if clock <= _LATE_NIGHT_END:
+        return clock
+    return None
+
+
 def parse_time_token(text: str) -> int | None:
-    """Parse NJT clock-face token (HMM / HHMM) to minutes from midnight."""
+    """Parse a single token without band/sequence context (tests only)."""
     if not TIME_RE.match(text):
         return None
     value = int(text)
@@ -71,6 +91,76 @@ def parse_time_token(text: str) -> int | None:
     if hour >= 24 or minute >= 60:
         return None
     return hour * 60 + minute
+
+
+def parse_time_sequence(tokens: list[str], *, pm_band: bool = False) -> list[int]:
+    """Parse y-sorted timetable tokens with NJT's repeated 12-hour cycles.
+
+    Each band rolls 12xx (noon) → 1xx–11xx (PM, +12 h) → 12xx (midnight) →
+    1xx–2xx (early AM next day, through 02:45 AM). The PM band skips morning.
+    """
+    phase = PHASE_AFTERNOON if pm_band else PHASE_MORNING
+    last_clock = -1
+    times: set[int] = set()
+
+    for text in tokens:
+        if not TIME_RE.match(text):
+            continue
+        value = int(text)
+        if value < 100 or value >= 2400:
+            continue
+        hour, minute = divmod(value, 100)
+        if hour >= 24 or minute >= 60:
+            continue
+
+        clock: int | None = None
+        if phase == PHASE_MORNING:
+            if hour == 12:
+                clock = 12 * 60 + minute
+                phase = PHASE_AFTERNOON
+            elif hour < 12:
+                clock = hour * 60 + minute
+        elif phase == PHASE_AFTERNOON:
+            if hour == 12:
+                if last_clock >= _EVENING_THRESHOLD:
+                    clock = minute
+                    phase = PHASE_LATENIGHT
+                else:
+                    clock = 12 * 60 + minute
+            elif hour < 12:
+                clock = (hour + 12) * 60 + minute
+        elif phase == PHASE_LATENIGHT:
+            clock = _late_night_clock(hour, minute)
+
+        if clock is not None:
+            times.add(clock)
+            last_clock = clock
+
+    return sorted(times)
+
+
+def minutes_to_pdf_token(clock: int) -> str:
+    """NJT PDF-style clock token (12-hour, no AM/PM) for debugging against the PDF."""
+    hour, minute = divmod(clock, 60)
+    if hour >= 24:
+        hour -= 24
+    if hour == 0:
+        return f"12{minute:02d}"
+    if hour < 12:
+        return f"{hour}{minute:02d}"
+    if hour == 12:
+        return f"12{minute:02d}"
+    return f"{hour - 12}{minute:02d}"
+
+
+def _attach_pdf_debug_tokens(schedule: dict[str, dict[str, dict]]) -> None:
+    for stations in schedule.values():
+        for bucket in stations.values():
+            for service_key in ("weekday", "weekend"):
+                minutes = bucket.get(service_key)
+                if not minutes:
+                    continue
+                bucket[f"{service_key}_pdf"] = [minutes_to_pdf_token(m) for m in minutes]
 
 
 def _page_service_key(page) -> str:
@@ -94,8 +184,10 @@ def _extract_column_times(
     y_min: float,
     y_max: float,
     tolerance: float = 8.0,
+    *,
+    pm_band: bool = False,
 ) -> list[int]:
-    times: set[int] = set()
+    column_tokens: list[str] = []
     for word in words:
         x0, y0, x1, y1, text, _block, _line, _wno = word
         if y0 < y_min or y0 > y_max:
@@ -105,10 +197,10 @@ def _extract_column_times(
         cx = (x0 + x1) / 2.0
         if abs(cx - station_x) > tolerance:
             continue
-        minute = parse_time_token(text)
-        if minute is not None:
-            times.add(minute)
-    return sorted(times)
+        column_tokens.append((y0, text))
+
+    column_tokens.sort(key=lambda item: item[0])
+    return parse_time_sequence([text for _y, text in column_tokens], pm_band=pm_band)
 
 
 def parse_hblr_pdf(path: str) -> dict:
@@ -129,7 +221,8 @@ def parse_hblr_pdf(path: str) -> dict:
         words = page.get_text("words")
         page_height = page.rect.height
 
-        for y_min, y_max in _time_bands(page_index, page_height):
+        for band_index, (y_min, y_max) in enumerate(_time_bands(page_index, page_height)):
+            pm_band = band_index == 1
             for direction, columns in DIRECTION_COLUMNS.items():
                 for station, station_x in columns:
                     departures = _extract_column_times(
@@ -137,6 +230,7 @@ def parse_hblr_pdf(path: str) -> dict:
                         station_x,
                         y_min,
                         y_max,
+                        pm_band=pm_band,
                     )
                     if not departures:
                         continue
@@ -152,6 +246,8 @@ def parse_hblr_pdf(path: str) -> dict:
             for service_key in ("weekday", "weekend"):
                 schedule[direction][station].setdefault(service_key, [])
 
+    _attach_pdf_debug_tokens(schedule)
+
     return {
         "source_url": HBLR_PDF_URL,
         "directions": schedule,
@@ -160,8 +256,15 @@ def parse_hblr_pdf(path: str) -> dict:
             "(8th Street, West Side Ave, Liberty State Park, Exchange Place, "
             "Newport). south_to_bayonne = right columns (Newport, Exchange Place, "
             "Liberty State Park, West Side Ave, 8th Street). "
-            "Afternoon/evening gaps may be filled at runtime with headway "
-            "estimates per the PDF footnote."
+            "weekday / weekend = minutes from midnight (runtime). "
+            "weekday_pdf / weekend_pdf = same times as NJT PDF tokens (debug only). "
+            "NJT PDF timetable tokens repeat 12-hour cycles: noon (12xx), "
+            "afternoon/evening (1xx–11xx, +12 h), then after ~10 PM a midnight "
+            "reset (12xx = 12:xx AM) and early-morning service (through 02:45 AM). "
+            "Weekday columns often skip midday ranges covered by the PDF footnote "
+            "(trips continuing every 10–20 minutes on each service route); those "
+            "gaps are expected and are not back-filled from the PDF. "
+            "Runtime may extend headway only after the last explicit time in a pool."
         ),
     }
 

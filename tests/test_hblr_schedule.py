@@ -149,7 +149,9 @@ class OfflineScheduleTrainsTests(unittest.TestCase):
             self.assertLessEqual(gap, 22, msg=f"{dest} gap {gap}")
 
     def test_headway_extends_after_last_pdf_time(self):
-        now = datetime.datetime(2026, 6, 22, 14, 0)
+        # Weekday PDF lists sparse afternoon times; headway fill applies after the
+        # last explicit departure in the parsed pool (here ~4:34 PM at Exchange).
+        now = datetime.datetime(2026, 6, 22, 16, 40)
         board = get_hblr_board("Exchange Place", "to_liberty_state_park", now=now, raw_pool=12)
         trains = board.get("trains") or []
         self.assertGreaterEqual(len(trains), 1)

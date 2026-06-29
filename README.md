@@ -93,7 +93,13 @@ Four connection sections (primary departures + catchable secondary after the off
 
 **HBLR data source:** live NJ Transit Bus/Light-Rail API when credentials are configured; otherwise **`lib/hblr_schedule_data.json`** — PDF timetable for **8th Street, West Side Ave, Liberty State Park, Exchange Place, and Newport**, both **north (Hoboken/Tonnelle)** and **south (Bayonne branches)** directions (marked `~`). Rebuild with `python tools/build_hblr_schedule.py` on PC when NJT updates the timetable.
 
-**Weekend southbound (PDF fallback):** 20-minute headway from noon–2 a.m.; **8th St** and **West Side Av** branches are paired (West Side departs **5 min** after 8th St toward Liberty State Park at Newport and Exchange Place). Live PATH boards are unchanged; weekend **PATH↔HBLR timing assumptions** are validated in unit tests only (see [Unit tests](#unit-tests)).
+**PDF parsing (`tools/build_hblr_schedule.py`):** extracts **departure times per station column**, not destination labels. The NJT PDF is a grid: left columns = north, right = south; each station has a fixed **x** position; times are read top-to-bottom in **AM** and **PM** bands. Tokens are 12-hour without AM/PM — each band repeats **12xx (noon)** → **1xx–11xx (afternoon/evening, +12 h)** → **12xx (midnight reset)** → **1xx–2xx (early AM through 02:45)**. `hblr_schedule_data.json` stores **`weekday` / `weekend`** as minutes from midnight (runtime) plus parallel **`weekday_pdf` / `weekend_pdf`** strings matching PDF tokens (debug).
+
+**Weekday gaps in the PDF:** many weekday columns omit midday times between AM and PM bands. The timetable footnote says trips continue every **10–20 minutes** on each route — those ranges are **intentionally not listed** and we **do not** try to reconstruct every missing slot from the PDF. Offline boards may use runtime headway only **after the last explicit time** in a pool, not to fill holes mid-day.
+
+**Offline line assignment (PDF fallback only):** the parser does **not** know Hoboken vs Tonnelle or 8th St vs West Side per timestamp. At runtime, `lib/hblr_schedule.py` assigns destinations heuristically — **northbound** alternates Hoboken / Tonnelle Av by list index (**Tonnelle-first cycle** at Liberty State Park, Exchange Place, and Newport, with a one-index phase offset at Exchange Place); **southbound** at Newport, Exchange Place, and Liberty State Park uses each station’s PDF `south_to_bayonne` column, split into **8th St** and **West Side Av** pools by list index (weekend: 20-minute branch grids from those pools). Terminal stations (**8th Street**, **West Side Ave**) still use branch-terminal pools. Live NJT API returns the real destination per train.
+
+**Weekend southbound (PDF fallback):** 20-minute headway from **noon–02:45**. At **Newport**, **Exchange Place**, and **Liberty State Park**, each branch keeps a 20-minute grid built from that station’s PDF column (8th St on even indices, West Side Av on odd). At **8th Street** and **West Side Ave** terminals, boards still use branch-terminal pools. Pairs are typically **5 min** apart (West Side after 8th St). Live PATH boards are unchanged; weekend **PATH↔HBLR timing assumptions** use terminal-derived models in unit tests only (see [Unit tests](#unit-tests)).
 
 ### Tunnels
 
@@ -128,7 +134,7 @@ bike_train_transit/
     lan_debug_server.py           # LAN debug HTTP server
   tests/                          # Unit tests (HBLR, PATH transfers, weekend sync, From JC express-local)
   tools/
-    build_hblr_schedule.py        # PC-only: parse NJT HBLR PDF → hblr_schedule_data.json
+| `build_hblr_schedule.py`        # PC-only: parse NJT HBLR PDF → hblr_schedule_data.json (pymupdf; 12-hour band cycles)
   windows/                        # PC helpers for LAN debug URLs, deploy config
   .env.example                    # Yahoo SMTP template
 ```
@@ -365,7 +371,7 @@ cd "P:\all_scripts\iOS apps\bike_train_transit"
 python -m unittest discover -s tests -q
 ```
 
-Covers HBLR PDF parsing, weekend southbound branch headways, HBLR↔PATH transfer offsets (`test_light_rail_offset.py`, `test_hblr_path_sections.py`), From JC **express-local** subway cards (`test_subway_from_jc_stations.py`), and weekend **PATH↔HBLR sync models** (`test_weekend_hblr_path_sync.py`):
+Covers HBLR PDF parsing (`test_build_hblr_schedule.py`), **evening PDF vs Google Maps reference** departures for all five stations (`test_hblr_pdf_evening_reference.py`, Sun ~8:25 PM), weekend southbound branch headways, HBLR↔PATH transfer offsets (`test_light_rail_offset.py`, `test_hblr_path_sections.py`), From JC **express-local** subway cards (`test_subway_from_jc_stations.py`), and weekend **PATH↔HBLR sync models** (`test_weekend_hblr_path_sync.py`):
 
 | Model (tests only) | Assumption |
 |--------------------|------------|
@@ -401,7 +407,7 @@ Live PATH fetching in `lib/path_trains.py` does not filter by PATH line color; N
 | `path_trains.py` | PATH stations for NYC, 33rd St, and NJ boards; PANYNJ `ridepath.json` fetched once per refresh; per-station `allow_hoboken` (set on WTC) |
 | `light_rail.py` | HBLR station boards by direction; NJT creds from env or `njt_credentials.json` |
 | `hblr_path.py` | HBLR↔PATH sections, transfer offset filter, HBLR→PATH **current PATH** fallback when none catchable |
-| `hblr_schedule.py` | Loads `hblr_schedule_data.json` for offline HBLR departures; weekend southbound branch pairing |
+| `hblr_schedule.py` | Loads `hblr_schedule_data.json` for offline HBLR departures; PDF times have no per-line label — **northbound** Tonnelle-first cycle at LSP / Exchange / Newport (`_STATION_NORTH_BRANCH_PHASE` at Exchange); **southbound** upstream stations use each station’s PDF column split into 8th / West Side pools (terminals use branch-terminal pools); weekend south through **02:45** |
 | `path_schedule.py` | Weekend PATH phase helpers for unit tests only (not wired to live UI) |
 | `subway_trains.py` | Subway north/Queens and To JC; `SUBWAY_PATH_WALKS` for From JC connection filtering; **50 St** / **Bleecker St** express-local cards; southbound **6** (Union Sq) and **4/5** (Bleecker express local) ETAs append **↓** |
 
