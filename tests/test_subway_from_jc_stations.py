@@ -36,6 +36,18 @@ class ExpressLocalBoardTests(unittest.TestCase):
         self.assertEqual(board["trains"][0]["line"], "A")
         self.assertEqual(board["note"], "Express local stop")
 
+    def test_west_4_st_unwrap_keeps_full_headsign(self):
+        item = {
+            "line": "A",
+            "minutesAway": 5,
+            "headsign": "Inwood-207 St via Central Park West",
+        }
+        short = _normalize_arrival(item)
+        unwrapped = _normalize_arrival(item, unwrap_destination=True)
+        self.assertIn("...", short["destination"])
+        self.assertNotIn("...", unwrapped["destination"])
+        self.assertIn("Inwood", unwrapped["destination"])
+
     def test_fifty_st_notes_local_only_when_a_absent(self):
         raw = [
             {"line": "C", "direction": "N", "minutes": 3, "headsign": "168 St"},
