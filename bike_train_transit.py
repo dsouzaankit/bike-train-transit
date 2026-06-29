@@ -112,7 +112,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v5"
+BUILD_TAG = "hblr-path-v6"
 
 COLORS = {
     "bg": "#0f1419",
@@ -548,8 +548,14 @@ def main_cli():
         print("")
         for section in hblr_path_sections or []:
             print(section.get("title"))
-            for key in ("primary", "secondary"):
-                board = section.get(key) or {}
+            if section.get("layout") == "shared_primary":
+                boards = [section.get("primary")] + [
+                    conn.get("board") for conn in section.get("connections") or []
+                ]
+            else:
+                boards = [section.get("primary"), section.get("secondary")]
+            for board in boards:
+                board = board or {}
                 trains = ", ".join(
                     "%s %s" % (t.get("eta"), t.get("destination")) for t in board.get("trains") or []
                 ) or (board.get("error") or board.get("note") or "(none)")
@@ -665,9 +671,9 @@ if HAS_UI:
         trains = board.get("trains") or []
         if not trains:
             return max(PATH_CARD_HEIGHT, header_h + 20)
-        if board.get("by_line"):
-            return header_h + len(trains) * TRANSIT_LINE_ROW_HEIGHT + 10
-        return header_h + min(len(trains), 2) * 26 + 8
+        if board.get("by_line") is True:
+            return max(PATH_CARD_HEIGHT, header_h + len(trains) * TRANSIT_LINE_ROW_HEIGHT + 10)
+        return max(PATH_CARD_HEIGHT, header_h + min(len(trains), 3) * 26 + 8)
 
     def _add_line_badge(parent, line_val, x, y, size=18):
         from lib.subway_lines import subway_line_color, subway_line_text_color
@@ -731,7 +737,7 @@ if HAS_UI:
                 self.add_subview(line)
                 return
 
-            if board.get("by_line"):
+            if board.get("by_line") is True:
                 for train in trains:
                     eta_text = format_train_eta(train)
                     dest_text = str(train.get("destination") or "?")
@@ -751,7 +757,7 @@ if HAS_UI:
                     y += TRANSIT_LINE_ROW_HEIGHT
                 return
 
-            for index, train in enumerate(trains[:2]):
+            for index, train in enumerate(trains[:3]):
                 eta_size = 22 if index == 0 else 14
                 dest_size = 13 if index == 0 else 11
                 eta_color = COLORS["text"] if index == 0 else COLORS["muted"]
@@ -1203,7 +1209,8 @@ if HAS_UI:
                 for index, (board, tag, empty_text) in group:
                     col = index % cols
                     x = pad + col * (card_width + CARD_GAP)
-                    card = TransitCard(board, card_width, tag=tag, empty_text=empty_text)
+                    resolved_empty = empty_text or board.get("empty_hint") or "No trains"
+                    card = TransitCard(board, card_width, tag=tag, empty_text=resolved_empty)
                     card.frame = (x, row_y, card_width, row_h)
                     self.scroll.add_subview(card)
                 row_y += row_h + CARD_GAP
@@ -1246,10 +1253,10 @@ if HAS_UI:
                 ],
                 [
                     (self._pick_board(subway, "51 St", by_line=True), "↑", "No uptown trains"),
-                    (self._pick_board(subway, "50 St", by_line=True), "↑", "No uptown trains"),
+                    (self._pick_board(subway, "50 St", by_line=True), "↑", None),
                 ],
                 [
-                    (self._pick_board(subway, "Bleecker St", by_line=True), "↓", "No downtown trains"),
+                    (self._pick_board(subway, "Bleecker St", by_line=True), "↓", None),
                 ],
             )
             for group in groups:
@@ -1294,8 +1301,13 @@ if HAS_UI:
                 self._log_transit_boards("SUBWAYJC", subway_to_jc_boards)
                 self._log_transit_boards("TUNNEL", tunnel_boards)
                 for section in hblr_path_sections or []:
-                    for key in ("primary", "secondary"):
-                        self._log_transit_boards("HBLRPATH", [section.get(key)])
+                    if section.get("layout") == "shared_primary":
+                        self._log_transit_boards("HBLRPATH", [section.get("primary")])
+                        for conn in section.get("connections") or []:
+                            self._log_transit_boards("HBLRPATH", [conn.get("board")])
+                    else:
+                        for key in ("primary", "secondary"):
+                            self._log_transit_boards("HBLRPATH", [section.get(key)])
                 log_event("Refresh OK: {} stations".format(len(snapshots or [])))
                 app_state.update_refresh(
                     snapshots or self._cache.get("snapshots") or [],
@@ -1430,10 +1442,31 @@ if HAS_UI:
                 self.scroll.add_subview(header)
                 y += SECTION_HEADER_HEIGHT + CARD_GAP
 
+                if section.get("layout") == "shared_primary":
+                    primary = section.get("primary") or {}
+                    card_h = transit_card_height(primary)
+                    card = TransitCard(primary, inner_w, tag="HBLR", empty_text="No departures")
+                    card.frame = (pad, y, inner_w, card_h)
+                    self.scroll.add_subview(card)
+                    y += card_h + CARD_GAP
+
+                    tiles = []
+                    for conn in section.get("connections") or []:
+                        board = dict(conn.get("board") or {})
+                        path_label = conn.get("path_label")
+                        if path_label and board.get("note"):
+                            board["note"] = "%s · %s" % (path_label, board["note"])
+                        elif path_label:
+                            board["note"] = path_label
+                        tiles.append((board, "PATH", "None catchable"))
+                    y = self._append_tile_row(y, pad, inner_w, card_width, tiles)
+                    y += SECTION_GAP
+                    continue
+
                 primary = section.get("primary") or {}
                 secondary = section.get("secondary") or {}
-                primary_tag = "HBLR" if primary.get("by_line") else "PATH"
-                secondary_tag = "HBLR" if secondary.get("by_line") else "PATH"
+                primary_tag = "HBLR" if primary.get("by_line") is True else "PATH"
+                secondary_tag = "HBLR" if secondary.get("by_line") is True else "PATH"
 
                 y = self._append_tile_row(
                     y,

@@ -309,6 +309,54 @@ def _earliest_per_line(arrivals, line_specs=None):
     return _trains_per_line(arrivals, line_specs=line_specs, per_line=1)
 
 
+def _express_lines_from_specs(line_specs):
+    return {normalize_line(line) for line, _direction in (line_specs or ())}
+
+
+def _annotate_express_local_board(board, line_specs):
+    """Note when express trains stop at a station that is normally local-only."""
+    express = _express_lines_from_specs(line_specs)
+    raw = board.get("_raw_trains") or []
+    express_trains = board.get("trains") or []
+    local_lines = sorted(
+        {
+            normalize_line(train.get("line"))
+            for train in raw
+            if normalize_line(train.get("line")) not in express
+            and normalize_line(train.get("line")) != "?"
+        }
+    )
+
+    board["express_local"] = True
+    if express_trains:
+        board["note"] = "Express local stop"
+    elif local_lines:
+        board["note"] = "Express skip · local %s" % "/".join(local_lines)
+        board["empty_hint"] = "Express not stopping"
+    else:
+        board["note"] = "Express not stopping"
+        board["empty_hint"] = "Express not stopping"
+    return board
+
+
+def _load_express_local_board(
+    station,
+    fetch_json,
+    *,
+    line_specs,
+    fetch_limit=SUBWAY_FETCH_LIMIT,
+    per_line=1,
+):
+    board = _load_line_board(
+        station,
+        fetch_json,
+        line_specs=line_specs,
+        fetch_limit=fetch_limit,
+        per_line=per_line,
+    )
+    return _annotate_express_local_board(board, line_specs)
+
+
 def _load_line_board(
     station,
     fetch_json,
@@ -543,13 +591,13 @@ def get_subway_north_boards(fetch_json):
         line_specs=FIFTY_FIRST_LINE_SPECS,
         fetch_limit=SUBWAY_FETCH_LIMIT,
     )
-    by_label["50 St"] = _load_line_board(
+    by_label["50 St"] = _load_express_local_board(
         SUBWAY_FIFTY_ST,
         fetch_json,
         line_specs=FIFTY_ST_LINE_SPECS,
         fetch_limit=SUBWAY_FETCH_LIMIT,
     )
-    by_label["Bleecker St"] = _load_line_board(
+    by_label["Bleecker St"] = _load_express_local_board(
         SUBWAY_BLEECKER,
         fetch_json,
         line_specs=BLEECKER_LINE_SPECS,

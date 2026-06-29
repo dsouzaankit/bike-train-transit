@@ -10,10 +10,10 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **iPhone app** — compact 2-column Citibike grid on the **Cbike JC** tab (filled bikes and empty docks for JC stations)
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
 - **PATH + subway connections** — From JC subway cards only show trains reachable after the earliest paired PATH arrival + walk time
-- **HBLR ↔ PATH tab** — four timed transfer pairs between Hudson-Bergen Light Rail and PATH (Liberty State Park, Exchange Place, Newport, WTC, Christopher St); live NJT + PANYNJ when available, PDF timetable fallback (`~`)
+- **HBLR ↔ PATH tab** — timed transfers between HBLR and PATH; outbound **HBLR → PATH** shows LSP once with Exchange/Newport PATH side by side; live PATH ETAs fall back to **current PATH** when none meet the transfer offset
 - **PATH schedules** — trains terminating at **Hoboken** are excluded, but **"via Hoboken"** routings (the overnight 33rd↔JSQ service) are kept; **World Trade Center** additionally shows Hoboken-bound trains (HBLR transfer)
 - **PATH & subway** — real-time departures in grouped sections (see [App tabs](#app-tabs) below); PATH uses one PANYNJ fetch for all boards
-- **Compact ETAs** — `5m`, `Due`, `Delay` / `~5m`; southbound **6** (Union Sq) and **4/5** (Bleecker St) trains show **↓** (e.g. `14m↓`); fits narrow card columns without ellipsis
+- **Compact ETAs** — `5m`, `Due`, `Delay` / `~5m`; southbound **6** (Union Sq) and **4/5** (Bleecker St express local) trains show **↓** (e.g. `14m↓`); fits narrow card columns without ellipsis
 - **Sorted departures** — train rows on each card sorted by ascending ETA
 - **Low-count alerts** — cards highlight red when bikes or docks ≤ threshold
 - **LAN debug server** — browse logs and status from a PC on the same Wi‑Fi (`:8765`)
@@ -61,8 +61,10 @@ Bike cards paint first after refresh; transit loads in the background for the ot
 | 1 | Christopher St | Christopher St | 5 min |
 | 2 | 9th St | West 4 St | 5 min |
 | 3 | 14 St PATH | 6 Av (L East/Bk), 14 St - Union Sq | 2 / 6 min |
-| 4 | — | 51 St (4/5 ↑), 50 St (A ↑) | — |
-| 5 | — | Bleecker St (4/5 ↓) | — |
+| 4 | — | 51 St (4/5 ↑), 50 St (A express local) | — |
+| 5 | — | Bleecker St (4/5 express local) | — |
+
+**50 St** and **Bleecker St** only list **express** trains when they make a **local stop** (A at 50 St; 4/5 at Bleecker). When express is skipping, the card says **Express not stopping** and notes which local lines are running (e.g. `Express skip · local C/E` or `Express skip · local 6`). When express is stopping, the note is **Express local stop**.
 
 Layout on **From JC** matches these groups (two columns per row; group 3 is 14 St PATH + 6 Av, then Union Sq on the next row; groups 4–5 are subway-only).
 
@@ -83,10 +85,11 @@ Four connection sections (primary departures + catchable secondary after the off
 
 | Section | Primary | Secondary (after offset) | Offset |
 |---------|---------|--------------------------|--------|
-| **HBLR → PATH WTC** | Liberty State Park HBLR (northbound) | Exchange Place PATH → WTC | 11 min |
-| **HBLR → PATH 33rd St** | Liberty State Park HBLR (northbound) | Newport PATH → 33rd | 21 min |
+| **HBLR → PATH** | Liberty State Park HBLR (once, full width) | Exchange Place → WTC · Newport → 33rd (side by side) | 11 / 21 min |
 | **PATH WTC → HBLR** | World Trade Center PATH (NJ-bound) | Exchange Place HBLR → Liberty State Pk | 7 min |
 | **PATH 33rd St → HBLR** | Christopher St PATH (NJ-bound) | Newport HBLR → Liberty State Pk | 13 min |
+
+**HBLR → PATH:** secondary PATH cards prefer departures **after LSP + offset**. If live PANYNJ has PATH trains but none are catchable yet, the card still shows **current PATH** ETAs (note: `· current PATH`). Scheduled-only PATH (`~`) does not use this fallback.
 
 **HBLR data source:** live NJ Transit Bus/Light-Rail API when credentials are configured; otherwise **`lib/hblr_schedule_data.json`** — PDF timetable for **8th Street, West Side Ave, Liberty State Park, Exchange Place, and Newport**, both **north (Hoboken/Tonnelle)** and **south (Bayonne branches)** directions (marked `~`). Rebuild with `python tools/build_hblr_schedule.py` on PC when NJT updates the timetable.
 
@@ -123,7 +126,7 @@ bike_train_transit/
     local_deploy.py               # Incremental copy to On This iPhone
     file_logging.py, log_paths.py # Session logs + safe-mode preservation
     lan_debug_server.py           # LAN debug HTTP server
-  tests/                          # Unit tests (HBLR schedule, transfer offsets, weekend sync)
+  tests/                          # Unit tests (HBLR, PATH transfers, weekend sync, From JC express-local)
   tools/
     build_hblr_schedule.py        # PC-only: parse NJT HBLR PDF → hblr_schedule_data.json
   windows/                        # PC helpers for LAN debug URLs, deploy config
@@ -362,7 +365,7 @@ cd "P:\all_scripts\iOS apps\bike_train_transit"
 python -m unittest discover -s tests -q
 ```
 
-Covers HBLR PDF parsing, weekend southbound branch headways, HBLR↔PATH transfer offsets, and weekend **PATH↔HBLR sync models** in `tests/test_weekend_hblr_path_sync.py`:
+Covers HBLR PDF parsing, weekend southbound branch headways, HBLR↔PATH transfer offsets (`test_light_rail_offset.py`, `test_hblr_path_sections.py`), From JC **express-local** subway cards (`test_subway_from_jc_stations.py`), and weekend **PATH↔HBLR sync models** (`test_weekend_hblr_path_sync.py`):
 
 | Model (tests only) | Assumption |
 |--------------------|------------|
@@ -397,10 +400,10 @@ Live PATH fetching in `lib/path_trains.py` does not filter by PATH line color; N
 |------|-----------|
 | `path_trains.py` | PATH stations for NYC, 33rd St, and NJ boards; PANYNJ `ridepath.json` fetched once per refresh; per-station `allow_hoboken` (set on WTC) |
 | `light_rail.py` | HBLR station boards by direction; NJT creds from env or `njt_credentials.json` |
-| `hblr_path.py` | Four HBLR↔PATH transfer sections and offset filtering |
+| `hblr_path.py` | HBLR↔PATH sections, transfer offset filter, HBLR→PATH **current PATH** fallback when none catchable |
 | `hblr_schedule.py` | Loads `hblr_schedule_data.json` for offline HBLR departures; weekend southbound branch pairing |
 | `path_schedule.py` | Weekend PATH phase helpers for unit tests only (not wired to live UI) |
-| `subway_trains.py` | Subway north/Queens and To JC; `SUBWAY_PATH_WALKS` for From JC connection filtering; southbound **6** (Union Sq) and **4/5** (Bleecker St) ETAs append **↓** |
+| `subway_trains.py` | Subway north/Queens and To JC; `SUBWAY_PATH_WALKS` for From JC connection filtering; **50 St** / **Bleecker St** express-local cards; southbound **6** (Union Sq) and **4/5** (Bleecker express local) ETAs append **↓** |
 
 ### PC email (`config.json`)
 

@@ -68,6 +68,34 @@ class TransferFilterTests(unittest.TestCase):
         out = apply_transfer_filter(primary, secondary, 11, "LSP HBLR", "Exchange Place")
         self.assertEqual(out["note"], "sched · after LSP HBLR +11")
 
+    def test_hblr_to_path_fallback_shows_current_path_etas(self):
+        primary = _board("Liberty State Park", [5])
+        secondary = _board("Newport PATH", [6, 11], raw=[6, 11])
+        out = apply_transfer_filter(
+            primary,
+            secondary,
+            21,
+            "LSP HBLR",
+            "Newport",
+            fallback_current=True,
+        )
+        self.assertEqual(_mins(out), [6, 11])
+        self.assertEqual(out["note"], "after LSP HBLR +21 · current PATH")
+
+    def test_hblr_to_path_no_fallback_when_path_is_scheduled(self):
+        primary = _board("Liberty State Park", [5])
+        secondary = _board("Newport PATH", [6, 11], raw=[6, 11], estimated=True)
+        out = apply_transfer_filter(
+            primary,
+            secondary,
+            21,
+            "LSP HBLR",
+            "Newport",
+            fallback_current=True,
+        )
+        self.assertEqual(_mins(out), [])
+        self.assertEqual(out["note"], "sched · after LSP HBLR +21")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

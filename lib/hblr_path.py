@@ -5,16 +5,17 @@ from __future__ import annotations
 
 HBLR_PATH_MAX_TRAINS = 3
 
-# Each section: primary feed, secondary feed (filtered after primary + offset).
-HBLR_PATH_SECTIONS = (
+_LSP_PRIMARY = {
+    "mode": "hblr",
+    "station": "Liberty State Park",
+    "direction": "northbound",
+}
+
+# Outbound from JC: one LSP primary, two PATH catchment boards.
+_HBLR_TO_PATH_CONNECTIONS = (
     {
         "id": "hblr_to_wtc",
-        "title": "HBLR → PATH WTC",
-        "primary": {
-            "mode": "hblr",
-            "station": "Liberty State Park",
-            "direction": "northbound",
-        },
+        "path_label": "WTC",
         "secondary": {
             "mode": "path",
             "station": "Exchange Place",
@@ -25,12 +26,7 @@ HBLR_PATH_SECTIONS = (
     },
     {
         "id": "hblr_to_33rd",
-        "title": "HBLR → PATH 33rd St",
-        "primary": {
-            "mode": "hblr",
-            "station": "Liberty State Park",
-            "direction": "northbound",
-        },
+        "path_label": "33rd St",
         "secondary": {
             "mode": "path",
             "station": "Newport PATH",
@@ -39,6 +35,10 @@ HBLR_PATH_SECTIONS = (
             "offset": 21,
         },
     },
+)
+
+# Inbound to JC: PATH primary + HBLR secondary.
+_HBLR_FROM_PATH_SECTIONS = (
     {
         "id": "wtc_to_hblr",
         "title": "PATH WTC → HBLR",
@@ -83,9 +83,18 @@ def _earliest_minutes(board):
     return earliest
 
 
-def apply_transfer_filter(primary_board, secondary_board, offset, primary_short, secondary_short):
+def apply_transfer_filter(
+    primary_board,
+    secondary_board,
+    offset,
+    primary_short,
+    secondary_short,
+    *,
+    fallback_current=False,
+):
     """Keep secondary departures >= earliest primary + offset."""
     new_board = dict(secondary_board or {"label": secondary_short, "trains": []})
+    new_board.setdefault("label", secondary_short)
     primary_min = _earliest_minutes(primary_board)
     if primary_min is None:
         new_board["note"] = "no %s yet" % primary_short
@@ -97,13 +106,24 @@ def apply_transfer_filter(primary_board, secondary_board, offset, primary_short,
         for train in source
         if train.get("minutes") is not None and train.get("minutes") >= threshold
     ]
-    new_board["trains"] = catchable[:HBLR_PATH_MAX_TRAINS]
     note = "after %s +%s" % (primary_short, offset)
     if secondary_board and secondary_board.get("estimated"):
         note = "sched · " + note
-    new_board["note"] = note
     if catchable:
+        new_board["trains"] = catchable[:HBLR_PATH_MAX_TRAINS]
+        new_board["note"] = note
         new_board["error"] = None
+    elif fallback_current and source and not (secondary_board and secondary_board.get("estimated")):
+        current = sorted(
+            [train for train in source if train.get("minutes") is not None],
+            key=lambda train: train.get("minutes"),
+        )[:HBLR_PATH_MAX_TRAINS]
+        new_board["trains"] = current
+        new_board["note"] = note + " · current PATH"
+        new_board["error"] = None
+    else:
+        new_board["trains"] = []
+        new_board["note"] = note
     return new_board
 
 
@@ -137,23 +157,47 @@ def _hblr_board_for_spec(spec, now=None):
     )
 
 
+def _build_hblr_to_path_section(path_bundle, fetch_json=None, now=None):
+    primary = _hblr_board_for_spec(_LSP_PRIMARY, now=now)
+    connections = []
+    for cfg in _HBLR_TO_PATH_CONNECTIONS:
+        secondary_spec = cfg["secondary"]
+        secondary_raw = _path_board_for_spec(secondary_spec, path_bundle, fetch_json)
+        secondary = apply_transfer_filter(
+            primary,
+            secondary_raw,
+            secondary_spec["offset"],
+            "LSP HBLR",
+            secondary_spec["station"].replace(" PATH", ""),
+            fallback_current=True,
+        )
+        connections.append(
+            {
+                "id": cfg["id"],
+                "path_label": cfg["path_label"],
+                "board": secondary,
+            }
+        )
+    return {
+        "id": "hblr_to_path",
+        "title": "HBLR → PATH",
+        "layout": "shared_primary",
+        "primary": primary,
+        "connections": connections,
+    }
+
+
 def build_hblr_path_sections(path_bundle, fetch_json=None, now=None):
     """Return UI-ready sections for the HBLR↔PATH tab."""
-    sections = []
-    for cfg in HBLR_PATH_SECTIONS:
+    sections = [_build_hblr_to_path_section(path_bundle, fetch_json=fetch_json, now=now)]
+    for cfg in _HBLR_FROM_PATH_SECTIONS:
         primary_spec = cfg["primary"]
         secondary_spec = cfg["secondary"]
 
-        if primary_spec["mode"] == "hblr":
-            primary = _hblr_board_for_spec(primary_spec, now=now)
-            secondary_raw = _path_board_for_spec(secondary_spec, path_bundle, fetch_json)
-            primary_short = "LSP HBLR"
-            secondary_short = secondary_spec["station"].replace(" PATH", "")
-        else:
-            primary = _path_board_for_spec(primary_spec, path_bundle, fetch_json)
-            secondary_raw = _hblr_board_for_spec(secondary_spec, now=now)
-            primary_short = primary_spec["station"].replace(" PATH", "")
-            secondary_short = secondary_spec["station"] + " HBLR"
+        primary = _path_board_for_spec(primary_spec, path_bundle, fetch_json)
+        secondary_raw = _hblr_board_for_spec(secondary_spec, now=now)
+        primary_short = primary_spec["station"].replace(" PATH", "")
+        secondary_short = secondary_spec["station"] + " HBLR"
 
         secondary = apply_transfer_filter(
             primary,
@@ -165,6 +209,7 @@ def build_hblr_path_sections(path_bundle, fetch_json=None, now=None):
 
         sections.append(
             {
+                "id": cfg["id"],
                 "title": cfg["title"],
                 "primary": primary,
                 "secondary": secondary,

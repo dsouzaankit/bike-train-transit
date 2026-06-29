@@ -499,6 +499,7 @@ def get_path_station_board(
         "label": station["label"],
         "trains": trains[:max_trains],
         "_raw_trains": trains,
+        "by_line": False,
         "error": error if not trains else None,
     }
     if not trains and fetch_json is not None:
