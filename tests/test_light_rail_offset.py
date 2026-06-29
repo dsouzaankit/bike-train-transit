@@ -9,8 +9,10 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lib.hblr_path import (  # noqa: E402
+    HBLR_LSP_NEWPORT_OFFSET,
     HBLR_PATH_MAX_TRAINS,
     apply_transfer_filter,
+    path_catchable_after_lsp,
     resolve_transfer_board,
 )
 
@@ -119,6 +121,37 @@ class TransferFilterTests(unittest.TestCase):
         )
         self.assertEqual(_mins(out), [])
         self.assertEqual(out["note"], "sched · LSP HBLR +21")
+
+
+class PathCatchableAfterLspTests(unittest.TestCase):
+    def test_newport_catchable_after_lsp_plus_transit(self):
+        lsp = _board("Liberty State Park", [4])
+        path = _board("Newport PATH", [6, 11], raw=[6, 11, 18, 25, 30], source="panynj")
+        transit = _board("Newport PATH", [18, 25, 30], raw=[18, 25, 30], source="transit")
+        with mock.patch("lib.path_trains.get_path_transit_board", return_value=transit):
+            out = path_catchable_after_lsp(
+                lsp,
+                path,
+                HBLR_LSP_NEWPORT_OFFSET,
+                "Newport",
+                transit_fetcher=lambda: transit,
+            )
+        self.assertEqual(_mins(out), [25, 30])
+        self.assertEqual(out["note"], "LSP HBLR +21")
+
+    @mock.patch("lib.path_trains.get_path_transit_board", return_value=None)
+    def test_newport_empty_when_too_early_from_lsp(self, _transit_mock):
+        lsp = _board("Liberty State Park", [5])
+        path = _board("Newport PATH", [10], raw=[10], source="panynj")
+        out = path_catchable_after_lsp(
+            lsp,
+            path,
+            HBLR_LSP_NEWPORT_OFFSET,
+            "Newport",
+            transit_fetcher=lambda: None,
+        )
+        self.assertEqual(out["trains"], [])
+        self.assertEqual(out["note"], "LSP HBLR +21")
 
 
 class ResolveTransferBoardTests(unittest.TestCase):

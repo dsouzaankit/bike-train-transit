@@ -117,7 +117,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v15"
+BUILD_TAG = "hblr-path-v16"
 
 COLORS = {
     "bg": "#0f1419",
@@ -483,14 +483,16 @@ def _fetch_transit_boards():
         log_event(traceback.format_exc())
     path_exchange_wtc = None
     subway_wtc_north = []
+    hblr_path_sections = get_hblr_path_sections(path_bundle)
+    lsp_primary = None
+    if hblr_path_sections:
+        lsp_primary = (hblr_path_sections[0] or {}).get("primary")
     try:
         from lib.path_trains import get_exchange_place_wtc_board
         from lib.subway_trains import (
             apply_exchange_wtc_subway_connections,
             get_wtc_north_boards,
         )
-
-        from lib.hblr_path import get_lsp_primary_board
 
         path_exchange_wtc = get_exchange_place_wtc_board(
             fetch_transit_json,
@@ -499,12 +501,11 @@ def _fetch_transit_boards():
         subway_wtc_north = apply_exchange_wtc_subway_connections(
             path_exchange_wtc,
             get_wtc_north_boards(fetch_transit_json),
-            lsp_primary=get_lsp_primary_board(),
+            lsp_primary=lsp_primary,
         )
     except Exception as exc:
         log_event("PATH+subway WTC connection failed: {}".format(exc))
         log_event(traceback.format_exc())
-    hblr_path_sections = get_hblr_path_sections(path_bundle)
     log_event("step: HBLR↔PATH sections ({})".format(len(hblr_path_sections or [])))
     log_event("step: transit boards assembled")
     return (

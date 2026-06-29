@@ -90,7 +90,7 @@ Four connection sections (primary departures + catchable secondary after the off
 | **PATH WTC → HBLR** | World Trade Center PATH (NJ-bound) | Exchange Place HBLR → Liberty State Pk | 7 min |
 | **PATH 33rd St → HBLR** | Christopher St PATH (NJ-bound) | Newport HBLR → Liberty State Pk | 13 min |
 
-**HBLR → PATH:** secondary PATH cards prefer departures **after LSP + offset**. If PANYNJ’s shallow pool has nothing catchable, the filter **retries Transit API** for that PATH stop (up to **6** departures in the filter pool; cards still show **3**). If that still fails, shows **current PATH** (`· current PATH`). Scheduled-only PATH (`~`) does not use the realtime fallback.
+**HBLR → PATH:** Exchange and Newport PATH cards show departures **catchable after LSP + offset** (11 / 21 min). PANYNJ first, then **Transit API** (filter pool **6**). Cards stay empty when nothing is reachable from LSP — no misleading raw PATH ETAs.
 
 **PATH → HBLR:** secondary HBLR uses the normal HBLR source chain (Transit → NJT → PDF). If nothing is catchable, live boards show **current HBLR** (`· current HBLR`).
 
@@ -302,7 +302,7 @@ Runs on the **iPhone** (not PC). Your PC reads logs over Wi‑Fi.
 | URL | Description |
 |-----|-------------|
 | `http://<phone-ip>:8765/` | HTML dashboard with live log tail |
-| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v15`; HBLR boards log `[transit]` / `[pdf]` source) |
+| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v16`; HBLR boards log `[transit]` / `[pdf]` source) |
 | `/bike_train_transit_progress.txt` | Last 12 log lines |
 | `/status.json` | App state (stations, transit boards, active tab, errors) |
 | `/refresh` | Trigger refresh on the phone from PC |

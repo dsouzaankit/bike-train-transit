@@ -644,49 +644,23 @@ def _path_primary_after_lsp(lsp_primary, path_board):
     """Exchange PATH WTC departures catchable after LSP HBLR + offset."""
     from lib.hblr_path import (
         HBLR_LSP_EXCHANGE_OFFSET,
-        TRANSIT_TRANSFER_RAW_POOL,
-        apply_transfer_filter,
+        path_catchable_after_lsp,
     )
     from lib.path_trains import get_path_transit_board
 
-    def _catchable(primary_b, path_b):
-        return apply_transfer_filter(
-            primary_b,
-            path_b,
-            HBLR_LSP_EXCHANGE_OFFSET,
-            "LSP HBLR",
-            "Exchange",
-            fallback_current=False,
-        )
-
-    for path_b in (path_board,):
-        chained = _catchable(lsp_primary, path_b)
-        if chained.get("trains"):
-            return {
-                **path_b,
-                "trains": chained["trains"],
-                "_raw_trains": chained["trains"],
-            }
-    transit_path = get_path_transit_board(
-        "Exchange Place",
-        "nyc",
-        dest_filter="wtc",
-        max_trains=3,
-        raw_pool=TRANSIT_TRANSFER_RAW_POOL,
+    return path_catchable_after_lsp(
+        lsp_primary,
+        path_board,
+        HBLR_LSP_EXCHANGE_OFFSET,
+        "Exchange",
+        transit_fetcher=lambda: get_path_transit_board(
+            "Exchange Place",
+            "nyc",
+            dest_filter="wtc",
+            max_trains=3,
+            raw_pool=6,
+        ),
     )
-    if transit_path:
-        chained = _catchable(lsp_primary, transit_path)
-        if chained.get("trains"):
-            return {
-                **transit_path,
-                "trains": chained["trains"],
-                "_raw_trains": chained["trains"],
-            }
-    return {
-        **(path_board or {"label": "Exchange Place", "trains": []}),
-        "trains": [],
-        "_raw_trains": [],
-    }
 
 
 def apply_exchange_wtc_subway_connections(path_board, subway_boards, lsp_primary=None):

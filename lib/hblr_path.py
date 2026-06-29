@@ -6,6 +6,7 @@ from __future__ import annotations
 HBLR_PATH_MAX_TRAINS = 3
 TRANSIT_TRANSFER_RAW_POOL = 6
 HBLR_LSP_EXCHANGE_OFFSET = 11
+HBLR_LSP_NEWPORT_OFFSET = 21
 
 _LSP_PRIMARY = {
     "mode": "hblr",
@@ -34,7 +35,7 @@ _HBLR_TO_PATH_CONNECTIONS = (
             "station": "Newport PATH",
             "direction": "nyc_33rd",
             "dest_filter": "33rd",
-            "offset": 21,
+            "offset": HBLR_LSP_NEWPORT_OFFSET,
         },
     },
 )
@@ -204,6 +205,61 @@ def resolve_transfer_board(
     return result
 
 
+def path_catchable_after_lsp(
+    lsp_primary,
+    path_board,
+    offset,
+    path_short,
+    *,
+    transit_fetcher=None,
+):
+    """PATH departures catchable after LSP HBLR + offset (PANYNJ, then Transit)."""
+    from . import transit_app
+
+    def _filtered(path_b):
+        return apply_transfer_filter(
+            lsp_primary,
+            path_b,
+            offset,
+            "LSP HBLR",
+            path_short,
+            fallback_current=False,
+        )
+
+    for path_b in (path_board,):
+        if not path_b:
+            continue
+        chained = _filtered(path_b)
+        if chained.get("trains"):
+            return {
+                **path_b,
+                "trains": chained["trains"],
+                "_raw_trains": chained["trains"],
+                "note": chained.get("note"),
+            }
+
+    if (
+        transit_fetcher
+        and transit_app.has_api_key()
+        and (path_board or {}).get("source") != "transit"
+    ):
+        transit_path = transit_fetcher()
+        if transit_path:
+            chained = _filtered(transit_path)
+            if chained.get("trains"):
+                return {
+                    **transit_path,
+                    "trains": chained["trains"],
+                    "_raw_trains": chained["trains"],
+                    "note": chained.get("note"),
+                }
+
+    empty = dict(path_board or {"label": path_short, "trains": []})
+    empty["trains"] = []
+    empty["note"] = "LSP HBLR +%s" % offset
+    return empty
+
+
 def _path_board_for_spec(spec, path_bundle, fetch_json=None):
     from lib.path_trains import get_path_station_board
 
@@ -260,15 +316,13 @@ def _build_hblr_to_path_section(path_bundle, fetch_json=None, now=None):
     for cfg in _HBLR_TO_PATH_CONNECTIONS:
         secondary_spec = cfg["secondary"]
         secondary_raw = _path_board_for_spec(secondary_spec, path_bundle, fetch_json)
-        secondary = resolve_transfer_board(
+        path_short = secondary_spec["station"].replace(" PATH", "")
+        secondary = path_catchable_after_lsp(
             primary,
             secondary_raw,
             secondary_spec["offset"],
-            "LSP HBLR",
-            secondary_spec["station"].replace(" PATH", ""),
-            transit_secondary_fetcher=_path_transit_fetcher(secondary_spec),
-            fallback_current=True,
-            fallback_suffix="PATH",
+            path_short,
+            transit_fetcher=_path_transit_fetcher(secondary_spec),
         )
         connections.append(
             {
