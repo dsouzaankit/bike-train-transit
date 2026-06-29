@@ -122,7 +122,6 @@ UNION_SQ_LINE_SPECS = (
 _HEADSIGN_SHORT = {
     "Van Cortlandt Park-242 St": "Van Cortlandt",
     "Inwood-207 St": "Inwood",
-    "Inwood-207 St via Central Park West": "Inwood via CPW",
     "168 St": "168 St",
     "Jamaica Center": "Jamaica",
     "Jamaica-179 St": "Jamaica",
@@ -144,9 +143,6 @@ def _short_headsign(name, *, truncate=True):
     text = str(name).strip()
     if text in _HEADSIGN_SHORT:
         return _HEADSIGN_SHORT[text]
-    if " via Central Park West" in text:
-        base = text.split(" via Central Park West", 1)[0].strip()
-        return _short_headsign(base, truncate=False) + " via CPW"
     if "-242 St" in text:
         return text.split("-", 1)[0]
     if truncate and len(text) > 18:

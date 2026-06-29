@@ -118,7 +118,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v20"
+BUILD_TAG = "hblr-path-v22"
 
 COLORS = {
     "bg": "#0f1419",
@@ -1356,7 +1356,11 @@ if HAS_UI:
                 col = index % cols
                 tile_wrap = tile[3] if len(tile) > 3 else wrap_text
                 board_wrap = tile_wrap
-                eta_w = HBLR_PATH_ETA_WIDTH if (not board_wrap and tag == "PATH") else None
+                eta_w = (
+                    HBLR_PATH_ETA_WIDTH
+                    if (not board_wrap and tag in ("PATH", "↑"))
+                    else None
+                )
                 if col == 0:
                     row_groups.append([])
                     row_heights.append(
@@ -1475,7 +1479,9 @@ if HAS_UI:
                 ],
             )
             for group in groups:
-                y = self._append_tile_row(y, pad, inner_w, card_width, group)
+                y = self._append_tile_row(
+                    y, pad, inner_w, card_width, group, wrap_text=False
+                )
                 y += CARD_GAP
             return y + pad
 

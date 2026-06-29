@@ -36,15 +36,15 @@ class ExpressLocalBoardTests(unittest.TestCase):
         self.assertEqual(board["trains"][0]["line"], "A")
         self.assertEqual(board["note"], "Express local stop")
 
-    def test_west_4_st_long_headsign_abbreviates_without_ellipsis(self):
+    def test_west_4_st_long_headsign_truncates_with_ellipsis(self):
         item = {
             "line": "A",
             "minutesAway": 5,
             "headsign": "Inwood-207 St via Central Park West",
         }
         norm = _normalize_arrival(item)
-        self.assertNotIn("...", norm["destination"])
-        self.assertEqual(norm["destination"], "Inwood via CPW")
+        self.assertIn("...", norm["destination"])
+        self.assertTrue(norm["destination"].startswith("Inwood-207 St"))
 
     def test_fifty_st_notes_local_only_when_a_absent(self):
         raw = [
