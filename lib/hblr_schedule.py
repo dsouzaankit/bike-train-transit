@@ -47,8 +47,8 @@ _NORTH_BRANCHES = ("Hoboken", "Tonnelle Av")
 _EXCHANGED_NORTH_BRANCHES = ("Tonnelle Av", "Hoboken")
 # PDF north columns: Tonnelle/Hoboken cycle; phase aligns list index to branch per station.
 _STATION_NORTH_BRANCHES = {
-    "Liberty State Park": _EXCHANGED_NORTH_BRANCHES,
-    "Exchange Place": _EXCHANGED_NORTH_BRANCHES,
+    "Liberty State Park": _NORTH_BRANCHES,
+    "Exchange Place": _NORTH_BRANCHES,
     "Newport": _EXCHANGED_NORTH_BRANCHES,
 }
 _STATION_NORTH_BRANCH_PHASE = {
@@ -71,6 +71,13 @@ def _north_branch_for(station_label: str, index: int) -> str:
     branches = _north_branches_for(station_label)
     phase = _STATION_NORTH_BRANCH_PHASE.get(station_label, 0)
     return branches[(index + phase) % len(branches)]
+
+
+def _north_labeled_explicit(station_label: str, explicit: list[int]) -> dict[int, str]:
+    return {
+        minute: _north_branch_for(station_label, index)
+        for index, minute in enumerate(explicit)
+    }
 
 
 def _south_branch_for(station_label: str, index: int) -> str:
@@ -139,9 +146,9 @@ def _south_labeled_explicit(
     if (
         station_label == "Liberty State Park"
         and now_mod is not None
-        and _in_overnight_service(now_mod)
+        and now_mod <= WEEKEND_WINDOW_END
     ):
-        # LSP after ~10 PM: PDF list index + 1 (matches Gmaps overnight branch labels).
+        # LSP after midnight through 02:45: PDF list index + 1 (matches Gmaps overnight branch labels).
         return {minute: _SOUTH_BRANCHES[(index + 1) % 2] for index, minute in enumerate(explicit)}
 
     labels: dict[int, str] = {}
@@ -521,6 +528,13 @@ def upcoming_departures(
     fill_headway = infer_headway_from_times(explicit, fallback=headway)
     pool = extend_with_headway(explicit, fill_headway, service_end_minute(now))
 
+    north_labels = (
+        _north_labeled_explicit(label, explicit)
+        if travel_direction == "northbound"
+        else None
+    )
+    fill_index = len(explicit)
+
     trains = []
     upcoming: list[tuple[int, int]] = []
     for minute in pool:
@@ -528,9 +542,13 @@ def upcoming_departures(
         if delta is not None:
             upcoming.append((delta, minute))
 
-    for index, (delta, _minute) in enumerate(upcoming[: max(1, count)]):
+    for index, (delta, minute) in enumerate(upcoming[: max(1, count)]):
         if travel_direction == "northbound":
-            destination = _north_branch_for(label, index)
+            if minute in north_labels:
+                destination = north_labels[minute]
+            else:
+                destination = _north_branch_for(label, fill_index)
+                fill_index += 1
         else:
             destination = _SOUTH_BRANCHES[index % len(_SOUTH_BRANCHES)]
         trains.append(_train_dict(delta, destination))
