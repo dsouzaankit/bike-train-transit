@@ -117,7 +117,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v7"
+BUILD_TAG = "hblr-path-v8"
 
 COLORS = {
     "bg": "#0f1419",
@@ -481,6 +481,26 @@ def _fetch_transit_boards():
     except Exception as exc:
         log_event("PATH+subway connection failed: {}".format(exc))
         log_event(traceback.format_exc())
+    path_exchange_wtc = None
+    subway_wtc_north = []
+    try:
+        from lib.path_trains import get_exchange_place_wtc_board
+        from lib.subway_trains import (
+            apply_exchange_wtc_subway_connections,
+            get_wtc_north_boards,
+        )
+
+        path_exchange_wtc = get_exchange_place_wtc_board(
+            fetch_transit_json,
+            panynj_payload=path_bundle.get("_payload"),
+        )
+        subway_wtc_north = apply_exchange_wtc_subway_connections(
+            path_exchange_wtc,
+            get_wtc_north_boards(fetch_transit_json),
+        )
+    except Exception as exc:
+        log_event("PATH+subway WTC connection failed: {}".format(exc))
+        log_event(traceback.format_exc())
     hblr_path_sections = get_hblr_path_sections(path_bundle)
     log_event("step: HBLR↔PATH sections ({})".format(len(hblr_path_sections or [])))
     log_event("step: transit boards assembled")
@@ -492,6 +512,8 @@ def _fetch_transit_boards():
         subway_to_jc_boards,
         tunnel_boards,
         hblr_path_sections,
+        path_exchange_wtc,
+        subway_wtc_north,
     )
 
 
@@ -538,6 +560,8 @@ def main_cli():
             subway_to_jc_boards,
             tunnel_boards,
             hblr_path_sections,
+            path_exchange_wtc,
+            subway_wtc_north,
         ) = _fetch_transit_boards()
         print_snapshots(snapshots)
         print("")
@@ -549,6 +573,14 @@ def main_cli():
         print("")
         print_subway_boards(subway_boards, title="Subway North / Queens")
         print("")
+        if path_exchange_wtc or subway_wtc_north:
+            print_path_boards(
+                [path_exchange_wtc] if path_exchange_wtc else [],
+                title="PATH Exchange Place → WTC",
+            )
+            print("")
+            print_subway_boards(subway_wtc_north, title="Subway WTC north (after Exchange PATH +8)")
+            print("")
         print_subway_boards(subway_to_jc_boards, title="Subway To JC")
         print("")
         for section in hblr_path_sections or []:
@@ -1089,6 +1121,8 @@ if HAS_UI:
                         subway_to_jc_boards,
                         tunnel_boards,
                         hblr_path_sections,
+                        path_exchange_wtc,
+                        subway_wtc_north,
                     ) = _fetch_transit_boards()
                     log_event("step: transit ok")
                 except Exception as exc:
@@ -1113,6 +1147,8 @@ if HAS_UI:
                             subway_to_jc_boards,
                             tunnel_boards,
                             hblr_path_sections,
+                            path_exchange_wtc=path_exchange_wtc,
+                            subway_wtc_north=subway_wtc_north,
                         )
                         log_event("step: finish render done")
                     except Exception as exc:
@@ -1233,6 +1269,27 @@ if HAS_UI:
                 row_y += row_h + CARD_GAP
             return row_y
 
+        def _append_wtc_path_subway_row(self, y, pad, inner_w, card_width, path_tile, subway_tiles):
+            """PATH card (left half); two subway cards side by side on the right half."""
+            path_board, path_tag, path_empty = path_tile
+            row_h = transit_card_height(path_board)
+            for board, _tag, _empty in subway_tiles:
+                row_h = max(row_h, transit_card_height(board))
+
+            path_empty = path_empty or path_board.get("empty_hint") or "No trains"
+            path_card = TransitCard(path_board, card_width, tag=path_tag, empty_text=path_empty)
+            path_card.frame = (pad, y, card_width, row_h)
+            self.scroll.add_subview(path_card)
+
+            subway_w = (card_width - CARD_GAP) // 2
+            right_x = pad + card_width + CARD_GAP
+            for index, (board, tag, empty_text) in enumerate(subway_tiles):
+                resolved_empty = empty_text or board.get("empty_hint") or "No trains"
+                card = TransitCard(board, subway_w, tag=tag, empty_text=resolved_empty)
+                card.frame = (right_x + index * (subway_w + CARD_GAP), y, subway_w, row_h)
+                self.scroll.add_subview(card)
+            return y + row_h + CARD_GAP
+
         def _append_from_jc_transit(self, y, pad, inner_w, card_width):
             y = self._append_transit_section(
                 y,
@@ -1279,6 +1336,38 @@ if HAS_UI:
             for group in groups:
                 y = self._append_tile_row(y, pad, inner_w, card_width, group)
                 y += CARD_GAP
+
+            y += SECTION_GAP - CARD_GAP
+            header = SectionHeader("PATH + Subway via WTC")
+            header.frame = (pad, y, inner_w, SECTION_HEADER_HEIGHT)
+            self.scroll.add_subview(header)
+            y += SECTION_HEADER_HEIGHT + CARD_GAP
+
+            wtc_north = self._cache.get("subway_wtc_north") or []
+            y = self._append_wtc_path_subway_row(
+                y,
+                pad,
+                inner_w,
+                card_width,
+                (
+                    self._cache.get("path_exchange_wtc")
+                    or {"label": "Exchange Place", "trains": [], "error": None},
+                    "WTC",
+                    "No WTC trains",
+                ),
+                (
+                    (
+                        self._pick_board(wtc_north, "WTC Cortlandt", by_line=True),
+                        "↑",
+                        "None after PATH",
+                    ),
+                    (
+                        self._pick_board(wtc_north, "WTC", by_line=True),
+                        "↑",
+                        "None after PATH",
+                    ),
+                ),
+            )
             return y + pad
 
         def render_snapshots(
@@ -1291,6 +1380,8 @@ if HAS_UI:
             subway_to_jc_boards=None,
             tunnel_boards=None,
             hblr_path_sections=None,
+            path_exchange_wtc=None,
+            subway_wtc_north=None,
             partial=False,
         ):
             from lib import app_state
@@ -1305,6 +1396,8 @@ if HAS_UI:
                 self._cache["subway_to_jc_boards"] = subway_to_jc_boards
                 self._cache["tunnel_boards"] = tunnel_boards
                 self._cache["hblr_path_sections"] = hblr_path_sections
+                self._cache["path_exchange_wtc"] = path_exchange_wtc
+                self._cache["subway_wtc_north"] = subway_wtc_north
                 for snapshot in snapshots or []:
                     log_event(
                         "{} filled={} empty={}".format(

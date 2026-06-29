@@ -13,6 +13,8 @@ SUBWAY_FETCH_LIMIT = 20
 CANAL_WTC_ESTIMATE_MINUTES = 2
 TO_JC_ETAS_PER_LINE = 2
 
+EXCHANGE_WTC_PATH_WALK = 8
+
 # Subway station -> (PATH 33rd board label, walk minutes from PATH platform).
 SUBWAY_PATH_WALKS = {
     "Chris St": ("Chris St", 5),
@@ -72,10 +74,22 @@ SUBWAY_WTC_CORTLANDT = {
     "direction": SUBWAY_DIRECTION_SOUTH,
 }
 
+SUBWAY_WTC_CORTLANDT_NORTH = {
+    "station_id": "138",
+    "label": "WTC Cortlandt",
+    "direction": SUBWAY_DIRECTION_NORTH,
+}
+
 SUBWAY_WTC_E = {
     "station_id": "E01",
     "label": "WTC",
     "direction": SUBWAY_DIRECTION_SOUTH,
+}
+
+SUBWAY_WTC_E_NORTH = {
+    "station_id": "E01",
+    "label": "WTC",
+    "direction": SUBWAY_DIRECTION_NORTH,
 }
 
 SUBWAY_CANAL_ACE = {
@@ -554,6 +568,50 @@ def apply_path_subway_connections(subway_boards, path_33rd_boards):
             new_board["error"] = None
         connected.append(new_board)
     return connected
+
+
+def apply_exchange_wtc_subway_connections(path_board, subway_boards):
+    """Northbound WTC subway cards after Exchange Place PATH + walk."""
+    from lib.hblr_path import apply_transfer_filter
+
+    connected = []
+    for board in subway_boards or []:
+        connected.append(
+            apply_transfer_filter(
+                path_board,
+                board,
+                EXCHANGE_WTC_PATH_WALK,
+                "Exchange",
+                board.get("label", "Subway"),
+            )
+        )
+    return connected
+
+
+def get_wtc_north_boards(fetch_json):
+    """Uptown subway at WTC Cortlandt (1) and WTC (A/C/E)."""
+
+    def _cortlandt():
+        return _load_line_board(
+            SUBWAY_WTC_CORTLANDT_NORTH,
+            fetch_json,
+            fetch_limit=SUBWAY_FETCH_LIMIT,
+        )
+
+    def _wtc():
+        return _load_line_board(
+            SUBWAY_WTC_E_NORTH,
+            fetch_json,
+            fetch_limit=SUBWAY_FETCH_LIMIT,
+        )
+
+    boards = []
+    results = run_parallel({"cortlandt": _cortlandt, "wtc": _wtc})
+    if results.get("cortlandt") is not None:
+        boards.append(results["cortlandt"])
+    if results.get("wtc") is not None:
+        boards.append(results["wtc"])
+    return boards
 
 
 def _load_sixth_av_l_board(fetch_json, per_line=1):

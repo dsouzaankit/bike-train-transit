@@ -628,6 +628,24 @@ def get_path_33rd_boards(fetch_json, max_trains=PATH_33RD_MAX_TRAINS, panynj_pay
     return boards
 
 
+def get_exchange_place_wtc_board(
+    fetch_json,
+    *,
+    panynj_payload=None,
+    max_trains=PATH_MAX_TRAINS,
+):
+    """Exchange Place PATH departures toward World Trade Center."""
+    return get_path_station_board(
+        "Exchange Place",
+        "nyc",
+        dest_filter="wtc",
+        fetch_json=fetch_json,
+        panynj_payload=panynj_payload,
+        max_trains=max_trains,
+        raw_pool=12,
+    )
+
+
 def get_path_nj_boards(fetch_json, max_trains=PATH_MAX_TRAINS, panynj_payload=None):
     boards, _payload = _load_boards(
         PATH_NJ_STATIONS,
