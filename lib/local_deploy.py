@@ -76,7 +76,13 @@ def deploy_local_app(source_dir: str) -> str:
         if os.path.isfile(src) and _needs_copy(src, dst):
             shutil.copy2(src, dst)
 
-    for name in ("debug_server.py",):
+    for name in (
+        "debug_server.py",
+        "debug_citibike_inactive.py",
+        "debug_path_inactive.py",
+        "debug_subway_inactive.py",
+        "debug_hblr_inactive.py",
+    ):
         src = os.path.join(source_dir, name)
         dst = os.path.join(dest, name)
         if os.path.isfile(src) and _needs_copy(src, dst):

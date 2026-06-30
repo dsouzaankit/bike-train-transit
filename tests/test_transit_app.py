@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
@@ -182,15 +183,29 @@ class TransitAppParseTests(unittest.TestCase):
 
 class TransitAppCacheTests(unittest.TestCase):
     def setUp(self):
+        import tempfile
+        from lib import http_cache
+
+        self._tmpdir = tempfile.mkdtemp()
+        http_cache.set_cache_dir_for_tests(self._tmpdir)
         transit_app.clear_departure_cache()
 
-    @mock.patch("lib.transit_app._get_json")
-    def test_stop_departures_cached(self, get_mock):
-        get_mock.return_value = {"route_departures": []}
+    def tearDown(self):
+        from lib import http_cache
+
+        http_cache.set_cache_dir_for_tests(None)
+
+    @mock.patch("urllib.request.urlopen")
+    def test_stop_departures_cached(self, urlopen_mock):
+        payload = json.dumps({"route_departures": []}).encode("utf-8")
+        resp = mock.Mock()
+        resp.read.return_value = payload
+        urlopen_mock.return_value.__enter__ = mock.Mock(return_value=resp)
+        urlopen_mock.return_value.__exit__ = mock.Mock(return_value=False)
         with mock.patch("lib.transit_app._load_api_key", return_value="test-key"):
             transit_app.fetch_stop_departures("NJTR:3076")
             transit_app.fetch_stop_departures("NJTR:3076")
-        self.assertEqual(get_mock.call_count, 1)
+        self.assertEqual(urlopen_mock.call_count, 1)
 
 
 if __name__ == "__main__":

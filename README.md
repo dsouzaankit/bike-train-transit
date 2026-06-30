@@ -36,7 +36,76 @@ All stations are tagged `[JC]` in logs, email, and the **Cbike JC** tab.
 
 ## App tabs
 
-Tap **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, or **Tunnels** in the tab bar. One refresh loads all tabs; switching tabs uses cached data (no extra network calls).
+Tap **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, or **Tunnels** in the tab bar. One refresh loads **all** tabs; switching tabs uses in-memory UI cache only (no extra network). See [HTTP cache and refresh API calls](#http-cache-and-refresh-api-calls).
+
+## HTTP cache and refresh API calls
+
+Every **Refresh** (including auto-refresh on launch) fetches data for **all tabs at once**. Tab switches do not trigger new HTTP requests.
+
+### 2-minute persistent cache
+
+All live HTTP JSON responses go through `lib/http_cache.py`:
+
+| Setting | Value |
+|---------|-------|
+| **TTL** | **2 minutes** (`HTTP_CACHE_TTL_SEC = 120`) |
+| **Storage** | `Documents/bike_train_transit/http_cache/` (survives app restarts until expiry) |
+| **Scope** | Citibike GBFS, PANYNJ PATH + tunnels, `subwayinfo.nyc`, Transit App |
+| **Bypass** | `BIKE_TRAIN_TRANSIT_NO_HTTP_CACHE=1` |
+| **Logs** | `http cache hit: <url>` when a cached body is reused |
+
+PANYNJ cache-bust query `?_=…` is stripped for the cache key (one PATH payload per 2 min). Subway and Transit URLs keep full query strings (station, direction, stop id, etc.).
+
+A **second refresh within 2 minutes** (or relaunch within TTL) typically reuses most responses — often **0 network calls** if nothing expired. After TTL, that URL is fetched again and re-cached.
+
+### HTTP calls per refresh (cache cold)
+
+Counts are **network requests** on a full refresh when the 2-minute cache is empty. Shared fetches are counted once.
+
+| API | Typical calls | Notes |
+|-----|---------------|--------|
+| **Citibike GBFS** | **2** | `station_information.json` + `station_status.json` |
+| **PANYNJ PATH** | **1** | `ridepath.json` — all PATH cards (NYC, 33rd, NJ, HBLR PATH, Exchange WTC) |
+| **PANYNJ tunnels** | **1** | `crossingtimesapi.json` |
+| **subwayinfo.nyc** | **15–16** | See breakdown below |
+| **Transit App** | **3** | HBLR live only — LSP, Exchange Place, Newport (`NJTR:…`); **0** if no API key (PDF fallback) |
+| **Transit retries** | **0–4** | HBLR tab only — deeper PATH/subway pool when transfer filter is shallow |
+
+**Typical cold refresh total: ~22–23 HTTP calls.**
+
+#### subwayinfo.nyc breakdown
+
+| Block | Calls |
+|-------|------:|
+| **From JC** — Chris St, West 4 (A+D), 6 Av, Union Sq (4 direction queries), 51 St, 50 St, Bleecker | **11** |
+| **To JC** — WTC Cortlandt, WTC E (+ Canal St **+1** if E platform empty) | **1–2** |
+| **HBLR WTC section** — WTC Cortlandt ↑, WTC ↑ (northbound; separate from To JC south) | **2** |
+
+WTC/Cortlandt are fetched twice (south for **To JC**, north for **HBLR**) with different `direction` parameters.
+
+#### Per-tab data (not separate fetches)
+
+| Tab | Primary sources | Attributed calls* |
+|-----|-----------------|------------------:|
+| **Cbike JC** | GBFS | **2** |
+| **From JC** | PANYNJ slice + From JC subway | **12** |
+| **To JC** | PANYNJ NJ slice + To JC subway | **2–3** |
+| **HBLR↔PATH** | Transit HBLR + PANYNJ PATH slice + WTC subway north + optional retries | **5–9** |
+| **Tunnels** | PANYNJ crossing times | **1** |
+
+\*PANYNJ PATH (**1**) and GBFS (**2**) are **shared** — do not sum the “Attributed” column for a total.
+
+#### Debug entrypoints (fewer calls)
+
+| Script / env | Skips |
+|--------------|--------|
+| `debug_citibike_inactive.py` | GBFS (−2) |
+| `debug_path_inactive.py` | PANYNJ PATH (−1) |
+| `debug_subway_inactive.py` | subwayinfo.nyc (−15–16) |
+| `debug_hblr_inactive.py` | HBLR Transit (−3; PDF = 0 HTTP) |
+| `BIKE_TRAIN_TRANSIT_INACTIVE=…` | Same flags, combinable |
+
+Not called on refresh: **NJT HBLR API** (unavailable), **path.api.razza.dev** (disabled).
 
 ### Cbike JC
 
@@ -145,6 +214,10 @@ bike_train_transit/
   deploy.ps1                      # Zip + copy to iCloud Downloads (PC → iPhone)
   config.json                     # PC stations + thresholds
   debug_server.py                 # Safe mode: logs only (no UI)
+  debug_citibike_inactive.py      # Full UI; skip GBFS (placeholder dock cards)
+  debug_path_inactive.py          # Full UI; skip PATH / PANYNJ
+  debug_subway_inactive.py        # Full UI; skip subway APIs
+  debug_hblr_inactive.py          # Full UI; skip HBLR↔PATH tab
   lib/
     path_trains.py                # PATH NYC / 33rd / NJ (PANYNJ single-fetch; Hoboken-terminating filtered, via-Hoboken kept, WTC allows Hoboken)
     hblr_path.py                  # HBLR↔PATH tab: four transfer pairs + offset filter
@@ -162,6 +235,8 @@ bike_train_transit/
     local_deploy.py               # Incremental copy to On This iPhone (incl. transit_credentials.json)
     credential_paths.py           # Resolve API credential JSON on PC and Pythonista Documents
     file_logging.py, log_paths.py # Session logs + safe-mode preservation
+    http_cache.py                 # 2 min persistent HTTP JSON cache (all API fetches)
+    debug_flags.py                # BIKE_TRAIN_TRANSIT_INACTIVE env (debug entrypoints)
     lan_debug_server.py           # LAN debug HTTP server
   tests/                          # Unit tests (HBLR, PATH transfers, weekend sync, From JC express-local)
   tools/
@@ -348,6 +423,21 @@ python bike_train_transit.py --safe
 
 Safe mode serves logs only — the dashboard shows crash marker, latest log, and previous session history. Run the full app again when ready.
 
+### Debug entrypoints (isolate data sources)
+
+Run the **full UI** with one feed disabled (logs include `debug: … inactive`):
+
+| Script | Disabled |
+|--------|----------|
+| `debug_citibike_inactive.py` | Citibike GBFS — placeholder dock cards |
+| `debug_path_inactive.py` | PATH / PANYNJ — all PATH tabs empty |
+| `debug_subway_inactive.py` | Subway APIs — From/To JC subway + WTC chain |
+| `debug_hblr_inactive.py` | HBLR↔PATH tab |
+
+Combine on PC: `python bike_train_transit.py --cli --inactive subway --inactive path`  
+Or env: `BIKE_TRAIN_TRANSIT_INACTIVE=subway,path`  
+LAN `/status.json` includes `"inactive": "subway, path"` when set.
+
 ### PC helpers (Windows)
 
 ```powershell
@@ -438,7 +528,8 @@ Live PATH fetching in `lib/path_trains.py` does not filter by PATH line color; N
 |------|-----------|
 | `path_trains.py` | PATH stations; PANYNJ `ridepath.json`; `get_path_transit_board()` for HBLR-tab PATH transfer retry (`PATH:554` Exchange, `PATH:520` Newport, `PATH:553` WTC, `PATH:552` Chris St) |
 | `light_rail.py` | HBLR station boards by direction; Transit API key (`transit_credentials.json` / `TRANSIT_API_KEY`); optional NJT creds (`njt_credentials.json`) — **NJT dev API currently unavailable**; PDF fallback via `hblr_schedule_data.json` |
-| `transit_app.py` | Transit App v4 `/stop_departures` client; per-stop cache (~45s) to stay within 5 req/min |
+| `transit_app.py` | Transit App v4 `/stop_departures` client; uses shared `http_cache.py` (2 min, persistent) |
+| `http_cache.py` | Persistent JSON cache for all HTTP fetches (GBFS, PANYNJ, subway, Transit) |
 | `hblr_path.py` | HBLR↔PATH sections; `path_catchable_after_lsp()` (LSP → PATH + Transit retry); `resolve_transfer_board()` for PATH→HBLR and WTC subway (`· current HBLR` / `· current subway` fallbacks where applicable) |
 | `hblr_schedule.py` | Loads `hblr_schedule_data.json` for offline HBLR departures; **weekday daytime** fills PDF midday holes with service headway; PDF times have no per-line label — **northbound** PDF list index per station (LSP/Exchange default Hoboken/Tonnelle cycle; Exchange phase +1; Newport Tonnelle-first); **southbound** upstream stations label PDF columns by service-day order (`_south_labeled_explicit`; LSP index+1 only after midnight–02:45); `minutes_until_departure()` for service-night ETAs; terminals use branch-terminal pools; weekend south through **02:45** |
 | `path_schedule.py` | Weekend PATH phase helpers for unit tests only (not wired to live UI) |
@@ -511,7 +602,7 @@ Transit data sources:
 
 | Module | API |
 |--------|-----|
-| `lib/transit_app.py` | [Transit App API v4](https://api-doc.transitapp.com/v4.html) `/stop_departures` — **HBLR↔PATH tab only** (see [Transit App API usage](#transit-app-api-usage)); per-stop cache ~45s |
+| `lib/transit_app.py` | [Transit App API v4](https://api-doc.transitapp.com/v4.html) `/stop_departures` — **HBLR↔PATH tab only** (see [Transit App API usage](#transit-app-api-usage)); 2 min persistent cache via `http_cache.py` |
 | `lib/path_trains.py` | PANYNJ [ridepath.json](https://www.panynj.gov/bin/portauthority/ridepath.json) (primary, one fetch); [path.api.razza.dev](https://path.api.razza.dev/) fallback if PANYNJ fails |
 | `lib/light_rail.py` | Transit App (primary HBLR live) → NJT Bus/Light-Rail API (supported in code; **dev tokens currently unavailable**) → `hblr_schedule_data.json` PDF |
 | `lib/subway_trains.py` | [subwayinfo.nyc](https://subwayinfo.nyc/) arrivals API |

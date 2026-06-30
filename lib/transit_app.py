@@ -17,13 +17,9 @@ TRANSIT_BASE = "https://external.transitapp.com"
 TRANSIT_STOP_DEPARTURES = "/v4/public/stop_departures"
 TRANSIT_TIMEOUT = 20
 TRANSIT_MAX_DEPARTURES = 12
-# Reuse stop payloads within one refresh (HBLR tab hits the same stop once).
-_CACHE_TTL_SEC = 45
-
-_DEPARTURE_CACHE: dict[str, tuple[float, dict]] = {}
-
 
 from . import credential_paths
+from .http_cache import clear_all as clear_http_cache, get_cached_json, store_cached_json
 
 
 def _load_api_key():
@@ -44,7 +40,7 @@ def has_api_key():
 
 
 def clear_departure_cache():
-    _DEPARTURE_CACHE.clear()
+    clear_http_cache()
 
 
 def _get_json(path, params):
@@ -52,6 +48,11 @@ def _get_json(path, params):
     if not key:
         raise RuntimeError("Transit API key not configured")
     url = TRANSIT_BASE + path + "?" + urllib.parse.urlencode(params)
+    cached = get_cached_json(url)
+    if cached is not None:
+        if isinstance(cached, dict):
+            return cached
+        raise ValueError("Cached Transit payload is not an object")
     req = urllib.request.Request(
         url,
         headers={
@@ -61,16 +62,16 @@ def _get_json(path, params):
         },
     )
     with urllib.request.urlopen(req, timeout=TRANSIT_TIMEOUT) as resp:
-        return json.loads(resp.read())
+        payload = json.loads(resp.read())
+    if not isinstance(payload, dict):
+        raise ValueError("Expected Transit JSON object from %s" % url)
+    store_cached_json(url, payload)
+    return payload
 
 
 def fetch_stop_departures(global_stop_id, *, max_departures=TRANSIT_MAX_DEPARTURES):
     """Return raw v4 stop_departures JSON for a global_stop_id."""
-    now = time.time()
-    cached = _DEPARTURE_CACHE.get(global_stop_id)
-    if cached and now - cached[0] < _CACHE_TTL_SEC:
-        return cached[1]
-    payload = _get_json(
+    return _get_json(
         TRANSIT_STOP_DEPARTURES,
         {
             "global_stop_id": global_stop_id,
@@ -78,8 +79,6 @@ def fetch_stop_departures(global_stop_id, *, max_departures=TRANSIT_MAX_DEPARTUR
             "should_update_realtime": "true",
         },
     )
-    _DEPARTURE_CACHE[global_stop_id] = (now, payload)
-    return payload
 
 
 def _minutes_until(departure_epoch, now_epoch=None):

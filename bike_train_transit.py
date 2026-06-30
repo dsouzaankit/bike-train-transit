@@ -11,6 +11,13 @@ Setup:
 LAN debug (from PC on same Wi-Fi):
    http://<phone-ip>:8765/
    python debug_server.py --safe   # logs only after a crash
+
+Debug entrypoints (disable one data source; full UI otherwise):
+   python debug_citibike_inactive.py
+   python debug_path_inactive.py
+   python debug_subway_inactive.py
+   python debug_hblr_inactive.py
+   # or: BIKE_TRAIN_TRANSIT_INACTIVE=subway,path python bike_train_transit.py --cli
 """
 
 import argparse
@@ -118,7 +125,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v22"
+BUILD_TAG = "hblr-path-v25"
 
 COLORS = {
     "bg": "#0f1419",
@@ -182,9 +189,13 @@ def setup_debug(mode="full"):
         return
     setup_file_logging()
     write_ok_probe(mode=mode)
+    from lib.debug_flags import inactive_summary
+
+    inactive = inactive_summary()
+    extra = " inactive={}".format(inactive) if inactive else ""
     log_banner(
-        "Bike Train Transit app started mode={} stations={} build={}".format(
-            mode, len(STATIONS), BUILD_TAG
+        "Bike Train Transit app started mode={} stations={} build={}{}".format(
+            mode, len(STATIONS), BUILD_TAG, extra
         )
     )
 
@@ -197,8 +208,13 @@ def _lan_debug_url(path="/"):
 
 def debug_status():
     from lib import app_state
+    from lib.debug_flags import inactive_summary
 
-    return app_state.snapshot()
+    status = app_state.snapshot()
+    inactive = inactive_summary()
+    if inactive:
+        status["inactive"] = inactive
+    return status
 
 
 def start_debug_server(safe_mode=False):
@@ -355,6 +371,18 @@ def resolve_id(raw, by_id, by_name):
 
 
 def get_snapshots():
+    from lib.debug_flags import is_active
+
+    if not is_active("citibike"):
+        log_event("debug: citibike inactive — placeholder dock cards")
+        out = []
+        for index, raw in enumerate(STATIONS):
+            label = STATION_LABELS[index] if index < len(STATION_LABELS) else raw
+            snap = _placeholder_snapshot(label)
+            snap["name"] = raw
+            out.append(snap)
+        return out
+
     by_id, by_name = station_lookup()
     status = fetch_json(GBFS_BASE + "/station_status.json")
     status_by_id = {
@@ -425,13 +453,18 @@ def get_path_nj_boards():
 
 
 def get_hblr_path_sections(path_bundle):
+    from lib.debug_flags import is_active
     from lib.hblr_path import build_hblr_path_sections
 
+    if not is_active("hblr"):
+        log_event("debug: hblr inactive — skip HBLR↔PATH sections")
+        return []
     return build_hblr_path_sections(path_bundle, fetch_json=fetch_transit_json)
 
 
 def _fetch_transit_boards():
     """Fetch all transit boards in parallel; never raise."""
+    from lib.debug_flags import is_active
     from lib.parallel import run_parallel
 
     def _wrap(label, fn):
@@ -451,13 +484,20 @@ def _fetch_transit_boards():
         return get_all_path_boards(fetch_transit_json)
 
     jobs = {
-        "pathAll": _fetch_path_all,
-        "subway": get_subway_boards,
-        "subwayToJc": get_subway_to_jc_boards,
         "tunnels": lambda: __import__("lib.tunnel_crossings", fromlist=["get_tunnel_boards"]).get_tunnel_boards(
             fetch_transit_payload
         ),
     }
+    if is_active("path"):
+        jobs["pathAll"] = _fetch_path_all
+    else:
+        log_event("debug: path inactive — skip PATH fetch")
+    if is_active("subway"):
+        jobs["subway"] = get_subway_boards
+        jobs["subwayToJc"] = get_subway_to_jc_boards
+    else:
+        log_event("debug: subway inactive — skip subway fetch")
+
     results = run_parallel(
         {key: (lambda k=key, f=fn: _wrap(k, f)) for key, fn in jobs.items()},
         timeout=TRANSIT_FETCH_TIMEOUT * 3,
@@ -469,46 +509,57 @@ def _fetch_transit_boards():
     subway_boards = results.get("subway") or []
     subway_to_jc_boards = results.get("subwayToJc") or []
     tunnel_boards = results.get("tunnels") or []
-    try:
-        log_event(
-            "step: transit connections (subway={} path33={})".format(
-                len(subway_boards or []), len(path_33rd_boards or [])
+    if is_active("subway") and is_active("path"):
+        try:
+            log_event(
+                "step: transit connections (subway={} path33={})".format(
+                    len(subway_boards or []), len(path_33rd_boards or [])
+                )
             )
-        )
-        from lib.subway_trains import apply_path_subway_connections
+            from lib.subway_trains import apply_path_subway_connections
 
-        subway_boards = apply_path_subway_connections(subway_boards, path_33rd_boards)
-        log_event("step: transit connections done ({})".format(len(subway_boards or [])))
-    except Exception as exc:
-        log_event("PATH+subway connection failed: {}".format(exc))
-        log_event(traceback.format_exc())
+            subway_boards = apply_path_subway_connections(subway_boards, path_33rd_boards)
+            log_event("step: transit connections done ({})".format(len(subway_boards or [])))
+        except Exception as exc:
+            log_event("PATH+subway connection failed: {}".format(exc))
+            log_event(traceback.format_exc())
     path_exchange_wtc = None
     subway_wtc_north = []
-    hblr_path_sections = get_hblr_path_sections(path_bundle)
+    try:
+        hblr_path_sections = get_hblr_path_sections(path_bundle)
+    except Exception as exc:
+        log_event("HBLR path sections failed: {}".format(exc))
+        log_event(traceback.format_exc())
+        hblr_path_sections = []
     lsp_primary = None
     if hblr_path_sections:
         lsp_primary = (hblr_path_sections[0] or {}).get("primary")
-    try:
-        from lib.hblr_path import HBLR_PATH_MAX_TRAINS
-        from lib.path_trains import get_exchange_place_wtc_board
-        from lib.subway_trains import (
-            apply_exchange_wtc_subway_connections,
-            get_wtc_north_boards,
-        )
+    if is_active("path") and is_active("subway"):
+        try:
+            from lib.hblr_path import HBLR_PATH_MAX_TRAINS
+            from lib.path_trains import get_exchange_place_wtc_board
+            from lib.subway_trains import (
+                apply_exchange_wtc_subway_connections,
+                get_wtc_north_boards,
+            )
 
-        path_exchange_wtc = get_exchange_place_wtc_board(
-            fetch_transit_json,
-            panynj_payload=path_bundle.get("_payload"),
-            max_trains=HBLR_PATH_MAX_TRAINS,
-        )
-        subway_wtc_north = apply_exchange_wtc_subway_connections(
-            path_exchange_wtc,
-            get_wtc_north_boards(fetch_transit_json),
-            lsp_primary=lsp_primary,
-        )
-    except Exception as exc:
-        log_event("PATH+subway WTC connection failed: {}".format(exc))
-        log_event(traceback.format_exc())
+            path_exchange_wtc = get_exchange_place_wtc_board(
+                fetch_transit_json,
+                panynj_payload=path_bundle.get("_payload"),
+                max_trains=HBLR_PATH_MAX_TRAINS,
+            )
+            subway_wtc_north = apply_exchange_wtc_subway_connections(
+                path_exchange_wtc,
+                get_wtc_north_boards(fetch_transit_json),
+                lsp_primary=lsp_primary,
+            )
+        except Exception as exc:
+            log_event("PATH+subway WTC connection failed: {}".format(exc))
+            log_event(traceback.format_exc())
+    elif not is_active("path"):
+        log_event("debug: path inactive — skip Exchange WTC PATH")
+    elif not is_active("subway"):
+        log_event("debug: subway inactive — skip WTC subway chain")
     log_event("step: HBLR↔PATH sections ({})".format(len(hblr_path_sections or [])))
     log_event("step: transit boards assembled")
     return (
@@ -1163,6 +1214,8 @@ if HAS_UI:
                 subway_to_jc_boards = []
                 tunnel_boards = []
                 hblr_path_sections = []
+                path_exchange_wtc = None
+                subway_wtc_north = []
 
                 try:
                     log_event("step: fetch bikes")
@@ -1841,6 +1894,13 @@ def parse_args():
         default=LAN_DEBUG_PORT,
         help="LAN debug server port (default: %(default)s)",
     )
+    parser.add_argument(
+        "--inactive",
+        metavar="SOURCE",
+        action="append",
+        choices=("citibike", "path", "subway", "hblr"),
+        help="Disable a data source (repeatable; also set via BIKE_TRAIN_TRANSIT_INACTIVE)",
+    )
     return parser.parse_args()
 
 
@@ -1848,6 +1908,10 @@ def main():
     args = parse_args()
     global LAN_DEBUG_PORT
     LAN_DEBUG_PORT = args.port
+    if args.inactive:
+        from lib.debug_flags import set_inactive
+
+        set_inactive(*args.inactive)
     if args.safe:
         main_safe(args.port)
     elif args.cli or not HAS_UI:

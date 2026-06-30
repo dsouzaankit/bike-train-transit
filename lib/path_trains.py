@@ -56,8 +56,16 @@ _DEST_SHORT = {
 }
 
 
+def _headsign_text(value):
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else ""
+    return str(value).strip()
+
+
 def _is_hoboken_destination(name):
-    text = (name or "").casefold()
+    text = _headsign_text(name).casefold()
     # "33rd Street via Hoboken" / "Journal Square via Hoboken" are the overnight
     # routings of the 33rd<->JSQ line: they terminate at 33rd/JSQ, not Hoboken.
     if "via hoboken" in text:
@@ -94,14 +102,14 @@ def _short_destination(name):
 
 
 def _is_33rd_destination(name):
-    text = (name or "").casefold()
+    text = _headsign_text(name).casefold()
     if "world trade" in text or text.strip() == "wtc":
         return False
     return bool(re.search(r"33(?:rd|\s*st)", text))
 
 
 def _is_wtc_destination(name):
-    text = (name or "").casefold()
+    text = _headsign_text(name).casefold()
     return "world trade" in text or text.strip() == "wtc"
 
 
@@ -174,12 +182,12 @@ def _filter_sort_trains(trains):
 
 
 def _is_nyc_direction(label):
-    text = (label or "").upper().replace(" ", "")
+    text = _headsign_text(label).upper().replace(" ", "")
     return text == "TONY"
 
 
 def _is_nj_direction(label):
-    text = (label or "").upper().replace(" ", "")
+    text = _headsign_text(label).upper().replace(" ", "")
     return text == "TONJ"
 
 
@@ -224,7 +232,7 @@ def _parse_panynj_station(code, payload, direction_filter, dest_filter=None, all
             if not direction_filter(dest.get("label")):
                 continue
             for msg in dest.get("messages") or []:
-                headsign = msg.get("headSign") or "?"
+                headsign = _headsign_text(msg.get("headSign") or "?")
                 if not allow_hoboken and _is_hoboken_destination(headsign):
                     continue
                 if dest_filter is not None and not dest_filter(headsign):
