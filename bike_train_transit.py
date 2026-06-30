@@ -22,7 +22,6 @@ Debug entrypoints (disable one data source; full UI otherwise):
 
 import argparse
 import json
-import math
 import os
 import sys
 import threading
@@ -119,17 +118,21 @@ SECTION_HEADER_HEIGHT = 26
 SECTION_GAP = 10
 TAB_BAR_HEIGHT = 34
 TOP_CONTENT_INSET = 43  # fallback when safe_area_insets unavailable
-# Thumb float tuned for iPhone 12 portrait (390×844); scales to 12 Pro Max / 15 / 16.
-IPHONE12_REF_W = 390
-IPHONE12_REF_USABLE_H = 763  # 844 − ~47 top − ~34 home indicator
+# Thumb float tuned for ~6" portrait (412×892 class); scales with safe area.
+PHONE6_REF_W = 412
+PHONE6_REF_USABLE_H = 811  # 892 − ~47 top − ~34 home indicator
 THUMB_FLOAT_SEC = 5.0
-THUMB_FLOAT_MARGIN_LEFT = 8
-THUMB_FLOAT_CENTER_FROM_BOTTOM = 0.70  # along usable height above home indicator
-THUMB_FLOAT_RADIUS_BASE = 178
+THUMB_FLOAT_MARGIN_EDGE = 16
+THUMB_FLOAT_MARGIN_BOTTOM = 20  # stack anchor above home indicator
+THUMB_FLOAT_BTN_GAP = 14
+THUMB_FLOAT_STACK_X_RATIO = 0.50  # column on vertical screen center line
+THUMB_FLOAT_STACK_Y_RATIO = 0.65  # stack center — lower half for thumb reach
 THUMB_FLOAT_BTN_H_BASE = 50
-THUMB_PROLONG_W_BASE = 104
-THUMB_FLOAT_TAB_W_BASE = 96
-THUMB_FLOAT_SCALE_MAX = 1.14
+THUMB_PROLONG_W_BASE = 108
+THUMB_FLOAT_TAB_W_BASE = 100
+THUMB_FLOAT_SCALE_MAX = 1.12
+THUMB_FLOAT_TAP_HIGHLIGHT = "#1a5fd4"  # instant tap ack (brighter than accent)
+TAB_BUSY_BG = "#252b33"  # tab pills while refresh in progress
 
 LAN_DEBUG_ENABLED = True
 LAN_DEBUG_PORT = 8765
@@ -139,7 +142,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v49"
+BUILD_TAG = "hblr-path-v69"
 
 
 def _cache_ttl_suffix() -> str:
@@ -575,47 +578,40 @@ def get_hblr_path_sections(path_bundle):
     return build_hblr_path_sections(path_bundle, fetch_json=fetch_transit_json)
 
 
-def _fetch_transit_boards():
-    """Fetch all transit boards in parallel; never raise."""
+def _transit_fetch_jobs():
+    """Ordered transit fetch jobs (one TLS burst each)."""
     from lib.debug_flags import is_active
-    from lib.parallel import run_parallel
 
-    def _wrap(label, fn):
-        log_event("step: transit {} start".format(label))
-        try:
-            result = fn()
-            log_event("step: transit {} ok".format(label))
-            return result
-        except Exception as exc:
-            log_event("{} fetch failed: {}".format(label, exc))
-            log_event(traceback.format_exc())
-            return [] if label != "pathAll" else {}
-
-    def _fetch_path_all():
-        from lib.path_trains import get_all_path_boards
-
-        return get_all_path_boards(fetch_transit_json)
-
-    jobs = {
-        "tunnels": lambda: __import__("lib.tunnel_crossings", fromlist=["get_tunnel_boards"]).get_tunnel_boards(
-            fetch_transit_payload
+    jobs = [
+        (
+            "tunnels",
+            lambda: __import__(
+                "lib.tunnel_crossings", fromlist=["get_tunnel_boards"]
+            ).get_tunnel_boards(fetch_transit_payload),
         ),
-    }
+    ]
     if is_active("path"):
-        jobs["pathAll"] = _fetch_path_all
+
+        def _fetch_path_all():
+            from lib.path_trains import get_all_path_boards
+
+            return get_all_path_boards(fetch_transit_json)
+
+        jobs.append(("pathAll", _fetch_path_all))
     else:
         log_event("debug: path inactive — skip PATH fetch")
     if is_active("subway"):
-        jobs["subway"] = get_subway_boards
-        jobs["subwayToJc"] = get_subway_to_jc_boards
+        jobs.append(("subway", get_subway_boards))
+        jobs.append(("subwayToJc", get_subway_to_jc_boards))
     else:
         log_event("debug: subway inactive — skip subway fetch")
+    return jobs
 
-    log_event("step: transit jobs ({})".format(",".join(jobs.keys())))
-    results = run_parallel(
-        {key: (lambda k=key, f=fn: _wrap(k, f)) for key, fn in jobs.items()},
-        timeout=TRANSIT_FETCH_TIMEOUT * 3,
-    )
+
+def _assemble_transit_boards(results):
+    """Merge staged transit job results into render payload fields."""
+    from lib.debug_flags import is_active
+
     path_bundle = results.get("pathAll") or {}
     path_boards = path_bundle.get("nyc") or []
     path_33rd_boards = path_bundle.get("33rd") or []
@@ -687,6 +683,23 @@ def _fetch_transit_boards():
         path_exchange_wtc,
         subway_wtc_north,
     )
+
+
+def _fetch_transit_boards():
+    """Fetch all transit boards sequentially; never raise."""
+    jobs = _transit_fetch_jobs()
+    log_event("step: transit jobs ({})".format(",".join(key for key, _ in jobs)))
+    results = {}
+    for key, fn in jobs:
+        log_event("step: transit {} start".format(key))
+        try:
+            results[key] = fn()
+            log_event("step: transit {} ok".format(key))
+        except Exception as exc:
+            log_event("{} fetch failed: {}".format(key, exc))
+            log_event(traceback.format_exc())
+            results[key] = [] if key != "pathAll" else {}
+    return _assemble_transit_boards(results)
 
 
 def print_subway_boards(boards, title="Subway"):
@@ -1164,6 +1177,7 @@ if HAS_UI:
             self._thumb_float_active = False
             self._thumb_float_gen = 0
             self._thumb_float_deadline = 0.0
+            self._thumb_float_startup_pending = False
             self._prolong_visible = False
 
             self._float_layer = ui.View()
@@ -1183,11 +1197,7 @@ if HAS_UI:
             self.header.background_color = COLORS["bg"]
 
             self.title_label = make_label(APP_TITLE, font_size=24, bold=True)
-            self.refresh_btn = ui.Button(title="Refresh")
-            self.refresh_btn.background_color = COLORS["accent"]
-            self.refresh_btn.tint_color = COLORS["text"]
-            self.refresh_btn.corner_radius = 8
-            self.refresh_btn.action = self.refresh_tapped
+            # Manual Refresh pill removed (v68) — data loads on kickoff + LAN refresh only.
 
             self.status_label = make_label("", font_size=12, color=COLORS["muted"])
 
@@ -1222,7 +1232,6 @@ if HAS_UI:
             self.scroll.shows_vertical_scroll_indicator = False
 
             self.header.add_subview(self.title_label)
-            self.header.add_subview(self.refresh_btn)
             self.add_subview(self.header)
             self.add_subview(self.tab_bar)
             self.add_subview(self.status_label)
@@ -1239,11 +1248,8 @@ if HAS_UI:
                 self.tab_tunnels_btn,
             )
 
-        def _chrome_buttons(self):
-            return (self.refresh_btn,) + self._tab_buttons_ordered()
-
         def _thumb_float_buttons(self):
-            """Tunnels nearest the corner; Prolong at arc top (startup only, never docked)."""
+            """Bottom → top on screen: Tunnels (thumb), …, Prolong at top."""
             tabs = tuple(reversed(self._tab_buttons_ordered()))
             if self._prolong_visible:
                 return tabs + (self.prolong_btn,)
@@ -1265,11 +1271,10 @@ if HAS_UI:
             parent.add_subview(btn)
 
         def _restore_docked_chrome(self):
-            self._rehome_button(self.refresh_btn, self.header)
             for btn in self._tab_buttons_ordered():
                 self._rehome_button(btn, self.tab_bar)
             self._hide_prolong()
-            for btn in self._chrome_buttons():
+            for btn in self._tab_buttons_ordered():
                 btn.corner_radius = 8
 
         def _layout_insets(self):
@@ -1283,16 +1288,16 @@ if HAS_UI:
 
         def _thumb_float_scale(self, width, height):
             left, top, right, bottom = self._layout_insets()
-            usable_w = max(width - left - right, IPHONE12_REF_W)
-            usable_h = max(height - top - bottom, IPHONE12_REF_USABLE_H)
-            w_scale = usable_w / float(IPHONE12_REF_W)
-            h_scale = usable_h / float(IPHONE12_REF_USABLE_H)
+            usable_w = max(width - left - right, PHONE6_REF_W)
+            usable_h = max(height - top - bottom, PHONE6_REF_USABLE_H)
+            w_scale = usable_w / float(PHONE6_REF_W)
+            h_scale = usable_h / float(PHONE6_REF_USABLE_H)
             return min(THUMB_FLOAT_SCALE_MAX, max(0.96, min(w_scale, h_scale)))
 
         def _thumb_float_sizes(self, width, height):
             scale = self._thumb_float_scale(width, height)
-            tab_w = max(88, int(THUMB_FLOAT_TAB_W_BASE * scale))
-            prolong_w = max(96, int(THUMB_PROLONG_W_BASE * scale))
+            tab_w = max(92, int(THUMB_FLOAT_TAB_W_BASE * scale))
+            prolong_w = max(100, int(THUMB_PROLONG_W_BASE * scale))
             btn_h = max(46, int(THUMB_FLOAT_BTN_H_BASE * scale))
             return tab_w, prolong_w, btn_h
 
@@ -1302,21 +1307,19 @@ if HAS_UI:
             prolong = max(13, int(round(14 * scale)))
             return tab, prolong
 
-        def _thumb_float_arc_radius(self, width, height):
+        def _thumb_float_column_center_x(self, width, max_btn_w):
+            """Shared vertical axis; clamped so the widest pill stays on-screen."""
             left, top, right, bottom = self._layout_insets()
             usable_w = width - left - right
-            usable_h = height - top - bottom
-            anchor_y = top + int(usable_h * (1.0 - THUMB_FLOAT_CENTER_FROM_BOTTOM))
-            scale = self._thumb_float_scale(width, height)
-            cap = int(THUMB_FLOAT_RADIUS_BASE * scale)
-            return max(
-                96,
-                min(
-                    cap,
-                    anchor_y - top - 12,
-                    usable_w - THUMB_FLOAT_MARGIN_LEFT - 20,
-                ),
-            )
+            edge = THUMB_FLOAT_MARGIN_EDGE
+            center_x = left + int(usable_w * THUMB_FLOAT_STACK_X_RATIO)
+            half = max_btn_w // 2
+            lo = left + edge + half
+            hi = width - right - edge - half
+            return max(lo, min(center_x, hi))
+
+        def _thumb_float_stack_x(self, width, btn_w, column_center_x):
+            return int(column_center_x - btn_w / 2)
 
         def _float_layer_frame(self, width, height):
             pad = 10
@@ -1334,30 +1337,29 @@ if HAS_UI:
             return (layer_x, layer_y, layer_w, layer_h)
 
         def _thumb_float_screen_frames(self, width, height):
-            """Bottom-left quarter arc — iPhone 12+ safe area, 70% above home indicator."""
+            """Vertical pill stack toward screen center (left-hand thumb on ~6 inch screens)."""
             left, top, right, bottom = self._layout_insets()
             usable_h = height - top - bottom
-            radius = self._thumb_float_arc_radius(width, height)
-            anchor_x = left + THUMB_FLOAT_MARGIN_LEFT
-            anchor_y = top + int(usable_h * (1.0 - THUMB_FLOAT_CENTER_FROM_BOTTOM))
-            center_x = anchor_x + radius
-            center_y = anchor_y
             tab_w, prolong_w, btn_h = self._thumb_float_sizes(width, height)
             buttons = self._thumb_float_buttons()
-            frames = {}
+            gap = THUMB_FLOAT_BTN_GAP
+            widths = [
+                prolong_w if btn is self.prolong_btn else tab_w for btn in buttons
+            ]
             count = len(buttons)
-            for index, btn in enumerate(buttons):
-                t = index / (count - 1) if count > 1 else 0.5
-                angle = math.radians(200.0 - t * 90.0)
-                cx = center_x + radius * math.cos(angle)
-                cy = center_y - radius * math.sin(angle)
-                btn_w = prolong_w if btn is self.prolong_btn else tab_w
-                frames[btn] = (
-                    int(cx - btn_w / 2),
-                    int(cy - btn_h / 2),
-                    btn_w,
-                    btn_h,
-                )
+            total_h = count * btn_h + max(0, count - 1) * gap
+            column_center_x = self._thumb_float_column_center_x(width, max(widths))
+            stack_center_y = top + int(usable_h * THUMB_FLOAT_STACK_Y_RATIO)
+            start_y = stack_center_y - total_h // 2
+            min_y = top + 8
+            max_y = top + usable_h - THUMB_FLOAT_MARGIN_BOTTOM - total_h
+            start_y = max(min_y, min(start_y, max_y))
+            frames = {}
+            y = start_y + total_h - btn_h
+            for btn, btn_w in zip(buttons, widths):
+                x = self._thumb_float_stack_x(width, btn_w, column_center_x)
+                frames[btn] = (x, int(y), btn_w, btn_h)
+                y -= btn_h + gap
             return frames
 
         def _thumb_float_frames(self, width, height):
@@ -1389,6 +1391,9 @@ if HAS_UI:
         def _check_thumb_float_expired(self):
             if not self._thumb_float_active or self._busy:
                 return
+            # deadline <= 0 means timer not armed yet (waiting for refresh to finish).
+            if self._thumb_float_deadline <= 0:
+                return
             if time.monotonic() >= self._thumb_float_deadline:
                 log_event("thumb float dock (timeout)")
                 self._exit_thumb_float()
@@ -1400,8 +1405,14 @@ if HAS_UI:
             def _tick():
                 if gen != self._thumb_float_gen or not self._thumb_float_active:
                     return
+                if self._thumb_float_deadline <= 0:
+                    ui.delay(_tick, 0.2)
+                    return
                 if time.monotonic() >= self._thumb_float_deadline:
-                    self._exit_thumb_float()
+                    if not self._busy:
+                        self._exit_thumb_float()
+                    else:
+                        ui.delay(_tick, 0.2)
                     return
                 ui.delay(_tick, 0.2)
 
@@ -1413,24 +1424,35 @@ if HAS_UI:
                 log_event("thumb float armed {}s".format(int(THUMB_FLOAT_SEC)))
                 self._schedule_thumb_float_tick()
 
+        def _maybe_arm_thumb_float_timer(self):
+            if self._thumb_float_active and not self._busy:
+                self._arm_thumb_float_timer()
+
         def _move_tabs_to_float_layer(self):
             for btn in self._tab_buttons_ordered():
                 self._rehome_button(btn, self._float_layer)
 
         def _enter_startup_thumb_float(self):
-            """Startup only — section tabs float; Prolong extends the 5s window."""
-            if not self.width or not self.height:
-                ui.delay(self._enter_startup_thumb_float, 0.05)
+            """Startup only — arm float once layout() has real dimensions."""
+            self._thumb_float_startup_pending = True
+            self._maybe_enter_startup_thumb_float()
+
+        def _maybe_enter_startup_thumb_float(self):
+            if not self._thumb_float_startup_pending or self._thumb_float_active:
                 return
+            if not self.width or not self.height:
+                return
+            self._thumb_float_startup_pending = False
             self._thumb_float_active = True
+            self._thumb_float_deadline = 0.0
             self._show_prolong()
             self._float_layer.hidden = False
             self._float_layer.touch_enabled = True
             self._move_tabs_to_float_layer()
             self._layout_thumb_float()
             self._style_tabs()
-            self.bring_subview_to_front(self._float_layer)
-            # Timer starts after refresh — startup fetch blocks the UI run loop.
+            self._float_layer.bring_to_front()
+            self._maybe_arm_thumb_float_timer()
 
         def _prolong_tapped(self, sender):
             if not self._prolong_visible:
@@ -1438,7 +1460,7 @@ if HAS_UI:
             log_event("thumb float prolong +{}s".format(int(THUMB_FLOAT_SEC)))
             self._arm_thumb_float_timer()
 
-        def _exit_thumb_float(self):
+        def _exit_thumb_float(self, repaint=True):
             if not self._thumb_float_active:
                 return
             self._thumb_float_active = False
@@ -1448,10 +1470,20 @@ if HAS_UI:
             self._float_layer.touch_enabled = False
             self._restore_docked_chrome()
             self.layout()
+            if not repaint:
+                return
             try:
                 self._paint_active_tab()
             except Exception as exc:
                 log_event("Tab repaint after dock failed: {}".format(exc))
+                log_event(traceback.format_exc())
+
+        def _dock_and_select_tab(self, tab):
+            try:
+                self._exit_thumb_float(repaint=False)
+                self._set_tab(tab, force=True)
+            except Exception as exc:
+                log_event("section tap dock failed: {}".format(exc))
                 log_event(traceback.format_exc())
 
         def start_remote_poll(self):
@@ -1463,6 +1495,7 @@ if HAS_UI:
                 if self._thumb_float_active and self.width and self.height
                 else (13, 14)
             )
+            busy = self._busy
             for tab, btn in (
                 ("cbike_jc", self.tab_cbike_btn),
                 ("from_jc", self.tab_from_btn),
@@ -1470,6 +1503,16 @@ if HAS_UI:
                 ("hblr_path", self.tab_hblr_path_btn),
                 ("tunnels", self.tab_tunnels_btn),
             ):
+                btn.enabled = not busy
+                if busy:
+                    btn.background_color = TAB_BUSY_BG
+                    btn.tint_color = COLORS["muted"]
+                    btn.font = (
+                        ("<system>", tab_pt)
+                        if self._thumb_float_active
+                        else ("<system>", 14)
+                    )
+                    continue
                 is_active = self._active_tab == tab
                 btn.background_color = COLORS["accent"] if is_active else "#2a3441"
                 btn.tint_color = COLORS["text"]
@@ -1478,8 +1521,31 @@ if HAS_UI:
                 else:
                     btn.font = ("<system-bold>", 14) if is_active else ("<system>", 14)
 
-        def _set_tab(self, tab):
-            if self._active_tab == tab:
+        def _acknowledge_float_pill_tap(self, tab):
+            """Immediate visual feedback before deferred dock/paint (main thread)."""
+            if not self._thumb_float_active:
+                return
+            tab_pt, _ = (
+                self._thumb_float_fonts(self.width, self.height)
+                if self.width and self.height
+                else (13, 14)
+            )
+            for name, btn in (
+                ("cbike_jc", self.tab_cbike_btn),
+                ("from_jc", self.tab_from_btn),
+                ("to_jc", self.tab_to_btn),
+                ("hblr_path", self.tab_hblr_path_btn),
+                ("tunnels", self.tab_tunnels_btn),
+            ):
+                tapped = name == tab
+                btn.background_color = (
+                    THUMB_FLOAT_TAP_HIGHLIGHT if tapped else "#2a3441"
+                )
+                btn.tint_color = COLORS["text"]
+                btn.font = ("<system-bold>", tab_pt) if tapped else ("<system>", tab_pt)
+
+        def _set_tab(self, tab, force=False):
+            if self._active_tab == tab and not force:
                 return
             self._active_tab = tab
             try:
@@ -1497,8 +1563,12 @@ if HAS_UI:
                 self.status_label.text = "UI error: %s" % exc
 
         def _on_section_tap(self, tab):
+            if self._busy:
+                return
             if self._thumb_float_active:
-                self._exit_thumb_float()
+                self._acknowledge_float_pill_tap(tab)
+                ui.delay(lambda: self._dock_and_select_tab(tab), 0)
+                return
             self._set_tab(tab)
 
         def _tab_cbike_tapped(self, sender):
@@ -1535,59 +1605,59 @@ if HAS_UI:
             ui.delay(self._poll_remote_control, 1.0)
 
         def layout(self):
-            left, top, right, bottom = self._layout_insets()
-            width = self.width
-            height = self.height
-            header_h = 64 + top
-            tab_top = header_h + 2
-            status_top = tab_top + TAB_BAR_HEIGHT + 2
+            try:
+                self._maybe_enter_startup_thumb_float()
+                left, top, right, bottom = self._layout_insets()
+                width = self.width
+                height = self.height
+                header_h = 64 + top
+                tab_top = header_h + 2
+                status_top = tab_top + TAB_BAR_HEIGHT + 2
 
-            self.header.frame = (0, 0, width, header_h)
-            self.title_label.frame = (16, top + 8, width - 120, 28)
-            self.tab_bar.frame = (0, tab_top, width, TAB_BAR_HEIGHT)
-            tab_gap = 4
-            tab_side = 6
-            tab_count = 5
-            tab_w = max((width - tab_side * 2 - tab_gap * (tab_count - 1)) // tab_count, 64)
-            tab_btns = (
-                self.tab_cbike_btn,
-                self.tab_from_btn,
-                self.tab_to_btn,
-                self.tab_hblr_path_btn,
-                self.tab_tunnels_btn,
-            )
-            if self._thumb_float_active:
-                self._float_layer.hidden = False
-                self._float_layer.touch_enabled = True
-                self._layout_thumb_float()
-                self._style_tabs()
-                self.bring_subview_to_front(self._float_layer)
-                self.refresh_btn.frame = (width - 96, top + 8, 80, 30)
-                self.refresh_btn.font = ("<system>", 14)
-            else:
-                self._float_layer.hidden = True
-                self._hide_prolong()
-                if (
-                    self.refresh_btn.superview is not self.header
-                    or self.tab_cbike_btn.superview is not self.tab_bar
-                ):
-                    self._restore_docked_chrome()
-                self.refresh_btn.frame = (width - 96, top + 8, 80, 30)
-                self.refresh_btn.font = ("<system>", 14)
-                for index, btn in enumerate(tab_btns):
-                    btn.frame = (tab_side + index * (tab_w + tab_gap), 0, tab_w, TAB_BAR_HEIGHT - 4)
-                    btn.font = ("<system>", 12)
-            self.status_label.frame = (16, status_top, width - 32, 16)
-            scroll_bottom = max(bottom, 8)
-            self.scroll.frame = (
-                0,
-                status_top + 20,
-                width,
-                max(0, height - status_top - 20 - scroll_bottom),
-            )
-
-        def refresh_tapped(self, sender):
-            self.refresh()
+                self.header.frame = (0, 0, width, header_h)
+                self.title_label.frame = (16, top + 8, width - 32, 28)
+                self.tab_bar.frame = (0, tab_top, width, TAB_BAR_HEIGHT)
+                tab_gap = 4
+                tab_side = 6
+                tab_count = 5
+                tab_w = max((width - tab_side * 2 - tab_gap * (tab_count - 1)) // tab_count, 64)
+                tab_btns = (
+                    self.tab_cbike_btn,
+                    self.tab_from_btn,
+                    self.tab_to_btn,
+                    self.tab_hblr_path_btn,
+                    self.tab_tunnels_btn,
+                )
+                if self._thumb_float_active:
+                    self._float_layer.hidden = False
+                    self._float_layer.touch_enabled = True
+                    self._layout_thumb_float()
+                    self._style_tabs()
+                    self._float_layer.bring_to_front()
+                else:
+                    self._float_layer.hidden = True
+                    self._hide_prolong()
+                    if self.tab_cbike_btn.superview is not self.tab_bar:
+                        self._restore_docked_chrome()
+                    for index, btn in enumerate(tab_btns):
+                        btn.frame = (
+                            tab_side + index * (tab_w + tab_gap),
+                            0,
+                            tab_w,
+                            TAB_BAR_HEIGHT - 4,
+                        )
+                        btn.font = ("<system>", 12)
+                self.status_label.frame = (16, status_top, width - 32, 16)
+                scroll_bottom = max(bottom, 8)
+                self.scroll.frame = (
+                    0,
+                    status_top + 20,
+                    width,
+                    max(0, height - status_top - 20 - scroll_bottom),
+                )
+            except Exception as exc:
+                log_event("layout failed: {}".format(exc))
+                log_event(traceback.format_exc())
 
         def _apply_refresh_payload(self, payload):
             from lib import app_state
@@ -1630,15 +1700,16 @@ if HAS_UI:
 
             self._busy = False
             app_state.set_busy(False)
-            self.refresh_btn.enabled = True
+            self._style_tabs()
             if self._thumb_float_active:
                 self._arm_thumb_float_timer()
-            else:
-                self._check_thumb_float_expired()
 
         def _refresh_step_transit(self, refresh_id, payload):
             """Main thread only — no @ui.in_background (Pythonista TLS crash)."""
-            if refresh_id != self._refresh_gen or not self._busy:
+            if refresh_id != self._refresh_gen:
+                return
+            if not self._busy:
+                log_event("step: transit #{} skipped (not busy)".format(refresh_id))
                 return
             try:
                 log_event("step: fetch transit")
@@ -1670,7 +1741,10 @@ if HAS_UI:
 
         def _refresh_step_bikes(self, refresh_id):
             """Main thread only — fetch GBFS, then yield before transit."""
-            if refresh_id != self._refresh_gen or not self._busy:
+            if refresh_id != self._refresh_gen:
+                return
+            if not self._busy:
+                log_event("step: bikes #{} skipped (not busy)".format(refresh_id))
                 return
             payload = {
                 "refresh_id": refresh_id,
@@ -1718,7 +1792,7 @@ if HAS_UI:
             refresh_id = self._refresh_gen
             self._busy = True
             app_state.set_busy(True)
-            self.refresh_btn.enabled = False
+            self._style_tabs()
             self.status_label.text = "Updating..." + _cache_ttl_suffix()
             log_event("Refresh started (#{})".format(refresh_id))
             reset_stats()

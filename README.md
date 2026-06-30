@@ -20,8 +20,8 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **PC deploy script** — `deploy.ps1` zips the project to iCloud Downloads for Pythonista sync
 - **PC email script** — optional Yahoo SMTP status/alert emails
 - **iOS Shortcut** — one-tap launch from Home Screen
-- **Fullscreen UI** — Pythonista script title bar hidden; layout uses **safe area insets** on iPhone 12+ (notch / Dynamic Island / home indicator). Auto-refresh on launch (deferred just after `present()`)
-- **Startup thumb float** — on open, section tabs move to a **left-edge quarter-circle** (70% up from the home indicator) for 5s; **Prolong** extends the timer; **Refresh** stays docked top-right
+- **Fullscreen UI** — Pythonista script title bar hidden; layout uses **safe area insets** on iPhone 12+ (notch / Dynamic Island / home indicator). Auto-refresh on launch (deferred just after `present()`); no manual Refresh button
+- **Startup thumb float** — on open, section tabs stack **vertically** toward screen center for 5s; **Prolong** extends the timer; tabs **gray out** until startup refresh finishes
 
 ## Jersey City stations (`JC`)
 
@@ -37,26 +37,26 @@ All stations are tagged `[JC]` in logs, email, and the **Cbike JC** tab.
 
 ## App tabs
 
-Tap **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, or **Tunnels** in the tab bar. One refresh loads **all** tabs; switching tabs uses in-memory UI cache only (no extra network). See [HTTP cache and refresh API calls](#http-cache-and-refresh-api-calls).
+Tap **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, or **Tunnels** in the tab bar. Data loads on launch (and via LAN `/refresh`); switching tabs uses in-memory UI cache only (no extra network). See [HTTP cache and refresh API calls](#http-cache-and-refresh-api-calls).
 
-### Startup thumb float (iPhone 12+)
+### Startup thumb float (~6" screens)
 
-On launch (after `present()`), section tabs **float** along a left-edge quarter-circle tuned for iPhone 12 portrait and scaled up on Pro Max / 15 / 16:
+On launch (after `present()`), section tabs **float** in a vertical column pulled toward the horizontal center (left-hand thumb on ~6" phones):
 
 | Behavior | Detail |
 |----------|--------|
 | **Trigger** | App startup only (kickoff auto-refresh) |
-| **Position** | 70% up from the **home-indicator** safe area; first tab near the left edge |
-| **Refresh** | Stays **docked** top-right — tap Refresh anytime without entering float mode |
-| **Prolong** | Float-only button at the top of the arc; resets the 5s timer |
-| **Section tab tap** | Switches tab and **docks** all tabs immediately |
-| **5s idle** | Tabs dock to the top bar (timer starts **after** startup refresh finishes) |
+| **Position** | Vertical stack on screen center line; stack center at 65% usable height |
+| **Prolong** | Top of stack (furthest from thumb); resets the **5s** timer |
+| **Section tabs** | **Tunnels** nearest thumb at stack bottom; **grayed out** until startup refresh finishes |
+| **Section tab tap** | Ignored while refresh is running; otherwise highlights tapped pill, switches tab, and **docks** all tabs |
+| **5s idle** | Tabs dock to the top bar (timer starts when startup refresh finishes, or immediately if idle) |
 
-Log markers: `build=hblr-path-v49`, `kickoff: poll + first refresh`, `thumb float armed 5s`, `thumb float dock (timeout)`.
+Log markers: `build=hblr-path-v69`, `kickoff: poll + first refresh`, `thumb float armed 5s`, `thumb float dock (timeout)`.
 
 ## HTTP cache and refresh API calls
 
-Every **Refresh** (including auto-refresh on launch) fetches data for **all tabs at once**. Tab switches do not trigger new HTTP requests.
+Data loads on **launch** (kickoff auto-refresh) and via **LAN debug** refresh requests. There is no manual Refresh button. Tab switches do not trigger new HTTP requests.
 
 ### 2-minute persistent cache
 
@@ -584,9 +584,10 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 | Safe mode shows empty log | Update to latest code — safe mode now preserves crash logs; check **Previous session** on dashboard |
 | Console errors not in LAN log | Update to latest code — stdout/stderr and thread errors are now captured |
 | UI stuck on “Updating…” / black screen | Transit fetch may be slow on the main thread (UI freezes until done). Check log for `step: fetch bikes` → `step: transit ok` → `finish render done`; redeploy latest code |
-| Open shows empty data until Refresh tapped | Run as **main script** (Home Screen direct URL, not `RunBikeTrainTransit.py`). Startup auto-refresh is deferred via `ui.delay` **after** `present()` (log: `kickoff: poll + first refresh`) |
+| Open shows empty data on launch | Run as **main script** (Home Screen direct URL, not `RunBikeTrainTransit.py`). Startup auto-refresh is deferred via `ui.delay` **after** `present()` (log: `kickoff: poll + first refresh`) |
 | Title overlaps the iOS status bar / notch | Layout uses `safe_area_insets.top` on iPhone 12+; fallback `TOP_CONTENT_INSET` (`43`) if unavailable |
-| App drops to safe mode during Refresh | Native crash from background-thread TLS on older builds. Latest code fetches on the **main thread** only (no `@ui.in_background`, no refresh `threading.Thread`); `lib/parallel.py` runs transit jobs **sequentially** on Pythonista |
+| App drops to safe mode during auto-refresh | Native crash from background-thread TLS on older builds. Latest code fetches on the **main thread** only (no `@ui.in_background`, no refresh `threading.Thread`); `lib/parallel.py` runs transit jobs **sequentially** on Pythonista |
+| Thumb float tabs stay grayed | Expected while `Updating…` is shown — tabs re-enable when kickoff refresh finishes (`thumb float armed 5s` in log) |
 | Thumb float vanishes immediately after load | Expected on older builds that started the 5s timer before refresh finished. v49+ arms the timer **after** refresh completes |
 | Shortcut tap does nothing / Pythonista doesn’t open | In Shortcuts use the **two-action** recipe: **URL** action + **Open URLs** action (a single inline “Open URLs” often fails for `pythonista3://`). Test the URL in **Safari** first. |
 | Shortcut launches but refresh hangs / app freezes | The icon points at the `RunBikeTrainTransit.py` `runpy` stub, which breaks the UI loop. Point it at `pythonista3://bike_train_transit/bike_train_transit.py?action=run` instead (run as main script). |
