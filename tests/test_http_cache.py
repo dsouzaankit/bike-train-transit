@@ -68,6 +68,61 @@ class HttpCacheTests(unittest.TestCase):
             )
         self.assertIsNone(http_cache.get_cached_json(url))
 
+    def test_corrupt_memory_timestamp_falls_back_to_disk(self):
+        url = "https://example.com/corrupt-mem.json"
+        key = http_cache._entry_key(url)
+        payload = {"ok": True}
+        http_cache._memory[key] = ("not-a-timestamp", payload)
+        path = http_cache._entry_path(key)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        stored_at = time.time()
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(
+                {"stored_at": stored_at, "url": url, "payload": payload},
+                fh,
+            )
+        self.assertEqual(http_cache.get_cached_json(url), payload)
+
+    def test_string_stored_at_on_disk_is_coerced(self):
+        url = "https://example.com/string-ts.json"
+        key = http_cache._entry_key(url)
+        path = http_cache._entry_path(key)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        stored_at = time.time()
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(
+                {
+                    "stored_at": str(stored_at),
+                    "url": url,
+                    "payload": {"numeric_string_ts": True},
+                },
+                fh,
+            )
+        self.assertEqual(
+            http_cache.get_cached_json(url), {"numeric_string_ts": True}
+        )
+
+    def test_min_remaining_ttl_reports_soonest_entry(self):
+        url_old = "https://example.com/oldish.json"
+        url_new = "https://example.com/fresh.json"
+        now = time.time()
+        http_cache._memory[http_cache._entry_key(url_old)] = (
+            now - 90,
+            {"a": 1},
+        )
+        http_cache._memory[http_cache._entry_key(url_new)] = (
+            now - 10,
+            {"b": 2},
+        )
+        remaining = http_cache.min_remaining_ttl_sec(now=now)
+        self.assertIsNotNone(remaining)
+        assert remaining is not None
+        self.assertGreaterEqual(remaining, 29)
+        self.assertLessEqual(remaining, 31)
+
+    def test_min_remaining_ttl_none_when_empty(self):
+        self.assertIsNone(http_cache.min_remaining_ttl_sec())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

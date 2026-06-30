@@ -119,7 +119,28 @@ def clear_all() -> None:
     reset_stats()
 
 
-def _read_disk(key: str, now: float) -> object | None:
+def _parse_stored_at(value: object) -> float | None:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
+def _memory_get_locked(key: str, now: float) -> object | None:
+    cached = _memory.get(key)
+    if not cached:
+        return None
+    if not isinstance(cached, tuple) or len(cached) < 2:
+        del _memory[key]
+        return None
+    stored_at = _parse_stored_at(cached[0])
+    if stored_at is None or now - stored_at > HTTP_CACHE_TTL_SEC:
+        del _memory[key]
+        return None
+    return cached[1]
+
+
+def _read_disk(key: str, now: float) -> tuple[float, object] | None:
     path = _entry_path(key)
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -128,15 +149,15 @@ def _read_disk(key: str, now: float) -> object | None:
         return None
     if not isinstance(envelope, dict):
         return None
-    stored_at = envelope.get("stored_at")
+    stored_at = _parse_stored_at(envelope.get("stored_at"))
     payload = envelope.get("payload")
-    if stored_at is None or now - float(stored_at) > HTTP_CACHE_TTL_SEC:
+    if stored_at is None or payload is None or now - stored_at > HTTP_CACHE_TTL_SEC:
         try:
             os.remove(path)
         except OSError:
             pass
         return None
-    return payload
+    return (stored_at, payload)
 
 
 def _write_disk(key: str, url: str, payload: object, now: float) -> None:
@@ -160,21 +181,79 @@ def _write_disk(key: str, url: str, payload: object, now: float) -> None:
             pass
 
 
+def min_remaining_ttl_sec(now: float | None = None) -> int | None:
+    """Seconds until the soonest-expiring cached HTTP response (memory + disk)."""
+    if os.environ.get("BIKE_TRAIN_TRANSIT_NO_HTTP_CACHE"):
+        return None
+    if now is None:
+        now = time.time()
+    soonest: float | None = None
+
+    def _consider(stored_at: float | None) -> None:
+        nonlocal soonest
+        if stored_at is None:
+            return
+        remaining = HTTP_CACHE_TTL_SEC - (now - stored_at)
+        if remaining <= 0:
+            return
+        if soonest is None or remaining < soonest:
+            soonest = remaining
+
+    with _lock:
+        for cached in _memory.values():
+            if not isinstance(cached, tuple) or len(cached) < 2:
+                continue
+            _consider(_parse_stored_at(cached[0]))
+
+    try:
+        directory = _cache_dir()
+        for name in os.listdir(directory):
+            if not name.endswith(".json"):
+                continue
+            path = os.path.join(directory, name)
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    envelope = json.load(fh)
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                continue
+            if not isinstance(envelope, dict):
+                continue
+            _consider(_parse_stored_at(envelope.get("stored_at")))
+    except OSError:
+        pass
+
+    if soonest is None:
+        return None
+    return max(0, int(soonest))
+
+
+def invalidate_cached_json(url: str) -> None:
+    """Drop one URL from memory and disk (e.g. corrupt GBFS payload)."""
+    key = _entry_key(url)
+    with _lock:
+        _memory.pop(key, None)
+    try:
+        os.remove(_entry_path(key))
+    except OSError:
+        pass
+
+
 def get_cached_json(url: str) -> object | None:
     if os.environ.get("BIKE_TRAIN_TRANSIT_NO_HTTP_CACHE"):
         return None
     key = _entry_key(url)
     now = time.time()
     with _lock:
-        cached = _memory.get(key)
-        if cached and now - cached[0] <= HTTP_CACHE_TTL_SEC:
+        payload = _memory_get_locked(key, now)
+        if payload is not None:
             _stats["hits"] += 1
-            return cached[1]
-    payload = _read_disk(key, now)
-    if payload is None:
+            return payload
+    disk_entry = _read_disk(key, now)
+    if disk_entry is None:
         return None
+    stored_at, payload = disk_entry
     with _lock:
-        _memory[key] = (now, payload)
+        _memory[key] = (stored_at, payload)
         _stats["hits"] += 1
     return payload
 

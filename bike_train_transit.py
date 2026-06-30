@@ -26,6 +26,7 @@ import os
 import sys
 import threading
 import traceback
+import urllib.parse
 import urllib.request
 from datetime import datetime
 
@@ -125,7 +126,16 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v26"
+BUILD_TAG = "hblr-path-v31"
+
+
+def _cache_ttl_suffix() -> str:
+    from lib.http_cache import min_remaining_ttl_sec
+
+    sec = min_remaining_ttl_sec()
+    if sec is None:
+        return ""
+    return " · cache %ds" % sec
 
 COLORS = {
     "bg": "#0f1419",
@@ -209,7 +219,12 @@ def _lan_debug_url(path="/"):
 def debug_status():
     from lib import app_state
     from lib.debug_flags import inactive_summary
-    from lib.http_cache import disk_entry_count, stats_snapshot
+    from lib.http_cache import (
+        HTTP_CACHE_TTL_SEC,
+        disk_entry_count,
+        min_remaining_ttl_sec,
+        stats_snapshot,
+    )
 
     status = app_state.snapshot()
     inactive = inactive_summary()
@@ -217,7 +232,10 @@ def debug_status():
         status["inactive"] = inactive
     status["httpCache"] = stats_snapshot()
     status["httpCache"]["diskEntries"] = disk_entry_count()
-    status["httpCache"]["ttlSec"] = 120
+    status["httpCache"]["ttlSec"] = HTTP_CACHE_TTL_SEC
+    remaining = min_remaining_ttl_sec()
+    if remaining is not None:
+        status["httpCache"]["minRemainingSec"] = remaining
     return status
 
 
@@ -257,13 +275,6 @@ def _decode_response(raw):
         return bytes(raw).decode("utf-8", "replace")
 
 
-def _short_fetch_url(url: str, limit: int = 72) -> str:
-    text = normalize_cache_url(url)
-    if len(text) <= limit:
-        return text
-    return text[: limit - 3] + "..."
-
-
 def _short_fetch_url(url):
     from lib.http_cache import normalize_cache_url
 
@@ -273,18 +284,54 @@ def _short_fetch_url(url):
     return text[:69] + "..."
 
 
+def _gbfs_cache_kind(url: str) -> tuple[str, bool] | None:
+    """Return (label, require_name) for Citibike GBFS feeds we validate in cache."""
+    from lib.http_cache import normalize_cache_url
+
+    path = urllib.parse.urlparse(normalize_cache_url(url)).path
+    if path.endswith("/station_information.json"):
+        return ("station_information", True)
+    if path.endswith("/station_status.json"):
+        return ("station_status", False)
+    return None
+
+
+def _validate_gbfs_payload(url: str, payload: dict) -> None:
+    kind = _gbfs_cache_kind(url)
+    if not kind:
+        return
+    label, require_name = kind
+    stations = _gbfs_stations(payload, label, require_name=require_name)
+    if not stations:
+        raise ValueError("%s response has no stations" % label)
+
+
 def fetch_json(url, timeout=30, retries=2):
-    from lib.http_cache import get_cached_json, store_cached_json, _record_miss
+    from lib.http_cache import (
+        get_cached_json,
+        invalidate_cached_json,
+        store_cached_json,
+        _record_miss,
+    )
 
     cached = get_cached_json(url)
     if cached is not None:
         if not isinstance(cached, dict):
-            raise ValueError(
-                "Cached JSON for %s is %s, expected object"
-                % (url, type(cached).__name__)
+            invalidate_cached_json(url)
+            log_event(
+                "http cache reject %s: expected object, got %s"
+                % (_short_fetch_url(url), type(cached).__name__)
             )
-        log_event("http cache hit: %s" % _short_fetch_url(url))
-        return cached
+        else:
+            try:
+                _validate_gbfs_payload(url, cached)
+                log_event("http cache hit: %s" % _short_fetch_url(url))
+                return cached
+            except ValueError as exc:
+                invalidate_cached_json(url)
+                log_event(
+                    "http cache reject %s: %s" % (_short_fetch_url(url), exc)
+                )
 
     _record_miss()
     last_error = None
@@ -307,6 +354,7 @@ def fetch_json(url, timeout=30, retries=2):
                     "Expected JSON object from %s, got %s"
                     % (url, type(payload).__name__)
                 )
+            _validate_gbfs_payload(url, payload)
             store_cached_json(url, payload)
             return payload
         except Exception as exc:
@@ -315,7 +363,7 @@ def fetch_json(url, timeout=30, retries=2):
     raise last_error
 
 
-def _gbfs_stations(payload, label="GBFS"):
+def _gbfs_stations(payload, label="GBFS", require_name=False):
     if not isinstance(payload, dict):
         raise ValueError("%s response is not an object: %s" % (label, type(payload).__name__))
     data = payload.get("data")
@@ -332,6 +380,10 @@ def _gbfs_stations(payload, label="GBFS"):
                 "%s station[%s] is %s, expected object"
                 % (label, index, type(station).__name__)
             )
+        if "station_id" not in station:
+            raise ValueError("%s station[%s] missing station_id" % (label, index))
+        if require_name and "name" not in station:
+            raise ValueError("%s station[%s] missing name" % (label, index))
     return stations
 
 
@@ -339,7 +391,7 @@ def station_lookup():
     info = fetch_json(GBFS_BASE + "/station_information.json")
     by_id = {}
     by_name = {}
-    for s in _gbfs_stations(info, "station_information"):
+    for s in _gbfs_stations(info, "station_information", require_name=True):
         sid = str(s["station_id"])
         name = s["name"]
         by_id[sid] = name
@@ -546,6 +598,7 @@ def _fetch_transit_boards():
     else:
         log_event("debug: subway inactive — skip subway fetch")
 
+    log_event("step: transit jobs ({})".format(",".join(jobs.keys())))
     results = run_parallel(
         {key: (lambda k=key, f=fn: _wrap(k, f)) for key, fn in jobs.items()},
         timeout=TRANSIT_FETCH_TIMEOUT * 3,
@@ -1092,6 +1145,7 @@ if HAS_UI:
             self.background_color = COLORS["bg"]
             self.name = APP_TITLE
             self._busy = False
+            self._refresh_gen = 0
             self._active_tab = "from_jc"
             self._cache = {"snapshots": []}
 
@@ -1201,9 +1255,12 @@ if HAS_UI:
                 from lib.app_control import clear_control, is_refresh_requested
 
                 if is_refresh_requested():
-                    clear_control()
-                    log_event("LAN refresh requested")
-                    self.refresh()
+                    if self._busy:
+                        log_event("LAN refresh queued (busy)")
+                    else:
+                        clear_control()
+                        log_event("LAN refresh requested")
+                        self.refresh()
             except Exception:
                 pass
             ui.delay(self._poll_remote_control, 1.0)
@@ -1242,17 +1299,26 @@ if HAS_UI:
 
         def refresh(self):
             if self._busy:
+                log_event("refresh skipped (busy)")
                 return
             from lib import app_state
 
+            self._refresh_gen += 1
+            refresh_id = self._refresh_gen
             self._busy = True
             app_state.set_busy(True)
             self.refresh_btn.enabled = False
-            self.status_label.text = "Updating..."
-            log_event("Refresh started")
+            self.status_label.text = "Updating..." + _cache_ttl_suffix()
+            log_event("Refresh started (#{})".format(refresh_id))
 
             @ui.in_background
             def work():
+                from lib.http_cache import reset_stats
+
+                def _stale():
+                    return refresh_id != self._refresh_gen
+
+                reset_stats()
                 error = None
                 snapshots = None
                 path_boards = []
@@ -1280,6 +1346,13 @@ if HAS_UI:
                         import ui
                         from lib import app_state
 
+                        if _stale():
+                            log_event(
+                                "step: stale refresh #{} finish_error skipped".format(
+                                    refresh_id
+                                )
+                            )
+                            return
                         try:
                             self._busy = False
                             app_state.set_busy(False)
@@ -1296,19 +1369,25 @@ if HAS_UI:
                 def show_bikes():
                     import ui
 
+                    if _stale():
+                        log_event(
+                            "step: stale refresh #{} show_bikes skipped".format(refresh_id)
+                        )
+                        return
                     try:
                         log_event("step: paint bikes")
-                        self.render_snapshots(
-                            snapshots,
-                            path_boards=None,
-                            path_33rd_boards=None,
-                            subway_boards=None,
-                            path_nj_boards=None,
-                            subway_to_jc_boards=None,
-                            tunnel_boards=None,
-                            partial=True,
-                        )
-                        self.status_label.text = "Loading transit..."
+                        if self._active_tab == "cbike_jc":
+                            self.render_snapshots(
+                                snapshots,
+                                path_boards=None,
+                                path_33rd_boards=None,
+                                subway_boards=None,
+                                path_nj_boards=None,
+                                subway_to_jc_boards=None,
+                                tunnel_boards=None,
+                                partial=True,
+                            )
+                        self.status_label.text = "Loading transit..." + _cache_ttl_suffix()
                         log_event("step: bikes painted")
                     except Exception as exc:
                         log_event("UI bike render failed: {}".format(exc))
@@ -1338,6 +1417,11 @@ if HAS_UI:
                     import ui
                     from lib import app_state
 
+                    if _stale():
+                        log_event(
+                            "step: stale refresh #{} finish skipped".format(refresh_id)
+                        )
+                        return
                     try:
                         self._busy = False
                         app_state.set_busy(False)
@@ -1684,9 +1768,10 @@ if HAS_UI:
                         "hblr_path": "JC HBLR ↔ PATH",
                         "tunnels": "Tunnels",
                     }
-                    self.status_label.text = "Updated %s · %s" % (
+                    self.status_label.text = "Updated %s · %s%s" % (
                         datetime.now().strftime("%I:%M:%S %p"),
                         tab_labels.get(self._active_tab, REGION),
+                        _cache_ttl_suffix(),
                     )
             except Exception as exc:
                 log_event("Paint failed: {}".format(exc))
@@ -1712,22 +1797,15 @@ if HAS_UI:
             return pad + rows * CARD_HEIGHT + max(0, rows - 1) * CARD_GAP + pad
 
         def _paint_from_jc(self, pad, inner_w, card_width, partial=False):
-            y = pad
             if partial:
-                loading = make_label("Loading transit...", font_size=14, color=COLORS["muted"])
-                loading.frame = (pad, y, inner_w, 24)
-                self.scroll.add_subview(loading)
-                return y + 32
-            return self._append_from_jc_transit(y, pad, inner_w, card_width)
+                return pad
+            return self._append_from_jc_transit(pad, pad, inner_w, card_width)
 
         def _paint_to_jc(self, pad, inner_w, card_width, partial=False):
-            y = pad
             if partial:
-                loading = make_label("Loading transit...", font_size=14, color=COLORS["muted"])
-                loading.frame = (pad, y, inner_w, 24)
-                self.scroll.add_subview(loading)
-                return y + 32
+                return pad
 
+            y = pad
             subway_boards = self._cache.get("subway_to_jc_boards") or []
             path_nj_boards = self._cache.get("path_nj_boards") or []
             wtc_path = self._pick_board(path_nj_boards, "WTC")
@@ -1758,13 +1836,10 @@ if HAS_UI:
             return y
 
         def _paint_hblr_path(self, pad, inner_w, card_width, partial=False):
-            y = pad
             if partial:
-                loading = make_label("Loading HBLR↔PATH...", font_size=14, color=COLORS["muted"])
-                loading.frame = (pad, y, inner_w, 24)
-                self.scroll.add_subview(loading)
-                return y + 32
+                return pad
 
+            y = pad
             sections = self._cache.get("hblr_path_sections") or []
             for section in sections:
                 header = SectionHeader(section.get("title") or "HBLR ↔ PATH")
@@ -1816,12 +1891,10 @@ if HAS_UI:
             return y + pad
 
         def _paint_tunnels(self, pad, inner_w, card_width, partial=False):
-            y = pad
             if partial:
-                loading = make_label("Loading tunnels...", font_size=14, color=COLORS["muted"])
-                loading.frame = (pad, y, inner_w, 24)
-                self.scroll.add_subview(loading)
-                return y + 32
+                return pad
+
+            y = pad
             boards = self._cache.get("tunnel_boards") or []
             for board in boards:
                 card = TunnelCard(board, inner_w)
@@ -1849,8 +1922,12 @@ if HAS_UI:
     def _kickoff_ui(view):
         """Start polling and first refresh once the UI run loop is active."""
         try:
+            from lib.app_control import clear_control
+
+            clear_control()
             log_event("kickoff: poll + first refresh")
             view.start_remote_poll()
+            view.status_label.text = "Starting..." + _cache_ttl_suffix()
             view.refresh()
         except Exception as exc:
             log_event("kickoff failed: {}".format(exc))
