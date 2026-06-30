@@ -22,9 +22,11 @@ Debug entrypoints (disable one data source; full UI otherwise):
 
 import argparse
 import json
+import math
 import os
 import sys
 import threading
+import time
 import traceback
 import urllib.parse
 import urllib.request
@@ -116,7 +118,18 @@ HBLR_PATH_ETA_WIDTH = 52
 SECTION_HEADER_HEIGHT = 26
 SECTION_GAP = 10
 TAB_BAR_HEIGHT = 34
-TOP_CONTENT_INSET = 43  # ~1.5 cm below screen top so chrome clears the iOS status bar / notch
+TOP_CONTENT_INSET = 43  # fallback when safe_area_insets unavailable
+# Thumb float tuned for iPhone 12 portrait (390×844); scales to 12 Pro Max / 15 / 16.
+IPHONE12_REF_W = 390
+IPHONE12_REF_USABLE_H = 763  # 844 − ~47 top − ~34 home indicator
+THUMB_FLOAT_SEC = 5.0
+THUMB_FLOAT_MARGIN_LEFT = 8
+THUMB_FLOAT_CENTER_FROM_BOTTOM = 0.70  # along usable height above home indicator
+THUMB_FLOAT_RADIUS_BASE = 178
+THUMB_FLOAT_BTN_H_BASE = 50
+THUMB_PROLONG_W_BASE = 104
+THUMB_FLOAT_TAB_W_BASE = 96
+THUMB_FLOAT_SCALE_MAX = 1.14
 
 LAN_DEBUG_ENABLED = True
 LAN_DEBUG_PORT = 8765
@@ -126,7 +139,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v31"
+BUILD_TAG = "hblr-path-v49"
 
 
 def _cache_ttl_suffix() -> str:
@@ -1148,6 +1161,23 @@ if HAS_UI:
             self._refresh_gen = 0
             self._active_tab = "from_jc"
             self._cache = {"snapshots": []}
+            self._thumb_float_active = False
+            self._thumb_float_gen = 0
+            self._thumb_float_deadline = 0.0
+            self._prolong_visible = False
+
+            self._float_layer = ui.View()
+            self._float_layer.background_color = (0, 0, 0, 0)
+            self._float_layer.touch_enabled = False
+            self._float_layer.hidden = True
+
+            self.prolong_btn = ui.Button(title="Prolong")
+            self.prolong_btn.background_color = COLORS["accent"]
+            self.prolong_btn.tint_color = COLORS["text"]
+            self.prolong_btn.corner_radius = 8
+            self.prolong_btn.action = self._prolong_tapped
+            self.prolong_btn.hidden = True
+            self._float_layer.add_subview(self.prolong_btn)
 
             self.header = ui.View()
             self.header.background_color = COLORS["bg"]
@@ -1197,12 +1227,242 @@ if HAS_UI:
             self.add_subview(self.tab_bar)
             self.add_subview(self.status_label)
             self.add_subview(self.scroll)
+            self.add_subview(self._float_layer)
             self._style_tabs()
+
+        def _tab_buttons_ordered(self):
+            return (
+                self.tab_cbike_btn,
+                self.tab_from_btn,
+                self.tab_to_btn,
+                self.tab_hblr_path_btn,
+                self.tab_tunnels_btn,
+            )
+
+        def _chrome_buttons(self):
+            return (self.refresh_btn,) + self._tab_buttons_ordered()
+
+        def _thumb_float_buttons(self):
+            """Tunnels nearest the corner; Prolong at arc top (startup only, never docked)."""
+            tabs = tuple(reversed(self._tab_buttons_ordered()))
+            if self._prolong_visible:
+                return tabs + (self.prolong_btn,)
+            return tabs
+
+        def _hide_prolong(self):
+            self._prolong_visible = False
+            self.prolong_btn.hidden = True
+
+        def _show_prolong(self):
+            self._prolong_visible = True
+            self.prolong_btn.hidden = False
+
+        def _rehome_button(self, btn, parent):
+            if btn.superview is parent:
+                return
+            if btn.superview is not None:
+                btn.superview.remove_subview(btn)
+            parent.add_subview(btn)
+
+        def _restore_docked_chrome(self):
+            self._rehome_button(self.refresh_btn, self.header)
+            for btn in self._tab_buttons_ordered():
+                self._rehome_button(btn, self.tab_bar)
+            self._hide_prolong()
+            for btn in self._chrome_buttons():
+                btn.corner_radius = 8
+
+        def _layout_insets(self):
+            """Safe area for iPhone 12+ notch / Dynamic Island / home indicator."""
+            try:
+                ins = self.safe_area_insets
+                top = max(TOP_CONTENT_INSET, int(ins.top))
+                return int(ins.left), top, int(ins.right), int(ins.bottom)
+            except Exception:
+                return 0, TOP_CONTENT_INSET, 0, 34
+
+        def _thumb_float_scale(self, width, height):
+            left, top, right, bottom = self._layout_insets()
+            usable_w = max(width - left - right, IPHONE12_REF_W)
+            usable_h = max(height - top - bottom, IPHONE12_REF_USABLE_H)
+            w_scale = usable_w / float(IPHONE12_REF_W)
+            h_scale = usable_h / float(IPHONE12_REF_USABLE_H)
+            return min(THUMB_FLOAT_SCALE_MAX, max(0.96, min(w_scale, h_scale)))
+
+        def _thumb_float_sizes(self, width, height):
+            scale = self._thumb_float_scale(width, height)
+            tab_w = max(88, int(THUMB_FLOAT_TAB_W_BASE * scale))
+            prolong_w = max(96, int(THUMB_PROLONG_W_BASE * scale))
+            btn_h = max(46, int(THUMB_FLOAT_BTN_H_BASE * scale))
+            return tab_w, prolong_w, btn_h
+
+        def _thumb_float_fonts(self, width, height):
+            scale = self._thumb_float_scale(width, height)
+            tab = max(12, int(round(13 * scale)))
+            prolong = max(13, int(round(14 * scale)))
+            return tab, prolong
+
+        def _thumb_float_arc_radius(self, width, height):
+            left, top, right, bottom = self._layout_insets()
+            usable_w = width - left - right
+            usable_h = height - top - bottom
+            anchor_y = top + int(usable_h * (1.0 - THUMB_FLOAT_CENTER_FROM_BOTTOM))
+            scale = self._thumb_float_scale(width, height)
+            cap = int(THUMB_FLOAT_RADIUS_BASE * scale)
+            return max(
+                96,
+                min(
+                    cap,
+                    anchor_y - top - 12,
+                    usable_w - THUMB_FLOAT_MARGIN_LEFT - 20,
+                ),
+            )
+
+        def _float_layer_frame(self, width, height):
+            pad = 10
+            frames = self._thumb_float_screen_frames(width, height)
+            if not frames:
+                return (0, 0, width, height // 2)
+            min_x = min(f[0] for f in frames.values())
+            min_y = min(f[1] for f in frames.values())
+            max_x = max(f[0] + f[2] for f in frames.values())
+            max_y = max(f[1] + f[3] for f in frames.values())
+            layer_x = max(0, min_x - pad)
+            layer_y = max(0, min_y - pad)
+            layer_w = min(width - layer_x, max_x - min_x + pad * 2)
+            layer_h = min(height - layer_y, max_y - min_y + pad * 2)
+            return (layer_x, layer_y, layer_w, layer_h)
+
+        def _thumb_float_screen_frames(self, width, height):
+            """Bottom-left quarter arc — iPhone 12+ safe area, 70% above home indicator."""
+            left, top, right, bottom = self._layout_insets()
+            usable_h = height - top - bottom
+            radius = self._thumb_float_arc_radius(width, height)
+            anchor_x = left + THUMB_FLOAT_MARGIN_LEFT
+            anchor_y = top + int(usable_h * (1.0 - THUMB_FLOAT_CENTER_FROM_BOTTOM))
+            center_x = anchor_x + radius
+            center_y = anchor_y
+            tab_w, prolong_w, btn_h = self._thumb_float_sizes(width, height)
+            buttons = self._thumb_float_buttons()
+            frames = {}
+            count = len(buttons)
+            for index, btn in enumerate(buttons):
+                t = index / (count - 1) if count > 1 else 0.5
+                angle = math.radians(200.0 - t * 90.0)
+                cx = center_x + radius * math.cos(angle)
+                cy = center_y - radius * math.sin(angle)
+                btn_w = prolong_w if btn is self.prolong_btn else tab_w
+                frames[btn] = (
+                    int(cx - btn_w / 2),
+                    int(cy - btn_h / 2),
+                    btn_w,
+                    btn_h,
+                )
+            return frames
+
+        def _thumb_float_frames(self, width, height):
+            layer_x, layer_y, layer_w, layer_h = self._float_layer_frame(width, height)
+            return {
+                btn: (sx - layer_x, sy - layer_y, fw, fh)
+                for btn, (sx, sy, fw, fh) in self._thumb_float_screen_frames(
+                    width, height
+                ).items()
+            }
+
+        def _layout_thumb_float(self):
+            if not self.width or not self.height:
+                return
+            self._float_layer.frame = self._float_layer_frame(self.width, self.height)
+            for btn, frame in self._thumb_float_frames(self.width, self.height).items():
+                btn.frame = frame
+                btn.corner_radius = min(frame[3], frame[2]) / 2
+            if self._prolong_visible:
+                _, prolong_pt = self._thumb_float_fonts(self.width, self.height)
+                self.prolong_btn.font = ("<system-bold>", prolong_pt)
+                self.prolong_btn.hidden = False
+            else:
+                self.prolong_btn.hidden = True
+
+        def _bump_thumb_float_gen(self):
+            self._thumb_float_gen += 1
+
+        def _check_thumb_float_expired(self):
+            if not self._thumb_float_active or self._busy:
+                return
+            if time.monotonic() >= self._thumb_float_deadline:
+                log_event("thumb float dock (timeout)")
+                self._exit_thumb_float()
+
+        def _schedule_thumb_float_tick(self):
+            self._bump_thumb_float_gen()
+            gen = self._thumb_float_gen
+
+            def _tick():
+                if gen != self._thumb_float_gen or not self._thumb_float_active:
+                    return
+                if time.monotonic() >= self._thumb_float_deadline:
+                    self._exit_thumb_float()
+                    return
+                ui.delay(_tick, 0.2)
+
+            ui.delay(_tick, 0.2)
+
+        def _arm_thumb_float_timer(self):
+            self._thumb_float_deadline = time.monotonic() + THUMB_FLOAT_SEC
+            if self._thumb_float_active:
+                log_event("thumb float armed {}s".format(int(THUMB_FLOAT_SEC)))
+                self._schedule_thumb_float_tick()
+
+        def _move_tabs_to_float_layer(self):
+            for btn in self._tab_buttons_ordered():
+                self._rehome_button(btn, self._float_layer)
+
+        def _enter_startup_thumb_float(self):
+            """Startup only — section tabs float; Prolong extends the 5s window."""
+            if not self.width or not self.height:
+                ui.delay(self._enter_startup_thumb_float, 0.05)
+                return
+            self._thumb_float_active = True
+            self._show_prolong()
+            self._float_layer.hidden = False
+            self._float_layer.touch_enabled = True
+            self._move_tabs_to_float_layer()
+            self._layout_thumb_float()
+            self._style_tabs()
+            self.bring_subview_to_front(self._float_layer)
+            # Timer starts after refresh — startup fetch blocks the UI run loop.
+
+        def _prolong_tapped(self, sender):
+            if not self._prolong_visible:
+                return
+            log_event("thumb float prolong +{}s".format(int(THUMB_FLOAT_SEC)))
+            self._arm_thumb_float_timer()
+
+        def _exit_thumb_float(self):
+            if not self._thumb_float_active:
+                return
+            self._thumb_float_active = False
+            self._hide_prolong()
+            self._bump_thumb_float_gen()
+            self._float_layer.hidden = True
+            self._float_layer.touch_enabled = False
+            self._restore_docked_chrome()
+            self.layout()
+            try:
+                self._paint_active_tab()
+            except Exception as exc:
+                log_event("Tab repaint after dock failed: {}".format(exc))
+                log_event(traceback.format_exc())
 
         def start_remote_poll(self):
             self._poll_remote_control()
 
         def _style_tabs(self):
+            tab_pt, _ = (
+                self._thumb_float_fonts(self.width, self.height)
+                if self._thumb_float_active and self.width and self.height
+                else (13, 14)
+            )
             for tab, btn in (
                 ("cbike_jc", self.tab_cbike_btn),
                 ("from_jc", self.tab_from_btn),
@@ -1213,7 +1473,10 @@ if HAS_UI:
                 is_active = self._active_tab == tab
                 btn.background_color = COLORS["accent"] if is_active else "#2a3441"
                 btn.tint_color = COLORS["text"]
-                btn.font = ("<system-bold>", 14) if is_active else ("<system>", 14)
+                if self._thumb_float_active:
+                    btn.font = ("<system-bold>", tab_pt) if is_active else ("<system>", tab_pt)
+                else:
+                    btn.font = ("<system-bold>", 14) if is_active else ("<system>", 14)
 
         def _set_tab(self, tab):
             if self._active_tab == tab:
@@ -1233,20 +1496,25 @@ if HAS_UI:
                 log_event(traceback.format_exc())
                 self.status_label.text = "UI error: %s" % exc
 
+        def _on_section_tap(self, tab):
+            if self._thumb_float_active:
+                self._exit_thumb_float()
+            self._set_tab(tab)
+
         def _tab_cbike_tapped(self, sender):
-            self._set_tab("cbike_jc")
+            self._on_section_tap("cbike_jc")
 
         def _tab_from_tapped(self, sender):
-            self._set_tab("from_jc")
+            self._on_section_tap("from_jc")
 
         def _tab_to_tapped(self, sender):
-            self._set_tab("to_jc")
+            self._on_section_tap("to_jc")
 
         def _tab_hblr_path_tapped(self, sender):
-            self._set_tab("hblr_path")
+            self._on_section_tap("hblr_path")
 
         def _tab_tunnels_tapped(self, sender):
-            self._set_tab("tunnels")
+            self._on_section_tap("tunnels")
 
         def _poll_remote_control(self):
             import ui
@@ -1263,10 +1531,11 @@ if HAS_UI:
                         self.refresh()
             except Exception:
                 pass
+            self._check_thumb_float_expired()
             ui.delay(self._poll_remote_control, 1.0)
 
         def layout(self):
-            top = TOP_CONTENT_INSET
+            left, top, right, bottom = self._layout_insets()
             width = self.width
             height = self.height
             header_h = 64 + top
@@ -1275,7 +1544,6 @@ if HAS_UI:
 
             self.header.frame = (0, 0, width, header_h)
             self.title_label.frame = (16, top + 8, width - 120, 28)
-            self.refresh_btn.frame = (width - 96, top + 8, 80, 30)
             self.tab_bar.frame = (0, tab_top, width, TAB_BAR_HEIGHT)
             tab_gap = 4
             tab_side = 6
@@ -1288,20 +1556,163 @@ if HAS_UI:
                 self.tab_hblr_path_btn,
                 self.tab_tunnels_btn,
             )
-            for index, btn in enumerate(tab_btns):
-                btn.frame = (tab_side + index * (tab_w + tab_gap), 0, tab_w, TAB_BAR_HEIGHT - 4)
-                btn.font = ("<system>", 12)
+            if self._thumb_float_active:
+                self._float_layer.hidden = False
+                self._float_layer.touch_enabled = True
+                self._layout_thumb_float()
+                self._style_tabs()
+                self.bring_subview_to_front(self._float_layer)
+                self.refresh_btn.frame = (width - 96, top + 8, 80, 30)
+                self.refresh_btn.font = ("<system>", 14)
+            else:
+                self._float_layer.hidden = True
+                self._hide_prolong()
+                if (
+                    self.refresh_btn.superview is not self.header
+                    or self.tab_cbike_btn.superview is not self.tab_bar
+                ):
+                    self._restore_docked_chrome()
+                self.refresh_btn.frame = (width - 96, top + 8, 80, 30)
+                self.refresh_btn.font = ("<system>", 14)
+                for index, btn in enumerate(tab_btns):
+                    btn.frame = (tab_side + index * (tab_w + tab_gap), 0, tab_w, TAB_BAR_HEIGHT - 4)
+                    btn.font = ("<system>", 12)
             self.status_label.frame = (16, status_top, width - 32, 16)
-            self.scroll.frame = (0, status_top + 20, width, height - status_top - 20)
+            scroll_bottom = max(bottom, 8)
+            self.scroll.frame = (
+                0,
+                status_top + 20,
+                width,
+                max(0, height - status_top - 20 - scroll_bottom),
+            )
 
         def refresh_tapped(self, sender):
             self.refresh()
+
+        def _apply_refresh_payload(self, payload):
+            from lib import app_state
+
+            refresh_id = payload.get("refresh_id")
+            if refresh_id != self._refresh_gen:
+                log_event("step: stale refresh #{} apply skipped".format(refresh_id))
+                return
+
+            if payload.get("error"):
+                app_state.set_error(payload["error"])
+                self.status_label.text = "Error: %s" % payload["error"]
+                return
+
+            try:
+                log_event("step: finish render start")
+                self.render_snapshots(
+                    payload["snapshots"],
+                    payload["path_boards"],
+                    payload["path_33rd_boards"],
+                    payload["subway_boards"],
+                    payload["path_nj_boards"],
+                    payload["subway_to_jc_boards"],
+                    payload["tunnel_boards"],
+                    payload["hblr_path_sections"],
+                    path_exchange_wtc=payload["path_exchange_wtc"],
+                    subway_wtc_north=payload["subway_wtc_north"],
+                )
+                log_event("step: finish render done")
+            except Exception as exc:
+                app_state.set_error(str(exc))
+                self.status_label.text = "Error: %s" % exc
+                log_event("UI finish failed: {}".format(exc))
+                log_event(traceback.format_exc())
+
+        def _finish_refresh(self, refresh_id):
+            if refresh_id != self._refresh_gen:
+                return
+            from lib import app_state
+
+            self._busy = False
+            app_state.set_busy(False)
+            self.refresh_btn.enabled = True
+            if self._thumb_float_active:
+                self._arm_thumb_float_timer()
+            else:
+                self._check_thumb_float_expired()
+
+        def _refresh_step_transit(self, refresh_id, payload):
+            """Main thread only — no @ui.in_background (Pythonista TLS crash)."""
+            if refresh_id != self._refresh_gen or not self._busy:
+                return
+            try:
+                log_event("step: fetch transit")
+                (
+                    payload["path_boards"],
+                    payload["path_33rd_boards"],
+                    payload["subway_boards"],
+                    payload["path_nj_boards"],
+                    payload["subway_to_jc_boards"],
+                    payload["tunnel_boards"],
+                    payload["hblr_path_sections"],
+                    payload["path_exchange_wtc"],
+                    payload["subway_wtc_north"],
+                ) = _fetch_transit_boards()
+                log_event("step: transit ok")
+            except Exception as exc:
+                log_event("Transit fetch failed: {}".format(exc))
+                log_event(traceback.format_exc())
+
+            if refresh_id != self._refresh_gen:
+                log_event("step: stale fetch #{} discarded".format(refresh_id))
+                self._finish_refresh(refresh_id)
+                return
+
+            try:
+                self._apply_refresh_payload(payload)
+            finally:
+                self._finish_refresh(refresh_id)
+
+        def _refresh_step_bikes(self, refresh_id):
+            """Main thread only — fetch GBFS, then yield before transit."""
+            if refresh_id != self._refresh_gen or not self._busy:
+                return
+            payload = {
+                "refresh_id": refresh_id,
+                "error": None,
+                "snapshots": None,
+                "path_boards": [],
+                "path_33rd_boards": [],
+                "subway_boards": [],
+                "path_nj_boards": [],
+                "subway_to_jc_boards": [],
+                "tunnel_boards": [],
+                "hblr_path_sections": [],
+                "path_exchange_wtc": None,
+                "subway_wtc_north": [],
+            }
+            try:
+                log_event("step: fetch bikes")
+                payload["snapshots"] = get_snapshots()
+                log_event("step: bikes ok ({})".format(len(payload["snapshots"] or [])))
+            except Exception as exc:
+                payload["error"] = str(exc)
+                log_event("Refresh failed: {}".format(payload["error"]))
+                log_event(traceback.format_exc())
+                try:
+                    self._apply_refresh_payload(payload)
+                finally:
+                    self._finish_refresh(refresh_id)
+                return
+
+            if refresh_id != self._refresh_gen:
+                log_event("step: stale fetch #{} discarded".format(refresh_id))
+                self._finish_refresh(refresh_id)
+                return
+
+            ui.delay(lambda: self._refresh_step_transit(refresh_id, payload), 0.05)
 
         def refresh(self):
             if self._busy:
                 log_event("refresh skipped (busy)")
                 return
             from lib import app_state
+            from lib.http_cache import reset_stats
 
             self._refresh_gen += 1
             refresh_id = self._refresh_gen
@@ -1310,149 +1721,8 @@ if HAS_UI:
             self.refresh_btn.enabled = False
             self.status_label.text = "Updating..." + _cache_ttl_suffix()
             log_event("Refresh started (#{})".format(refresh_id))
-
-            @ui.in_background
-            def work():
-                from lib.http_cache import reset_stats
-
-                def _stale():
-                    return refresh_id != self._refresh_gen
-
-                reset_stats()
-                error = None
-                snapshots = None
-                path_boards = []
-                path_33rd_boards = []
-                subway_boards = []
-                path_nj_boards = []
-                subway_to_jc_boards = []
-                tunnel_boards = []
-                hblr_path_sections = []
-                path_exchange_wtc = None
-                subway_wtc_north = []
-
-                try:
-                    log_event("step: fetch bikes")
-                    snapshots = get_snapshots()
-                    log_event("step: bikes ok ({})".format(len(snapshots or [])))
-                except Exception as exc:
-                    error = str(exc)
-                    log_event("Refresh failed: {}".format(error))
-                    log_event(traceback.format_exc())
-
-                if error:
-
-                    def finish_error():
-                        import ui
-                        from lib import app_state
-
-                        if _stale():
-                            log_event(
-                                "step: stale refresh #{} finish_error skipped".format(
-                                    refresh_id
-                                )
-                            )
-                            return
-                        try:
-                            self._busy = False
-                            app_state.set_busy(False)
-                            self.refresh_btn.enabled = True
-                            app_state.set_error(error)
-                            self.status_label.text = "Error: %s" % error
-                        except Exception as exc:
-                            log_event("UI finish failed: {}".format(exc))
-                            log_event(traceback.format_exc())
-
-                    ui.delay(finish_error, 0)
-                    return
-
-                def show_bikes():
-                    import ui
-
-                    if _stale():
-                        log_event(
-                            "step: stale refresh #{} show_bikes skipped".format(refresh_id)
-                        )
-                        return
-                    try:
-                        log_event("step: paint bikes")
-                        if self._active_tab == "cbike_jc":
-                            self.render_snapshots(
-                                snapshots,
-                                path_boards=None,
-                                path_33rd_boards=None,
-                                subway_boards=None,
-                                path_nj_boards=None,
-                                subway_to_jc_boards=None,
-                                tunnel_boards=None,
-                                partial=True,
-                            )
-                        self.status_label.text = "Loading transit..." + _cache_ttl_suffix()
-                        log_event("step: bikes painted")
-                    except Exception as exc:
-                        log_event("UI bike render failed: {}".format(exc))
-                        log_event(traceback.format_exc())
-
-                ui.delay(show_bikes, 0)
-
-                try:
-                    log_event("step: fetch transit")
-                    (
-                        path_boards,
-                        path_33rd_boards,
-                        subway_boards,
-                        path_nj_boards,
-                        subway_to_jc_boards,
-                        tunnel_boards,
-                        hblr_path_sections,
-                        path_exchange_wtc,
-                        subway_wtc_north,
-                    ) = _fetch_transit_boards()
-                    log_event("step: transit ok")
-                except Exception as exc:
-                    log_event("Transit fetch failed: {}".format(exc))
-                    log_event(traceback.format_exc())
-
-                def finish():
-                    import ui
-                    from lib import app_state
-
-                    if _stale():
-                        log_event(
-                            "step: stale refresh #{} finish skipped".format(refresh_id)
-                        )
-                        return
-                    try:
-                        self._busy = False
-                        app_state.set_busy(False)
-                        self.refresh_btn.enabled = True
-                        log_event("step: finish render start")
-                        self.render_snapshots(
-                            snapshots,
-                            path_boards,
-                            path_33rd_boards,
-                            subway_boards,
-                            path_nj_boards,
-                            subway_to_jc_boards,
-                            tunnel_boards,
-                            hblr_path_sections,
-                            path_exchange_wtc=path_exchange_wtc,
-                            subway_wtc_north=subway_wtc_north,
-                        )
-                        log_event("step: finish render done")
-                    except Exception as exc:
-                        self._busy = False
-                        app_state.set_busy(False)
-                        app_state.set_error(str(exc))
-                        self.refresh_btn.enabled = True
-                        self.status_label.text = "Error: %s" % exc
-                        log_event("UI finish failed: {}".format(exc))
-                        log_event(traceback.format_exc())
-
-                log_event("step: scheduling finish render")
-                ui.delay(finish, 0)
-
-            work()
+            reset_stats()
+            ui.delay(lambda: self._refresh_step_bikes(refresh_id), 0.05)
 
         def _log_transit_boards(self, prefix, boards):
             if not boards:
@@ -1928,6 +2198,7 @@ if HAS_UI:
             log_event("kickoff: poll + first refresh")
             view.start_remote_poll()
             view.status_label.text = "Starting..." + _cache_ttl_suffix()
+            view._enter_startup_thumb_float()
             view.refresh()
         except Exception as exc:
             log_event("kickoff failed: {}".format(exc))

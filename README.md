@@ -20,7 +20,8 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **PC deploy script** — `deploy.ps1` zips the project to iCloud Downloads for Pythonista sync
 - **PC email script** — optional Yahoo SMTP status/alert emails
 - **iOS Shortcut** — one-tap launch from Home Screen
-- **Fullscreen UI** — Pythonista script title bar hidden; chrome starts ~1.5 cm below the top (`TOP_CONTENT_INSET`) so the title/tabs clear the iOS status bar (notch). Auto-refresh runs on launch (deferred just after `present()`)
+- **Fullscreen UI** — Pythonista script title bar hidden; layout uses **safe area insets** on iPhone 12+ (notch / Dynamic Island / home indicator). Auto-refresh on launch (deferred just after `present()`)
+- **Startup thumb float** — on open, section tabs move to a **left-edge quarter-circle** (70% up from the home indicator) for 5s; **Prolong** extends the timer; **Refresh** stays docked top-right
 
 ## Jersey City stations (`JC`)
 
@@ -37,6 +38,21 @@ All stations are tagged `[JC]` in logs, email, and the **Cbike JC** tab.
 ## App tabs
 
 Tap **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, or **Tunnels** in the tab bar. One refresh loads **all** tabs; switching tabs uses in-memory UI cache only (no extra network). See [HTTP cache and refresh API calls](#http-cache-and-refresh-api-calls).
+
+### Startup thumb float (iPhone 12+)
+
+On launch (after `present()`), section tabs **float** along a left-edge quarter-circle tuned for iPhone 12 portrait and scaled up on Pro Max / 15 / 16:
+
+| Behavior | Detail |
+|----------|--------|
+| **Trigger** | App startup only (kickoff auto-refresh) |
+| **Position** | 70% up from the **home-indicator** safe area; first tab near the left edge |
+| **Refresh** | Stays **docked** top-right — tap Refresh anytime without entering float mode |
+| **Prolong** | Float-only button at the top of the arc; resets the 5s timer |
+| **Section tab tap** | Switches tab and **docks** all tabs immediately |
+| **5s idle** | Tabs dock to the top bar (timer starts **after** startup refresh finishes) |
+
+Log markers: `build=hblr-path-v49`, `kickoff: poll + first refresh`, `thumb float armed 5s`, `thumb float dock (timeout)`.
 
 ## HTTP cache and refresh API calls
 
@@ -113,7 +129,7 @@ Not called on refresh: **NJT HBLR API** (unavailable), **path.api.razza.dev** (d
 |---------|----------|------|
 | **Citibike grid** | 12 JC stations | GBFS bike/dock counts |
 
-Bike cards paint first after refresh; transit loads in the background for the other tabs. **Liberty Light Rail** and **Exchange Pl** share a row above **JC Medical Center** (own row at the bottom); long titles use two lines (`Liberty` / `Light Rail`, `JC` / `Medical Center`).
+**Liberty Light Rail** and **Exchange Pl** share a row above **JC Medical Center** (own row at the bottom); long titles use two lines (`Liberty` / `Light Rail`, `JC` / `Medical Center`).
 
 ### From JC
 
@@ -567,10 +583,11 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 | App stuck in safe mode | Run `bike_train_transit.py` (full UI), not `debug_server.py` or `--safe` |
 | Safe mode shows empty log | Update to latest code — safe mode now preserves crash logs; check **Previous session** on dashboard |
 | Console errors not in LAN log | Update to latest code — stdout/stderr and thread errors are now captured |
-| UI stuck on “Updating…” / black screen | Transit fetch may be slow; bikes should appear first. Check log for errors; redeploy latest code |
-| Open shows empty data until Refresh tapped | Run as **main script** (Home Screen direct URL, not `RunBikeTrainTransit.py`). Update to latest code — startup refresh is deferred via `ui.delay` **after** `present()` so the UI run loop is active (log shows `kickoff: poll + first refresh`) |
-| Title overlaps the iOS status bar / notch | Increase `TOP_CONTENT_INSET` in `bike_train_transit.py` (default `43` ≈ 1.5 cm) |
-| App drops to safe mode during Refresh | Native crash from background-thread TLS. Update to latest code — refresh runs via `@ui.in_background` (Pythonista-managed) and `lib/parallel.py` fetches sequentially on Pythonista, so TLS never runs on a raw thread or concurrently |
+| UI stuck on “Updating…” / black screen | Transit fetch may be slow on the main thread (UI freezes until done). Check log for `step: fetch bikes` → `step: transit ok` → `finish render done`; redeploy latest code |
+| Open shows empty data until Refresh tapped | Run as **main script** (Home Screen direct URL, not `RunBikeTrainTransit.py`). Startup auto-refresh is deferred via `ui.delay` **after** `present()` (log: `kickoff: poll + first refresh`) |
+| Title overlaps the iOS status bar / notch | Layout uses `safe_area_insets.top` on iPhone 12+; fallback `TOP_CONTENT_INSET` (`43`) if unavailable |
+| App drops to safe mode during Refresh | Native crash from background-thread TLS on older builds. Latest code fetches on the **main thread** only (no `@ui.in_background`, no refresh `threading.Thread`); `lib/parallel.py` runs transit jobs **sequentially** on Pythonista |
+| Thumb float vanishes immediately after load | Expected on older builds that started the 5s timer before refresh finished. v49+ arms the timer **after** refresh completes |
 | Shortcut tap does nothing / Pythonista doesn’t open | In Shortcuts use the **two-action** recipe: **URL** action + **Open URLs** action (a single inline “Open URLs” often fails for `pythonista3://`). Test the URL in **Safari** first. |
 | Shortcut launches but refresh hangs / app freezes | The icon points at the `RunBikeTrainTransit.py` `runpy` stub, which breaks the UI loop. Point it at `pythonista3://bike_train_transit/bike_train_transit.py?action=run` instead (run as main script). |
 | Shortcut: “unable to locate file” | Run `bike_train_transit.py` once so it deploys to Documents; URL must be `pythonista3://bike_train_transit/bike_train_transit.py?action=run` |
