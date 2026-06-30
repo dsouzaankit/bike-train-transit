@@ -11,7 +11,7 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
 - **PATH + subway connections** — From JC **33rd St** subway cards only show trains reachable after the earliest paired PATH arrival + walk time; **HBLR↔PATH** has **PATH + Subway via WTC** under **HBLR → PATH** (**WTC Cortlandt** / **WTC** northbound, catchable after **LSP HBLR +11** then **Exchange PATH +8** walk at WTC)
 - **HBLR ↔ PATH tab** — timed transfers; **Transit App API** is used only on this tab (see [Transit App API usage](#transit-app-api-usage))
-- **PATH schedules** — trains terminating at **Hoboken** are excluded, but **"via Hoboken"** routings (the overnight 33rd↔JSQ service) are kept; **World Trade Center** additionally shows Hoboken-bound trains (HBLR transfer)
+- **PATH schedules** — trains terminating at **Hoboken** are excluded, but **"via Hoboken"** routings (the overnight 33rd↔JSQ service) are kept; **World Trade Center** additionally shows **Hoboken-bound** PATH trains; for travel near **Liberty State Park**, **change at Exchange Place** (HBLR ↔ PATH) — see [HBLR↔PATH](#jc-hblr--path)
 - **PATH & subway** — real-time departures in grouped sections (see [App tabs](#app-tabs) below); PATH uses one PANYNJ fetch for all boards
 - **Compact ETAs** — `5m`, `Due`, `Delay` / `~5m`; southbound **6** (Union Sq) and **4/5** (Bleecker St express local) trains show **↓** (e.g. `14m↓`); card notes and destinations **wrap** within narrow columns (taller cards when needed)
 - **Sorted departures** — train rows on each card sorted by ascending ETA
@@ -21,7 +21,7 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **PC email script** — optional Yahoo SMTP status/alert emails
 - **iOS Shortcut** — one-tap launch from Home Screen
 - **Fullscreen UI** — Pythonista script title bar hidden; layout uses **safe area insets** on iPhone 12+ (notch / Dynamic Island / home indicator). Auto-refresh on launch (deferred just after `present()`); no manual Refresh button
-- **Startup thumb float** — on open, section tabs stack **vertically** toward screen center for 5s; **Prolong** extends the timer; tabs **gray out** until startup refresh finishes
+- **Startup thumb float** — on open, section tabs stack **vertically** toward screen center for 5s; **hold Prolong** pauses the timer (red + haptic); tabs **gray out** until startup refresh finishes
 
 ## Jersey City stations (`JC`)
 
@@ -47,12 +47,12 @@ On launch (after `present()`), section tabs **float** in a vertical column pulle
 |----------|--------|
 | **Trigger** | App startup only (kickoff auto-refresh) |
 | **Position** | Vertical stack on screen center line; stack center at 65% usable height |
-| **Prolong** | Top of stack (furthest from thumb); resets the **5s** timer |
+| **Prolong** | Top of stack; **hold** pauses the 5s timer (pill turns **red** + haptic); **release** re-arms +5s |
 | **Section tabs** | **Tunnels** nearest thumb at stack bottom; **grayed out** until startup refresh finishes |
 | **Section tab tap** | Ignored while refresh is running; otherwise highlights tapped pill, switches tab, and **docks** all tabs |
 | **5s idle** | Tabs dock to the top bar (timer starts when startup refresh finishes, or immediately if idle) |
 
-Log markers: `build=hblr-path-v69`, `kickoff: poll + first refresh`, `thumb float armed 5s`, `thumb float dock (timeout)`.
+Log markers: `build=hblr-path-v71`, `kickoff: poll + first refresh`, `thumb float armed 5s`, `thumb float dock (timeout)`.
 
 ## HTTP cache and refresh API calls
 
@@ -165,21 +165,29 @@ Transit-only tab (no bike grid) to keep scrolling short. **To JC** subway cards 
 | **Subway + PATH . Nwk** | WTC Cortlandt, World Trade Center (subway + PATH) | Downtown 1 / E toward South Ferry / WTC; NJ-bound PATH at WTC (incl. Hoboken) |
 | **PATH → NJ** | Christopher St, 9th St, 33rd St | Next NJ-bound PATH trains |
 
-**World Trade Center subway:** uses direct E-line arrivals when available. If not, estimates from **Canal St** WTC-bound departures **+2 min** (shown with `~` and note “est. Canal St + 2 min”). Cards show **up to 2 ETAs per line** when multiple lines serve the station. The **PATH WTC** card (tag `NJ`) sits in this section next to the subway tiles, and includes **Hoboken-bound** PATH trains.
+**World Trade Center subway:** uses direct E-line arrivals when available. If not, estimates from **Canal St** WTC-bound departures **+2 min** (shown with `~` and note “est. Canal St + 2 min”). Cards show **up to 2 ETAs per line** when multiple lines serve the station. The **PATH WTC** card (tag `NJ`) sits in this section next to the subway tiles, and includes **Hoboken-bound** PATH trains on the **WTC–Hoboken** line.
+
+**LSP area travel — change at Exchange Place:** Trips near **Liberty State Park** should **change at Exchange Place** (**HBLR → PATH**, same station complex). On **HBLR↔PATH**, watch **LSP HBLR +11 min** then **Exchange Place PATH → WTC** (and **PATH + Subway via WTC** uses the same Exchange → WTC leg). **Weekends through ~9 PM**, only if Exchange timing is poor: **northbound HBLR** to **Hoboken Terminal** and the **WTC–Hoboken** PATH shuttle (**Hoboken-bound** at **World Trade Center** on this tab).
 
 ### JC HBLR ↔ PATH
+
+**Near Liberty State Park:** **change at Exchange Place** — HBLR and PATH share the same station (light rail upstairs, PATH downstairs). Use the **HBLR → PATH** section below (**LSP +11 min** → **Exchange Place PATH → WTC**). Weekend **WTC–Hoboken** via Hoboken Terminal is an alternate only when Exchange timing is poor.
 
 Four connection sections (primary departures + catchable secondary after the offset):
 
 | Section | Primary | Secondary (after offset) | Offset |
 |---------|---------|--------------------------|--------|
-| **HBLR → PATH** | Liberty State Park HBLR (once, full width) | Exchange Place → WTC · Newport → 33rd (side by side) | 11 / 21 min |
+| **HBLR → PATH** | Liberty State Park HBLR (once, full width) | **Exchange Place** → WTC · Newport → 33rd (side by side; **change at Exchange Place**) | 11 / 21 min |
 | **PATH WTC → HBLR** | World Trade Center PATH (NJ-bound) | Exchange Place HBLR → Liberty State Pk | 7 min |
 | **PATH 33rd St → HBLR** | Christopher St PATH (NJ-bound) | Newport HBLR → Liberty State Pk | 13 min |
 
-**HBLR → PATH:** Exchange and Newport PATH cards show departures **catchable after LSP + offset** (11 / 21 min). PANYNJ first, then **Transit API** (filter pool **8**). Cards stay empty when nothing is reachable from LSP — no misleading raw PATH ETAs.
+**HBLR → PATH:** **Exchange Place** is the main interchange for LSP-area trips — the **Exchange Place → WTC** PATH card (left column under **HBLR → PATH**) lists departures **catchable after LSP +11 min**. **Newport → 33rd** (+21 min) is the alternate PATH side column. PANYNJ first, then **Transit API** (filter pool **8**). Cards stay empty when nothing is reachable from LSP — no misleading raw PATH ETAs.
 
-**PATH → HBLR:** secondary HBLR uses **Transit App → PDF** (NJT live middle step unavailable — see below). If nothing is catchable, live boards show **current HBLR** (`· current HBLR`).
+**PATH → HBLR:** secondary HBLR uses **Transit App → PDF** (NJT live middle step unavailable — see below). **PATH WTC → HBLR** returns via **Exchange Place HBLR → Liberty State Pk** (+7 min). If nothing is catchable, live boards show **current HBLR** (`· current HBLR`).
+
+**Exchange Place + LSP:** **Exchange Place** is the usual **HBLR ↔ PATH** transfer for the LSP area — ride **HBLR from Liberty State Park to Exchange Place**, then **change** to PATH toward **WTC** or **33rd St** (same complex; no street transfer). The app’s **HBLR → PATH** and **PATH + Subway via WTC** cards are timed for that **change at Exchange Place** (+11 min walk/connection from LSP HBLR).
+
+**WTC–Hoboken PATH (weekends through ~9 PM):** **Not** the primary LSP route — use **Exchange Place** first (above). On **weekend** service (roughly **noon–9 PM**), if Exchange PATH timing is tight, an alternate is **northbound HBLR** from LSP to **Hoboken Terminal**, then the **WTC–Hoboken** PATH shuttle (**Hoboken-bound** trains at **World Trade Center** on **To JC**). Separate from **Newark-line** WTC departures at **Exchange Place** in weekend sync tests (20‑min **8th St** HBLR pairing).
 
 **PATH + Subway via WTC:** first row — **Exchange Place** PATH → WTC (raw PANYNJ realtime, no LSP offset). Second row — **WTC Cortlandt** / **WTC** northbound subway, catchable after **LSP HBLR +11** then **Exchange PATH +8** walk at WTC. When PANYNJ or the subway API pool is too shallow, **Transit API** retries Exchange PATH and/or WTC subway stops (filter pool **8**); otherwise **current subway** (`· current subway`).
 

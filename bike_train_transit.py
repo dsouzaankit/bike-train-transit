@@ -142,7 +142,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v69"
+BUILD_TAG = "hblr-path-v71"
 
 
 def _cache_ttl_suffix() -> str:
@@ -1165,6 +1165,76 @@ if HAS_UI:
                 pill.add_subview(eta)
                 y += row_h
 
+    def _haptic_prolong_press():
+        try:
+            from objc_util import ObjCClass
+
+            # UIImpactFeedbackStyleMedium
+            gen = ObjCClass("UIImpactFeedbackGenerator").alloc().initWithStyle_(1)
+            gen.prepare()
+            gen.impactOccurred()
+        except Exception:
+            try:
+                import sound
+
+                sound.play_effect("ui:click")
+            except Exception:
+                pass
+
+    class ProlongPill(ui.View):
+        """Hold pauses the thumb-float countdown; release re-arms +5s."""
+
+        def __init__(self, on_press, on_release):
+            super().__init__()
+            self.on_press = on_press
+            self.on_release = on_release
+            self.background_color = COLORS["accent"]
+            self.corner_radius = 8
+            self._holding = False
+            self._title = make_label(
+                "Prolong", font_size=14, bold=True, color=COLORS["text"], align=ui.ALIGN_CENTER
+            )
+            self.add_subview(self._title)
+
+        @property
+        def font(self):
+            return self._title.font
+
+        @font.setter
+        def font(self, value):
+            self._title.font = value
+
+        def layout(self):
+            self._title.frame = self.bounds
+
+        def _set_holding_visual(self, holding):
+            self.background_color = COLORS["bad"] if holding else COLORS["accent"]
+
+        def _finish_hold(self):
+            if not self._holding:
+                return
+            self._holding = False
+            self._set_holding_visual(False)
+            self.on_release()
+
+        def touch_began(self, touch):
+            self._holding = True
+            self._set_holding_visual(True)
+            _haptic_prolong_press()
+            self.on_press()
+            return True
+
+        def touch_moved(self, touch):
+            loc = touch.location
+            if loc[0] < 0 or loc[1] < 0 or loc[0] > self.width or loc[1] > self.height:
+                self._finish_hold()
+
+        def touch_ended(self, touch):
+            self._finish_hold()
+
+        def touch_cancelled(self, touch):
+            self._finish_hold()
+
     class BikeTrainTransitView(ui.View):
         def __init__(self):
             super().__init__()
@@ -1179,17 +1249,14 @@ if HAS_UI:
             self._thumb_float_deadline = 0.0
             self._thumb_float_startup_pending = False
             self._prolong_visible = False
+            self._prolong_hold_active = False
 
             self._float_layer = ui.View()
             self._float_layer.background_color = (0, 0, 0, 0)
             self._float_layer.touch_enabled = False
             self._float_layer.hidden = True
 
-            self.prolong_btn = ui.Button(title="Prolong")
-            self.prolong_btn.background_color = COLORS["accent"]
-            self.prolong_btn.tint_color = COLORS["text"]
-            self.prolong_btn.corner_radius = 8
-            self.prolong_btn.action = self._prolong_tapped
+            self.prolong_btn = ProlongPill(self._prolong_press_began, self._prolong_press_ended)
             self.prolong_btn.hidden = True
             self._float_layer.add_subview(self.prolong_btn)
 
@@ -1389,7 +1456,7 @@ if HAS_UI:
             self._thumb_float_gen += 1
 
         def _check_thumb_float_expired(self):
-            if not self._thumb_float_active or self._busy:
+            if not self._thumb_float_active or self._busy or self._prolong_hold_active:
                 return
             # deadline <= 0 means timer not armed yet (waiting for refresh to finish).
             if self._thumb_float_deadline <= 0:
@@ -1406,6 +1473,9 @@ if HAS_UI:
                 if gen != self._thumb_float_gen or not self._thumb_float_active:
                     return
                 if self._thumb_float_deadline <= 0:
+                    ui.delay(_tick, 0.2)
+                    return
+                if self._prolong_hold_active:
                     ui.delay(_tick, 0.2)
                     return
                 if time.monotonic() >= self._thumb_float_deadline:
@@ -1454,13 +1524,22 @@ if HAS_UI:
             self._float_layer.bring_to_front()
             self._maybe_arm_thumb_float_timer()
 
-        def _prolong_tapped(self, sender):
+        def _prolong_press_began(self):
+            if not self._prolong_visible or not self._thumb_float_active:
+                return
+            self._prolong_hold_active = True
+
+        def _prolong_press_ended(self):
+            if not self._prolong_hold_active:
+                return
+            self._prolong_hold_active = False
             if not self._prolong_visible:
                 return
             log_event("thumb float prolong +{}s".format(int(THUMB_FLOAT_SEC)))
             self._arm_thumb_float_timer()
 
         def _exit_thumb_float(self, repaint=True):
+            self._prolong_hold_active = False
             if not self._thumb_float_active:
                 return
             self._thumb_float_active = False
