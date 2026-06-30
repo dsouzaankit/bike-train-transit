@@ -43,6 +43,15 @@ class HttpCacheTests(unittest.TestCase):
         http_cache.clear_memory()
         self.assertEqual(http_cache.get_cached_json(url), payload)
 
+    def test_stats_track_hits_and_stores(self):
+        url = "https://example.com/stats.json"
+        http_cache.reset_stats()
+        http_cache.store_cached_json(url, {"a": 1})
+        http_cache.get_cached_json(url)
+        stats = http_cache.stats_snapshot()
+        self.assertEqual(stats["stores"], 1)
+        self.assertGreaterEqual(stats["hits"], 1)
+
     def test_expired_disk_entry_returns_none(self):
         url = "https://example.com/old.json"
         key = http_cache._entry_key(url)

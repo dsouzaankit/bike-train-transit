@@ -401,7 +401,7 @@ Runs on the **iPhone** (not PC). Your PC reads logs over Wi‑Fi.
 | `http://<phone-ip>:8765/` | HTML dashboard with live log tail |
 | `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v16`; HBLR boards log `[transit]` / `[pdf]` source) |
 | `/bike_train_transit_progress.txt` | Last 12 log lines |
-| `/status.json` | App state (stations, transit boards, active tab, errors) |
+| `/status.json` | App state (stations, transit boards, active tab, errors, **`httpCache` hits/misses**) |
 | `/refresh` | Trigger refresh on the phone from PC |
 
 Legacy aliases `/citibike_*.txt` still work.

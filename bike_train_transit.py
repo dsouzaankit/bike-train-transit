@@ -125,7 +125,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v25"
+BUILD_TAG = "hblr-path-v26"
 
 COLORS = {
     "bg": "#0f1419",
@@ -209,11 +209,15 @@ def _lan_debug_url(path="/"):
 def debug_status():
     from lib import app_state
     from lib.debug_flags import inactive_summary
+    from lib.http_cache import disk_entry_count, stats_snapshot
 
     status = app_state.snapshot()
     inactive = inactive_summary()
     if inactive:
         status["inactive"] = inactive
+    status["httpCache"] = stats_snapshot()
+    status["httpCache"]["diskEntries"] = disk_entry_count()
+    status["httpCache"]["ttlSec"] = 120
     return status
 
 
@@ -253,7 +257,36 @@ def _decode_response(raw):
         return bytes(raw).decode("utf-8", "replace")
 
 
+def _short_fetch_url(url: str, limit: int = 72) -> str:
+    text = normalize_cache_url(url)
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
+
+
+def _short_fetch_url(url):
+    from lib.http_cache import normalize_cache_url
+
+    text = normalize_cache_url(url)
+    if len(text) <= 72:
+        return text
+    return text[:69] + "..."
+
+
 def fetch_json(url, timeout=30, retries=2):
+    from lib.http_cache import get_cached_json, store_cached_json, _record_miss
+
+    cached = get_cached_json(url)
+    if cached is not None:
+        if not isinstance(cached, dict):
+            raise ValueError(
+                "Cached JSON for %s is %s, expected object"
+                % (url, type(cached).__name__)
+            )
+        log_event("http cache hit: %s" % _short_fetch_url(url))
+        return cached
+
+    _record_miss()
     last_error = None
     for attempt in range(max(1, retries + 1)):
         try:
@@ -274,6 +307,7 @@ def fetch_json(url, timeout=30, retries=2):
                     "Expected JSON object from %s, got %s"
                     % (url, type(payload).__name__)
                 )
+            store_cached_json(url, payload)
             return payload
         except Exception as exc:
             last_error = exc
@@ -321,6 +355,19 @@ def fetch_transit_json(url):
 
 def fetch_transit_payload(url):
     """Like fetch_transit_json but accepts JSON arrays (e.g. PANYNJ crossing times)."""
+    from lib.http_cache import get_cached_json, store_cached_json, _record_miss
+
+    cached = get_cached_json(url)
+    if cached is not None:
+        if isinstance(cached, (dict, list)):
+            log_event("http cache hit: %s" % _short_fetch_url(url))
+            return cached
+        raise ValueError(
+            "Cached JSON for %s is %s, expected object or array"
+            % (url, type(cached).__name__)
+        )
+
+    _record_miss()
     last_error = None
     for attempt in range(3):
         try:
@@ -332,6 +379,7 @@ def fetch_transit_payload(url):
             text = _decode_response(raw)
             payload = json.loads(text)
             if isinstance(payload, (dict, list)):
+                store_cached_json(url, payload)
                 return payload
             raise ValueError("Expected JSON object or array from %s" % url)
         except Exception as exc:

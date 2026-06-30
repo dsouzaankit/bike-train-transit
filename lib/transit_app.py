@@ -53,6 +53,9 @@ def _get_json(path, params):
         if isinstance(cached, dict):
             return cached
         raise ValueError("Cached Transit payload is not an object")
+    from lib.http_cache import _record_miss
+
+    _record_miss()
     req = urllib.request.Request(
         url,
         headers={

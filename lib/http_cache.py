@@ -15,6 +15,47 @@ _CACHE_DIR_NAME = "http_cache"
 _memory: dict[str, tuple[float, object]] = {}
 _lock = threading.Lock()
 _cache_dir_override: str | None = None
+_stats = {"hits": 0, "misses": 0, "stores": 0, "disk_errors": 0}
+
+
+def stats_snapshot() -> dict[str, int]:
+    with _lock:
+        return dict(_stats)
+
+
+def reset_stats() -> None:
+    with _lock:
+        for key in _stats:
+            _stats[key] = 0
+
+
+def _record_hit() -> None:
+    with _lock:
+        _stats["hits"] += 1
+
+
+def _record_miss() -> None:
+    with _lock:
+        _stats["misses"] += 1
+
+
+def _record_store() -> None:
+    with _lock:
+        _stats["stores"] += 1
+
+
+def _record_disk_error() -> None:
+    with _lock:
+        _stats["disk_errors"] += 1
+
+
+def disk_entry_count() -> int:
+    try:
+        return sum(
+            1 for name in os.listdir(_cache_dir()) if name.endswith(".json")
+        )
+    except OSError:
+        return 0
 
 
 def _cache_dir() -> str:
@@ -75,6 +116,7 @@ def clear_disk() -> None:
 def clear_all() -> None:
     clear_memory()
     clear_disk()
+    reset_stats()
 
 
 def _read_disk(key: str, now: float) -> object | None:
@@ -105,11 +147,17 @@ def _write_disk(key: str, url: str, payload: object, now: float) -> None:
         "url": normalize_cache_url(url),
         "payload": payload,
     }
-    data = json.dumps(envelope, separators=(",", ":")).encode("utf-8")
-    with _lock:
+    try:
+        data = json.dumps(envelope, separators=(",", ":")).encode("utf-8")
         with open(tmp, "wb") as fh:
             fh.write(data)
         os.replace(tmp, path)
+    except (OSError, TypeError, ValueError):
+        _record_disk_error()
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 def get_cached_json(url: str) -> object | None:
@@ -120,12 +168,14 @@ def get_cached_json(url: str) -> object | None:
     with _lock:
         cached = _memory.get(key)
         if cached and now - cached[0] <= HTTP_CACHE_TTL_SEC:
+            _stats["hits"] += 1
             return cached[1]
     payload = _read_disk(key, now)
     if payload is None:
         return None
     with _lock:
         _memory[key] = (now, payload)
+        _stats["hits"] += 1
     return payload
 
 
@@ -136,7 +186,8 @@ def store_cached_json(url: str, payload: object) -> None:
     now = time.time()
     with _lock:
         _memory[key] = (now, payload)
+        _stats["stores"] += 1
     try:
         _write_disk(key, url, payload, now)
-    except OSError:
+    except (OSError, TypeError, ValueError):
         pass
