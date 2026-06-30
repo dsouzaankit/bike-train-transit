@@ -126,7 +126,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v31"
+BUILD_TAG = "hblr-path-v33"
 
 
 def _cache_ttl_suffix() -> str:
@@ -1366,35 +1366,6 @@ if HAS_UI:
                     ui.delay(finish_error, 0)
                     return
 
-                def show_bikes():
-                    import ui
-
-                    if _stale():
-                        log_event(
-                            "step: stale refresh #{} show_bikes skipped".format(refresh_id)
-                        )
-                        return
-                    try:
-                        log_event("step: paint bikes")
-                        if self._active_tab == "cbike_jc":
-                            self.render_snapshots(
-                                snapshots,
-                                path_boards=None,
-                                path_33rd_boards=None,
-                                subway_boards=None,
-                                path_nj_boards=None,
-                                subway_to_jc_boards=None,
-                                tunnel_boards=None,
-                                partial=True,
-                            )
-                        self.status_label.text = "Loading transit..." + _cache_ttl_suffix()
-                        log_event("step: bikes painted")
-                    except Exception as exc:
-                        log_event("UI bike render failed: {}".format(exc))
-                        log_event(traceback.format_exc())
-
-                ui.delay(show_bikes, 0)
-
                 try:
                     log_event("step: fetch transit")
                     (
@@ -1928,7 +1899,11 @@ if HAS_UI:
             log_event("kickoff: poll + first refresh")
             view.start_remote_poll()
             view.status_label.text = "Starting..." + _cache_ttl_suffix()
-            view.refresh()
+
+            def _deferred_refresh():
+                view.refresh()
+
+            ui.delay(_deferred_refresh, 1.0)
         except Exception as exc:
             log_event("kickoff failed: {}".format(exc))
             log_event(traceback.format_exc())
