@@ -5,16 +5,7 @@ import time
 
 
 def _is_pythonista() -> bool:
-    if "Pythonista" in sys.executable:
-        return True
-    if sys.platform in ("ios", "iphoneos"):
-        return True
-    try:
-        import ui  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
+    return "Pythonista" in sys.executable
 
 
 def run_parallel(tasks, timeout=None):

@@ -126,7 +126,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v34"
+BUILD_TAG = "hblr-path-v33"
 
 
 def _cache_ttl_suffix() -> str:
@@ -1146,7 +1146,6 @@ if HAS_UI:
             self.name = APP_TITLE
             self._busy = False
             self._refresh_gen = 0
-            self._refresh_payload = None
             self._active_tab = "from_jc"
             self._cache = {"snapshots": []}
 
@@ -1295,59 +1294,6 @@ if HAS_UI:
             self.status_label.frame = (16, status_top, width - 32, 16)
             self.scroll.frame = (0, status_top + 20, width, height - status_top - 20)
 
-        def _apply_refresh_payload(self, payload):
-            from lib import app_state
-
-            refresh_id = payload.get("refresh_id")
-            if refresh_id != self._refresh_gen:
-                log_event("step: stale refresh #{} apply skipped".format(refresh_id))
-                return
-
-            if payload.get("error"):
-                app_state.set_error(payload["error"])
-                self.status_label.text = "Error: %s" % payload["error"]
-                return
-
-            try:
-                log_event("step: finish render start")
-                self.render_snapshots(
-                    payload["snapshots"],
-                    payload["path_boards"],
-                    payload["path_33rd_boards"],
-                    payload["subway_boards"],
-                    payload["path_nj_boards"],
-                    payload["subway_to_jc_boards"],
-                    payload["tunnel_boards"],
-                    payload["hblr_path_sections"],
-                    path_exchange_wtc=payload["path_exchange_wtc"],
-                    subway_wtc_north=payload["subway_wtc_north"],
-                )
-                log_event("step: finish render done")
-            except Exception as exc:
-                app_state.set_error(str(exc))
-                self.status_label.text = "Error: %s" % exc
-                log_event("UI finish failed: {}".format(exc))
-                log_event(traceback.format_exc())
-
-        def _poll_refresh_result(self):
-            """Main thread only — never call ui.delay from @ui.in_background worker."""
-            if not self._busy:
-                return
-            payload = self._refresh_payload
-            if payload is None:
-                ui.delay(self._poll_refresh_result, 0.25)
-                return
-
-            self._refresh_payload = None
-            from lib import app_state
-
-            try:
-                self._apply_refresh_payload(payload)
-            finally:
-                self._busy = False
-                app_state.set_busy(False)
-                self.refresh_btn.enabled = True
-
         def refresh_tapped(self, sender):
             self.refresh()
 
@@ -1360,68 +1306,124 @@ if HAS_UI:
             self._refresh_gen += 1
             refresh_id = self._refresh_gen
             self._busy = True
-            self._refresh_payload = None
             app_state.set_busy(True)
             self.refresh_btn.enabled = False
             self.status_label.text = "Updating..." + _cache_ttl_suffix()
             log_event("Refresh started (#{})".format(refresh_id))
 
             @ui.in_background
-            def fetch():
+            def work():
                 from lib.http_cache import reset_stats
 
+                def _stale():
+                    return refresh_id != self._refresh_gen
+
                 reset_stats()
-                payload = {
-                    "refresh_id": refresh_id,
-                    "error": None,
-                    "snapshots": None,
-                    "path_boards": [],
-                    "path_33rd_boards": [],
-                    "subway_boards": [],
-                    "path_nj_boards": [],
-                    "subway_to_jc_boards": [],
-                    "tunnel_boards": [],
-                    "hblr_path_sections": [],
-                    "path_exchange_wtc": None,
-                    "subway_wtc_north": [],
-                }
+                error = None
+                snapshots = None
+                path_boards = []
+                path_33rd_boards = []
+                subway_boards = []
+                path_nj_boards = []
+                subway_to_jc_boards = []
+                tunnel_boards = []
+                hblr_path_sections = []
+                path_exchange_wtc = None
+                subway_wtc_north = []
+
                 try:
                     log_event("step: fetch bikes")
-                    payload["snapshots"] = get_snapshots()
-                    log_event("step: bikes ok ({})".format(len(payload["snapshots"] or [])))
+                    snapshots = get_snapshots()
+                    log_event("step: bikes ok ({})".format(len(snapshots or [])))
                 except Exception as exc:
-                    payload["error"] = str(exc)
-                    log_event("Refresh failed: {}".format(payload["error"]))
+                    error = str(exc)
+                    log_event("Refresh failed: {}".format(error))
                     log_event(traceback.format_exc())
-                    if refresh_id == self._refresh_gen:
-                        self._refresh_payload = payload
+
+                if error:
+
+                    def finish_error():
+                        import ui
+                        from lib import app_state
+
+                        if _stale():
+                            log_event(
+                                "step: stale refresh #{} finish_error skipped".format(
+                                    refresh_id
+                                )
+                            )
+                            return
+                        try:
+                            self._busy = False
+                            app_state.set_busy(False)
+                            self.refresh_btn.enabled = True
+                            app_state.set_error(error)
+                            self.status_label.text = "Error: %s" % error
+                        except Exception as exc:
+                            log_event("UI finish failed: {}".format(exc))
+                            log_event(traceback.format_exc())
+
+                    ui.delay(finish_error, 0)
                     return
 
                 try:
                     log_event("step: fetch transit")
                     (
-                        payload["path_boards"],
-                        payload["path_33rd_boards"],
-                        payload["subway_boards"],
-                        payload["path_nj_boards"],
-                        payload["subway_to_jc_boards"],
-                        payload["tunnel_boards"],
-                        payload["hblr_path_sections"],
-                        payload["path_exchange_wtc"],
-                        payload["subway_wtc_north"],
+                        path_boards,
+                        path_33rd_boards,
+                        subway_boards,
+                        path_nj_boards,
+                        subway_to_jc_boards,
+                        tunnel_boards,
+                        hblr_path_sections,
+                        path_exchange_wtc,
+                        subway_wtc_north,
                     ) = _fetch_transit_boards()
                     log_event("step: transit ok")
                 except Exception as exc:
                     log_event("Transit fetch failed: {}".format(exc))
                     log_event(traceback.format_exc())
 
-                if refresh_id != self._refresh_gen:
-                    log_event("step: stale fetch #{} discarded".format(refresh_id))
-                    return
-                self._refresh_payload = payload
+                def finish():
+                    import ui
+                    from lib import app_state
 
-            fetch()
-            ui.delay(self._poll_refresh_result, 0.25)
+                    if _stale():
+                        log_event(
+                            "step: stale refresh #{} finish skipped".format(refresh_id)
+                        )
+                        return
+                    try:
+                        self._busy = False
+                        app_state.set_busy(False)
+                        self.refresh_btn.enabled = True
+                        log_event("step: finish render start")
+                        self.render_snapshots(
+                            snapshots,
+                            path_boards,
+                            path_33rd_boards,
+                            subway_boards,
+                            path_nj_boards,
+                            subway_to_jc_boards,
+                            tunnel_boards,
+                            hblr_path_sections,
+                            path_exchange_wtc=path_exchange_wtc,
+                            subway_wtc_north=subway_wtc_north,
+                        )
+                        log_event("step: finish render done")
+                    except Exception as exc:
+                        self._busy = False
+                        app_state.set_busy(False)
+                        app_state.set_error(str(exc))
+                        self.refresh_btn.enabled = True
+                        self.status_label.text = "Error: %s" % exc
+                        log_event("UI finish failed: {}".format(exc))
+                        log_event(traceback.format_exc())
+
+                log_event("step: scheduling finish render")
+                ui.delay(finish, 0)
+
+            work()
 
         def _log_transit_boards(self, prefix, boards):
             if not boards:
@@ -1894,14 +1896,14 @@ if HAS_UI:
             from lib.app_control import clear_control
 
             clear_control()
-            log_event("kickoff: poll (manual refresh)")
+            log_event("kickoff: poll + first refresh")
             view.start_remote_poll()
-            if view._cache.get("snapshots"):
-                try:
-                    view._paint_active_tab()
-                except Exception as exc:
-                    log_event("kickoff paint cached tab failed: {}".format(exc))
-            view.status_label.text = "Tap Refresh" + _cache_ttl_suffix()
+            view.status_label.text = "Starting..." + _cache_ttl_suffix()
+
+            def _deferred_refresh():
+                view.refresh()
+
+            ui.delay(_deferred_refresh, 1.0)
         except Exception as exc:
             log_event("kickoff failed: {}".format(exc))
             log_event(traceback.format_exc())
