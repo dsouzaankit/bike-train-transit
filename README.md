@@ -20,8 +20,8 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **PC deploy script** — `deploy.ps1` zips the project to iCloud Downloads for Pythonista sync
 - **PC email script** — optional Yahoo SMTP status/alert emails
 - **iOS Shortcut** — one-tap launch from Home Screen
-- **Fullscreen UI** — Pythonista script title bar hidden; layout uses **safe area insets** on iPhone 12+ (notch / Dynamic Island / home indicator). Auto-refresh on launch (deferred just after `present()`); no manual Refresh button
-- **Startup thumb float** — on open, section tabs stack **vertically** toward screen center for 5s; **hold Prolong** pauses the timer (red + haptic); tabs **gray out** until startup refresh finishes
+- **Fullscreen UI** — Pythonista script title bar hidden; layout uses **safe area insets** on iPhone 12+ (notch / Dynamic Island / home indicator)
+- **Startup thumb float** — on open, section tabs stack **vertically** toward screen center until you **tap a section** (no auto-dock timer)
 
 ## Jersey City stations (`JC`)
 
@@ -61,18 +61,19 @@ Log markers: `build=hblr-path-v75`, `step: MT→JC rows (3)`.
 
 ### Startup thumb float (~6" screens)
 
-On launch (after `present()`), section tabs **float** in a vertical column pulled toward the horizontal center (left-hand thumb on ~6" phones):
+On launch (after `present()`), section tabs **float** in a vertical column on the screen center line (left-hand thumb on ~6" phones):
 
 | Behavior | Detail |
 |----------|--------|
 | **Trigger** | App startup only (no auto-fetch until you tap a tab) |
 | **Position** | Vertical stack on screen center line; stack center at 65% usable height |
-| **Prolong** | Top of stack; **hold** pauses the 5s timer (pill turns **red** + haptic); **release** re-arms +5s |
-| **Section tabs** | **MT→JC** nearest thumb at stack bottom; **grayed out** while that tab is fetching |
-| **Section tab tap** | Highlights tapped pill, switches tab, **docks** tabs, and **fetches only that tab** |
-| **5s idle** | Tabs dock to the top bar (timer starts when idle after a tab fetch, or immediately on launch) |
+| **Duration** | Stays floating until you **tap a section tab** (no 5s timeout) |
+| **Section tabs (idle)** | Same dark gray on every pill while floating (no pre-selected blue) |
+| **Press feedback** | **Red** flash + haptic on every pill (same as docked tabs) |
+| **Section tab tap** | Docks to top bar (active tab turns blue), fetches that tab only |
+| **While fetching** | All tabs grayed until the fetch finishes |
 
-Log markers: `build=hblr-path-v75`, `kickoff: poll (tap tab to load)`, `Refresh tab mt_to_jc (#1)`, `thumb float armed 5s`.
+Log markers: `build=hblr-path-v78`, `kickoff: poll (tap tab to load)`, `thumb float (tap section to dock)`, `Refresh tab mt_to_jc (#1)`.
 
 ## HTTP cache and refresh API calls
 
@@ -617,8 +618,7 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 | Open shows empty data on launch | Expected until you tap a tab (log: `kickoff: poll (tap tab to load)` then `Refresh tab …`). Run as **main script** (Home Screen direct URL, not `RunBikeTrainTransit.py`) |
 | Title overlaps the iOS status bar / notch | Layout uses `safe_area_insets.top` on iPhone 12+; fallback `TOP_CONTENT_INSET` (`43`) if unavailable |
 | App drops to safe mode during auto-refresh | Native crash from background-thread TLS on older builds. Latest code fetches on the **main thread** only (no `@ui.in_background`, no refresh `threading.Thread`); `lib/parallel.py` runs transit jobs **sequentially** on Pythonista |
-| Thumb float tabs stay grayed | Expected while `Updating…` is shown — tabs re-enable when kickoff refresh finishes (`thumb float armed 5s` in log) |
-| Thumb float vanishes immediately after load | Expected on older builds that started the 5s timer before refresh finished. v49+ arms the timer **after** refresh completes |
+| Thumb float tabs stay grayed | Expected while `Updating…` is shown — tabs re-enable when the tab fetch finishes |
 | Shortcut tap does nothing / Pythonista doesn’t open | In Shortcuts use the **two-action** recipe: **URL** action + **Open URLs** action (a single inline “Open URLs” often fails for `pythonista3://`). Test the URL in **Safari** first. |
 | Shortcut launches but refresh hangs / app freezes | The icon points at the `RunBikeTrainTransit.py` `runpy` stub, which breaks the UI loop. Point it at `pythonista3://bike_train_transit/bike_train_transit.py?action=run` instead (run as main script). |
 | Shortcut: “unable to locate file” | Run `bike_train_transit.py` once so it deploys to Documents; URL must be `pythonista3://bike_train_transit/bike_train_transit.py?action=run` |

@@ -121,17 +121,16 @@ TOP_CONTENT_INSET = 43  # fallback when safe_area_insets unavailable
 # Thumb float tuned for ~6" portrait (412×892 class); scales with safe area.
 PHONE6_REF_W = 412
 PHONE6_REF_USABLE_H = 811  # 892 − ~47 top − ~34 home indicator
-THUMB_FLOAT_SEC = 5.0
 THUMB_FLOAT_MARGIN_EDGE = 16
 THUMB_FLOAT_MARGIN_BOTTOM = 20  # stack anchor above home indicator
 THUMB_FLOAT_BTN_GAP = 14
 THUMB_FLOAT_STACK_X_RATIO = 0.50  # column on vertical screen center line
 THUMB_FLOAT_STACK_Y_RATIO = 0.65  # stack center — lower half for thumb reach
 THUMB_FLOAT_BTN_H_BASE = 50
-THUMB_PROLONG_W_BASE = 108
 THUMB_FLOAT_TAB_W_BASE = 100
 THUMB_FLOAT_SCALE_MAX = 1.12
 TAB_BUSY_BG = "#252b33"  # tab pills while refresh in progress
+TAB_INACTIVE_BG = "#2a3441"  # docked inactive + thumb-float idle
 
 LAN_DEBUG_ENABLED = True
 LAN_DEBUG_PORT = 8765
@@ -141,7 +140,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v76"
+BUILD_TAG = "hblr-path-v78"
 
 TAB_TRANSIT_JOBS = {
     "from_jc": ("pathAll", "subway"),
@@ -1272,7 +1271,7 @@ if HAS_UI:
                 pass
 
     class SectionPill(ui.View):
-        """Section tab pill — red + haptic on press (docked and thumb float)."""
+        """Section tab pill — red press + haptic; rest style from owner (_style_tabs)."""
 
         def __init__(self, title):
             super().__init__()
@@ -1286,6 +1285,7 @@ if HAS_UI:
                 title, font_size=14, color=COLORS["text"], align=ui.ALIGN_CENTER
             )
             self.add_subview(self._label)
+            self.background_color = TAB_INACTIVE_BG
 
         @property
         def font(self):
@@ -1335,60 +1335,6 @@ if HAS_UI:
         def touch_cancelled(self, touch):
             self._clear_press()
 
-    class ProlongPill(ui.View):
-        """Hold pauses the thumb-float countdown; release re-arms +5s."""
-
-        def __init__(self, on_press, on_release):
-            super().__init__()
-            self.on_press = on_press
-            self.on_release = on_release
-            self.background_color = COLORS["accent"]
-            self.corner_radius = 8
-            self._holding = False
-            self._title = make_label(
-                "Prolong", font_size=14, bold=True, color=COLORS["text"], align=ui.ALIGN_CENTER
-            )
-            self.add_subview(self._title)
-
-        @property
-        def font(self):
-            return self._title.font
-
-        @font.setter
-        def font(self, value):
-            self._title.font = value
-
-        def layout(self):
-            self._title.frame = self.bounds
-
-        def _set_holding_visual(self, holding):
-            self.background_color = COLORS["bad"] if holding else COLORS["accent"]
-
-        def _finish_hold(self):
-            if not self._holding:
-                return
-            self._holding = False
-            self._set_holding_visual(False)
-            self.on_release()
-
-        def touch_began(self, touch):
-            self._holding = True
-            self._set_holding_visual(True)
-            _haptic_pill_press()
-            self.on_press()
-            return True
-
-        def touch_moved(self, touch):
-            loc = touch.location
-            if loc[0] < 0 or loc[1] < 0 or loc[0] > self.width or loc[1] > self.height:
-                self._finish_hold()
-
-        def touch_ended(self, touch):
-            self._finish_hold()
-
-        def touch_cancelled(self, touch):
-            self._finish_hold()
-
     class BikeTrainTransitView(ui.View):
         def __init__(self):
             super().__init__()
@@ -1399,20 +1345,12 @@ if HAS_UI:
             self._active_tab = "from_jc"
             self._cache = {"snapshots": []}
             self._thumb_float_active = False
-            self._thumb_float_gen = 0
-            self._thumb_float_deadline = 0.0
             self._thumb_float_startup_pending = False
-            self._prolong_visible = False
-            self._prolong_hold_active = False
 
             self._float_layer = ui.View()
             self._float_layer.background_color = (0, 0, 0, 0)
             self._float_layer.touch_enabled = False
             self._float_layer.hidden = True
-
-            self.prolong_btn = ProlongPill(self._prolong_press_began, self._prolong_press_ended)
-            self.prolong_btn.hidden = True
-            self._float_layer.add_subview(self.prolong_btn)
 
             self.header = ui.View()
             self.header.background_color = COLORS["bg"]
@@ -1475,19 +1413,8 @@ if HAS_UI:
             )
 
         def _thumb_float_buttons(self):
-            """Bottom → top on screen: Tunnels (thumb), …, Prolong at top."""
-            tabs = tuple(reversed(self._tab_buttons_ordered()))
-            if self._prolong_visible:
-                return tabs + (self.prolong_btn,)
-            return tabs
-
-        def _hide_prolong(self):
-            self._prolong_visible = False
-            self.prolong_btn.hidden = True
-
-        def _show_prolong(self):
-            self._prolong_visible = True
-            self.prolong_btn.hidden = False
+            """Bottom → top on screen: MT→JC (thumb), …, Cbike JC at top."""
+            return tuple(reversed(self._tab_buttons_ordered()))
 
         def _rehome_button(self, btn, parent):
             if btn.superview is parent:
@@ -1499,7 +1426,6 @@ if HAS_UI:
         def _restore_docked_chrome(self):
             for btn in self._tab_buttons_ordered():
                 self._rehome_button(btn, self.tab_bar)
-            self._hide_prolong()
             for btn in self._tab_buttons_ordered():
                 btn.corner_radius = 8
 
@@ -1523,15 +1449,12 @@ if HAS_UI:
         def _thumb_float_sizes(self, width, height):
             scale = self._thumb_float_scale(width, height)
             tab_w = max(92, int(THUMB_FLOAT_TAB_W_BASE * scale))
-            prolong_w = max(100, int(THUMB_PROLONG_W_BASE * scale))
             btn_h = max(46, int(THUMB_FLOAT_BTN_H_BASE * scale))
-            return tab_w, prolong_w, btn_h
+            return tab_w, btn_h
 
-        def _thumb_float_fonts(self, width, height):
+        def _thumb_float_tab_font_pt(self, width, height):
             scale = self._thumb_float_scale(width, height)
-            tab = max(12, int(round(13 * scale)))
-            prolong = max(13, int(round(14 * scale)))
-            return tab, prolong
+            return max(12, int(round(13 * scale)))
 
         def _thumb_float_column_center_x(self, width, max_btn_w):
             """Shared vertical axis; clamped so the widest pill stays on-screen."""
@@ -1566,15 +1489,12 @@ if HAS_UI:
             """Vertical pill stack toward screen center (left-hand thumb on ~6 inch screens)."""
             left, top, right, bottom = self._layout_insets()
             usable_h = height - top - bottom
-            tab_w, prolong_w, btn_h = self._thumb_float_sizes(width, height)
+            tab_w, btn_h = self._thumb_float_sizes(width, height)
             buttons = self._thumb_float_buttons()
             gap = THUMB_FLOAT_BTN_GAP
-            widths = [
-                prolong_w if btn is self.prolong_btn else tab_w for btn in buttons
-            ]
+            column_center_x = self._thumb_float_column_center_x(width, tab_w)
             count = len(buttons)
             total_h = count * btn_h + max(0, count - 1) * gap
-            column_center_x = self._thumb_float_column_center_x(width, max(widths))
             stack_center_y = top + int(usable_h * THUMB_FLOAT_STACK_Y_RATIO)
             start_y = stack_center_y - total_h // 2
             min_y = top + 8
@@ -1582,9 +1502,9 @@ if HAS_UI:
             start_y = max(min_y, min(start_y, max_y))
             frames = {}
             y = start_y + total_h - btn_h
-            for btn, btn_w in zip(buttons, widths):
-                x = self._thumb_float_stack_x(width, btn_w, column_center_x)
-                frames[btn] = (x, int(y), btn_w, btn_h)
+            for btn in buttons:
+                x = self._thumb_float_stack_x(width, tab_w, column_center_x)
+                frames[btn] = (x, int(y), tab_w, btn_h)
                 y -= btn_h + gap
             return frames
 
@@ -1604,65 +1524,13 @@ if HAS_UI:
             for btn, frame in self._thumb_float_frames(self.width, self.height).items():
                 btn.frame = frame
                 btn.corner_radius = min(frame[3], frame[2]) / 2
-            if self._prolong_visible:
-                _, prolong_pt = self._thumb_float_fonts(self.width, self.height)
-                self.prolong_btn.font = ("<system-bold>", prolong_pt)
-                self.prolong_btn.hidden = False
-            else:
-                self.prolong_btn.hidden = True
-
-        def _bump_thumb_float_gen(self):
-            self._thumb_float_gen += 1
-
-        def _check_thumb_float_expired(self):
-            if not self._thumb_float_active or self._busy or self._prolong_hold_active:
-                return
-            # deadline <= 0 means timer not armed yet (waiting for refresh to finish).
-            if self._thumb_float_deadline <= 0:
-                return
-            if time.monotonic() >= self._thumb_float_deadline:
-                log_event("thumb float dock (timeout)")
-                self._exit_thumb_float()
-
-        def _schedule_thumb_float_tick(self):
-            self._bump_thumb_float_gen()
-            gen = self._thumb_float_gen
-
-            def _tick():
-                if gen != self._thumb_float_gen or not self._thumb_float_active:
-                    return
-                if self._thumb_float_deadline <= 0:
-                    ui.delay(_tick, 0.2)
-                    return
-                if self._prolong_hold_active:
-                    ui.delay(_tick, 0.2)
-                    return
-                if time.monotonic() >= self._thumb_float_deadline:
-                    if not self._busy:
-                        self._exit_thumb_float()
-                    else:
-                        ui.delay(_tick, 0.2)
-                    return
-                ui.delay(_tick, 0.2)
-
-            ui.delay(_tick, 0.2)
-
-        def _arm_thumb_float_timer(self):
-            self._thumb_float_deadline = time.monotonic() + THUMB_FLOAT_SEC
-            if self._thumb_float_active:
-                log_event("thumb float armed {}s".format(int(THUMB_FLOAT_SEC)))
-                self._schedule_thumb_float_tick()
-
-        def _maybe_arm_thumb_float_timer(self):
-            if self._thumb_float_active and not self._busy:
-                self._arm_thumb_float_timer()
 
         def _move_tabs_to_float_layer(self):
             for btn in self._tab_buttons_ordered():
                 self._rehome_button(btn, self._float_layer)
 
         def _enter_startup_thumb_float(self):
-            """Startup only — arm float once layout() has real dimensions."""
+            """Startup only — float tabs until user taps a section."""
             self._thumb_float_startup_pending = True
             self._maybe_enter_startup_thumb_float()
 
@@ -1673,37 +1541,18 @@ if HAS_UI:
                 return
             self._thumb_float_startup_pending = False
             self._thumb_float_active = True
-            self._thumb_float_deadline = 0.0
-            self._show_prolong()
             self._float_layer.hidden = False
             self._float_layer.touch_enabled = True
             self._move_tabs_to_float_layer()
             self._layout_thumb_float()
             self._style_tabs()
             self._float_layer.bring_to_front()
-            self._maybe_arm_thumb_float_timer()
-
-        def _prolong_press_began(self):
-            if not self._prolong_visible or not self._thumb_float_active:
-                return
-            self._prolong_hold_active = True
-
-        def _prolong_press_ended(self):
-            if not self._prolong_hold_active:
-                return
-            self._prolong_hold_active = False
-            if not self._prolong_visible:
-                return
-            log_event("thumb float prolong +{}s".format(int(THUMB_FLOAT_SEC)))
-            self._arm_thumb_float_timer()
+            log_event("thumb float (tap section to dock)")
 
         def _exit_thumb_float(self, repaint=True):
-            self._prolong_hold_active = False
             if not self._thumb_float_active:
                 return
             self._thumb_float_active = False
-            self._hide_prolong()
-            self._bump_thumb_float_gen()
             self._float_layer.hidden = True
             self._float_layer.touch_enabled = False
             self._restore_docked_chrome()
@@ -1729,12 +1578,13 @@ if HAS_UI:
             self._poll_remote_control()
 
         def _style_tabs(self):
-            tab_pt, _ = (
-                self._thumb_float_fonts(self.width, self.height)
+            tab_pt = (
+                self._thumb_float_tab_font_pt(self.width, self.height)
                 if self._thumb_float_active and self.width and self.height
-                else (13, 14)
+                else 13
             )
             busy = self._busy
+            floating = self._thumb_float_active
             for tab, btn in (
                 ("cbike_jc", self.tab_cbike_btn),
                 ("from_jc", self.tab_from_btn),
@@ -1743,23 +1593,25 @@ if HAS_UI:
                 ("tunnels", self.tab_tunnels_btn),
                 ("mt_to_jc", self.tab_mt_to_jc_btn),
             ):
+                if getattr(btn, "_pressed", False):
+                    continue
                 btn.enabled = not busy
                 if busy:
                     btn.background_color = TAB_BUSY_BG
                     btn.tint_color = COLORS["muted"]
                     btn.font = (
-                        ("<system>", tab_pt)
-                        if self._thumb_float_active
-                        else ("<system>", 14)
+                        ("<system>", tab_pt) if floating else ("<system>", 14)
                     )
                     continue
+                if floating:
+                    btn.background_color = TAB_INACTIVE_BG
+                    btn.tint_color = COLORS["text"]
+                    btn.font = ("<system>", tab_pt)
+                    continue
                 is_active = self._active_tab == tab
-                btn.background_color = COLORS["accent"] if is_active else "#2a3441"
+                btn.background_color = COLORS["accent"] if is_active else TAB_INACTIVE_BG
                 btn.tint_color = COLORS["text"]
-                if self._thumb_float_active:
-                    btn.font = ("<system-bold>", tab_pt) if is_active else ("<system>", tab_pt)
-                else:
-                    btn.font = ("<system-bold>", 14) if is_active else ("<system>", 14)
+                btn.font = ("<system-bold>", 14) if is_active else ("<system>", 14)
 
         def _set_tab(self, tab, force=False):
             if self._active_tab == tab and not force:
@@ -1822,7 +1674,6 @@ if HAS_UI:
                         self.refresh_tab(self._active_tab)
             except Exception:
                 pass
-            self._check_thumb_float_expired()
             ui.delay(self._poll_remote_control, 1.0)
 
         def layout(self):
@@ -1858,7 +1709,6 @@ if HAS_UI:
                     self._float_layer.bring_to_front()
                 else:
                     self._float_layer.hidden = True
-                    self._hide_prolong()
                     if self.tab_cbike_btn.superview is not self.tab_bar:
                         self._restore_docked_chrome()
                     for index, btn in enumerate(tab_btns):
@@ -1975,8 +1825,6 @@ if HAS_UI:
             self._busy = False
             app_state.set_busy(False)
             self._style_tabs()
-            if self._thumb_float_active:
-                self._arm_thumb_float_timer()
 
         def _refresh_step_tab_transit(self, refresh_id, tab):
             """Main thread only — fetch transit for one tab."""
