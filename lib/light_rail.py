@@ -346,3 +346,33 @@ def get_hblr_board(
     if fetch_error:
         board["note"] = ("sched · %s" % fetch_error) if sched else ("scheduled (%s)" % fetch_error)
     return board
+
+
+def get_hblr_transit_board(
+    station_label,
+    direction,
+    *,
+    max_trains=3,
+    raw_pool=8,
+):
+    """Transit App HBLR departures — deeper pool for transfer filters."""
+    from .hblr_path import TRANSIT_TRANSFER_RAW_POOL
+
+    station = HBLR_STATIONS.get(station_label)
+    if station is None or not transit_app.has_api_key():
+        return None
+    pool = max(max_trains, min(TRANSIT_TRANSFER_RAW_POOL, raw_pool))
+    try:
+        live = _fetch_transit_departures(station, direction, pool)
+    except Exception:
+        return None
+    if not live:
+        return None
+    return {
+        "label": station["label"],
+        "trains": live[:max_trains],
+        "_raw_trains": live,
+        "error": None,
+        "by_line": True,
+        "source": "transit",
+    }

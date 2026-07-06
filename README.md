@@ -6,7 +6,7 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 
 ## Features
 
-- **Five tabs** — **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, and **Tunnels**
+- **Five tabs** — **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, and **MT→JC**
 - **iPhone app** — compact 2-column Citibike grid on the **Cbike JC** tab (filled bikes and empty docks for JC stations)
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
 - **PATH + subway connections** — From JC **33rd St** subway cards only show trains reachable after the earliest paired PATH arrival + walk time; **HBLR↔PATH** has **PATH + Subway via WTC** under **HBLR → PATH** (**WTC Cortlandt** / **WTC** northbound, catchable after **LSP HBLR +11** then **Exchange PATH +8** walk at WTC)
@@ -37,7 +37,27 @@ All stations are tagged `[JC]` in logs, email, and the **Cbike JC** tab.
 
 ## App tabs
 
-Tap **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, or **Tunnels** in the tab bar. Data loads on launch (and via LAN `/refresh`); switching tabs uses in-memory UI cache only (no extra network). See [HTTP cache and refresh API calls](#http-cache-and-refresh-api-calls).
+Tap **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, or **MT→JC** in the tab bar. Data loads when you **tap a tab** (or LAN `/refresh` for the active tab only); switching tabs without a new tap uses in-memory cache. See [HTTP cache and refresh API calls](#http-cache-and-refresh-api-calls).
+
+### MT→JC tab
+
+Three rows (**50 St 8Av**, **50 St 7Av**, **Lex/53 St**). Each row is **5 cards in 3 columns**:
+
+| Column | Cards |
+|--------|--------|
+| **Subway** | **50 St (8Av):** E · **50 St (7Av):** 1 · **Lex/53:** E/1/F (F **Mon–Fri 6a–9:30p** only) |
+| **PATH stack** | NJ-bound **Newark / JSQ / Hoboken** from **9 St** or **Chris St** (+offset from subway) and **WTC** (+offset from subway); **all six PATH cards** use the same destination filter and **`allow_hoboken`** (terminating Hoboken kept; **via Hoboken** overnight routings excluded). **Transit App retry** (`PATH:551` 9 St, `PATH:552` Chris St, `PATH:553` WTC) when PANYNJ pool is shallow |
+| **HBLR stack** | Southbound **Newport** (+offset from 9 St/Chris PATH) and **Exchange Place** (+offset from WTC PATH); **Transit retry**, empty if nothing catchable (no “current HBLR” platform times) |
+
+**Offset chain** (subway → PATH → HBLR; PATH/HBLR use `resolve_transfer_board` + Transit retry, no `· current` fallback):
+
+| Row | Subway | PATH (from subway) | HBLR (from PATH) |
+|-----|--------|--------------------|------------------|
+| **50 St (8Av)** | E (+ F wkdys) | 9 St +15m, WTC +**19**m | Newport +14m ← 9 St; Exchange +7m ← WTC |
+| **50 St (7Av)** | 1 (+ F wkdys) | Chris St +15m, WTC +20m | Newport +13m ← Chris St; Exchange +7m ← WTC |
+| **Lex/53 St** | E/1/F | 9 St +20m, WTC +25m | Newport +14m ← 9 St; Exchange +7m ← WTC |
+
+Log markers: `build=hblr-path-v75`, `step: MT→JC rows (3)`.
 
 ### Startup thumb float (~6" screens)
 
@@ -45,18 +65,18 @@ On launch (after `present()`), section tabs **float** in a vertical column pulle
 
 | Behavior | Detail |
 |----------|--------|
-| **Trigger** | App startup only (kickoff auto-refresh) |
+| **Trigger** | App startup only (no auto-fetch until you tap a tab) |
 | **Position** | Vertical stack on screen center line; stack center at 65% usable height |
 | **Prolong** | Top of stack; **hold** pauses the 5s timer (pill turns **red** + haptic); **release** re-arms +5s |
-| **Section tabs** | **Tunnels** nearest thumb at stack bottom; **grayed out** until startup refresh finishes |
-| **Section tab tap** | Ignored while refresh is running; otherwise highlights tapped pill, switches tab, and **docks** all tabs |
-| **5s idle** | Tabs dock to the top bar (timer starts when startup refresh finishes, or immediately if idle) |
+| **Section tabs** | **MT→JC** nearest thumb at stack bottom; **grayed out** while that tab is fetching |
+| **Section tab tap** | Highlights tapped pill, switches tab, **docks** tabs, and **fetches only that tab** |
+| **5s idle** | Tabs dock to the top bar (timer starts when idle after a tab fetch, or immediately on launch) |
 
-Log markers: `build=hblr-path-v71`, `kickoff: poll + first refresh`, `thumb float armed 5s`, `thumb float dock (timeout)`.
+Log markers: `build=hblr-path-v75`, `kickoff: poll (tap tab to load)`, `Refresh tab mt_to_jc (#1)`, `thumb float armed 5s`.
 
 ## HTTP cache and refresh API calls
 
-Data loads on **launch** (kickoff auto-refresh) and via **LAN debug** refresh requests. There is no manual Refresh button. Tab switches do not trigger new HTTP requests.
+Data loads when you **tap a section tab** (thumb float or docked tab bar) and via **LAN debug** refresh (active tab only). There is no manual Refresh button and no startup auto-fetch.
 
 ### 2-minute persistent cache
 
@@ -245,6 +265,7 @@ bike_train_transit/
   lib/
     path_trains.py                # PATH NYC / 33rd / NJ (PANYNJ single-fetch; Hoboken-terminating filtered, via-Hoboken kept, WTC allows Hoboken)
     hblr_path.py                  # HBLR↔PATH tab: four transfer pairs + offset filter
+    mt_to_jc.py                   # MT→JC tab: subway → PATH (Nwk/JSQ/Hoboken) → HBLR southbound chains
     hblr_schedule.py              # Load pre-parsed HBLR PDF timetable (hblr_schedule_data.json)
     hblr_schedule_data.json       # HBLR PDF times: 5 stations × 2 directions (built on PC)
     path_schedule.py              # Test-only weekend PATH phase model (not used by live UI)
@@ -262,7 +283,7 @@ bike_train_transit/
     http_cache.py                 # 2 min persistent HTTP JSON cache (all API fetches)
     debug_flags.py                # BIKE_TRAIN_TRANSIT_INACTIVE env (debug entrypoints)
     lan_debug_server.py           # LAN debug HTTP server
-  tests/                          # Unit tests (HBLR, PATH transfers, weekend sync, From JC express-local)
+  tests/                          # Unit tests (HBLR, PATH transfers, MT→JC chains, weekend sync, From JC express-local)
   tools/
     build_hblr_schedule.py        # PC-only: parse NJT HBLR PDF → hblr_schedule_data.json (pymupdf; 12-hour band cycles)
     capture_transit_hblr_fixtures.py  # PC-only: snapshot 3 Transit API boards → tests/fixtures/transit_hblr/
@@ -550,7 +571,8 @@ Live PATH fetching in `lib/path_trains.py` does not filter by PATH line color; N
 
 | File | Configure |
 |------|-----------|
-| `path_trains.py` | PATH stations; PANYNJ `ridepath.json`; `get_path_transit_board()` for HBLR-tab PATH transfer retry (`PATH:554` Exchange, `PATH:520` Newport, `PATH:553` WTC, `PATH:552` Chris St) |
+| `path_trains.py` | PATH stations; PANYNJ `ridepath.json`; `_is_mt_to_jc_path_destination()` (Nwk/JSQ/Hoboken); `get_path_transit_board()` for transfer retry (`PATH:554` Exchange, `PATH:520` Newport, `PATH:553` WTC, `PATH:552` Chris St, `PATH:551` 9 St) |
+| `mt_to_jc.py` | MT→JC three rows; chained offsets; PATH Hoboken on **9 St**, **Chris St**, and **WTC** cards (`allow_hoboken=True`); Transit retry for PATH and HBLR |
 | `light_rail.py` | HBLR station boards by direction; Transit API key (`transit_credentials.json` / `TRANSIT_API_KEY`); optional NJT creds (`njt_credentials.json`) — **NJT dev API currently unavailable**; PDF fallback via `hblr_schedule_data.json` |
 | `transit_app.py` | Transit App v4 `/stop_departures` client; uses shared `http_cache.py` (2 min, persistent) |
 | `http_cache.py` | Persistent JSON cache for all HTTP fetches (GBFS, PANYNJ, subway, Transit) |
@@ -592,7 +614,7 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 | Safe mode shows empty log | Update to latest code — safe mode now preserves crash logs; check **Previous session** on dashboard |
 | Console errors not in LAN log | Update to latest code — stdout/stderr and thread errors are now captured |
 | UI stuck on “Updating…” / black screen | Transit fetch may be slow on the main thread (UI freezes until done). Check log for `step: fetch bikes` → `step: transit ok` → `finish render done`; redeploy latest code |
-| Open shows empty data on launch | Run as **main script** (Home Screen direct URL, not `RunBikeTrainTransit.py`). Startup auto-refresh is deferred via `ui.delay` **after** `present()` (log: `kickoff: poll + first refresh`) |
+| Open shows empty data on launch | Expected until you tap a tab (log: `kickoff: poll (tap tab to load)` then `Refresh tab …`). Run as **main script** (Home Screen direct URL, not `RunBikeTrainTransit.py`) |
 | Title overlaps the iOS status bar / notch | Layout uses `safe_area_insets.top` on iPhone 12+; fallback `TOP_CONTENT_INSET` (`43`) if unavailable |
 | App drops to safe mode during auto-refresh | Native crash from background-thread TLS on older builds. Latest code fetches on the **main thread** only (no `@ui.in_background`, no refresh `threading.Thread`); `lib/parallel.py` runs transit jobs **sequentially** on Pythonista |
 | Thumb float tabs stay grayed | Expected while `Updating…` is shown — tabs re-enable when kickoff refresh finishes (`thumb float armed 5s` in log) |

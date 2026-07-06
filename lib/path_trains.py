@@ -25,25 +25,36 @@ PATH_EXCHANGE_STATION = {
     "transit_stop_id": "PATH:554",
 }
 
+PATH_CHRISTOPHER_TRANSIT_STOP = "PATH:552"
+PATH_NINTH_TRANSIT_STOP = "PATH:551"
+
 PATH_33RD_STATIONS = [
     {"slug": "christopher_street", "panynj": "CHR", "label": "Chris St"},
-    {"slug": "ninth_street", "panynj": "09S", "label": "9th St"},
+    {
+        "slug": "ninth_street",
+        "panynj": "09S",
+        "label": "9 St",
+        "transit_stop_id": PATH_NINTH_TRANSIT_STOP,
+    },
 ]
-
-PATH_CHRISTOPHER_TRANSIT_STOP = "PATH:552"
 
 PATH_14TH_STATION = {
     "slug": "fourteenth_street",
     "panynj": "14S",
-    "label": "14 St PATH",
+    "label": "14 St",
 }
 
 NINTH_ST_ESTIMATE_TO_14TH_MINUTES = 1
 
 PATH_NJ_STATIONS = [
     {"slug": "christopher_street", "panynj": "CHR", "label": "Chris St", "transit_stop_id": PATH_CHRISTOPHER_TRANSIT_STOP},
-    {"slug": "ninth_street", "panynj": "09S", "label": "9th St"},
-    {"slug": "thirty_third_street", "panynj": "33S", "label": "33rd St"},
+    {
+        "slug": "ninth_street",
+        "panynj": "09S",
+        "label": "9 St",
+        "transit_stop_id": PATH_NINTH_TRANSIT_STOP,
+    },
+    {"slug": "thirty_third_street", "panynj": "33S", "label": "33 St"},
     {"slug": "world_trade_center", "panynj": "WTC", "label": "WTC", "allow_hoboken": True, "transit_stop_id": "PATH:553"},
 ]
 
@@ -111,6 +122,23 @@ def _is_33rd_destination(name):
 def _is_wtc_destination(name):
     text = _headsign_text(name).casefold()
     return "world trade" in text or text.strip() == "wtc"
+
+
+def _is_nwk_jsq_destination(name):
+    """PATH toward Newark or Journal Square (MT→JC tab)."""
+    text = _headsign_text(name).casefold()
+    if _is_wtc_destination(name) or _is_33rd_destination(name):
+        return False
+    if "newark" in text or "journal square" in text or re.search(r"\bjsq\b", text):
+        return True
+    return False
+
+
+def _is_mt_to_jc_path_destination(name):
+    """PATH toward Newark, Journal Square, or Hoboken (MT→JC tab)."""
+    if _is_nwk_jsq_destination(name):
+        return True
+    return _is_hoboken_destination(name)
 
 
 def _parse_utc_iso(iso_text):
@@ -382,7 +410,7 @@ def _load_boards(
 
 
 def _load_14th_path_board(fetch_json, panynj_payload=None, max_trains=PATH_33RD_MAX_TRAINS):
-    """33rd-bound PATH at 14 St; fallback estimate from 9th St +1 min."""
+    """33rd-bound PATH at 14 St; fallback estimate from 9 St +1 min."""
     payload = panynj_payload
     if payload is None:
         try:
@@ -436,7 +464,7 @@ def _load_14th_path_board(fetch_json, panynj_payload=None, max_trains=PATH_33RD_
             "trains": estimated[:max_trains],
             "error": None,
             "estimated": True,
-            "note": "est. 9th St + %s min" % NINTH_ST_ESTIMATE_TO_14TH_MINUTES,
+            "note": "est. 9 St + %s min" % NINTH_ST_ESTIMATE_TO_14TH_MINUTES,
         }
 
     board = {
@@ -490,6 +518,8 @@ def _is_nj_transit_headsign(headsign):
 
 
 def _transit_dest_ok(direction, dest_filter):
+    if callable(dest_filter):
+        return dest_filter
     if direction == "nj":
         return _is_nj_transit_headsign
     if dest_filter == "wtc":
@@ -550,6 +580,7 @@ def get_path_station_board(
     panynj_payload=None,
     max_trains=PATH_MAX_TRAINS,
     raw_pool=None,
+    allow_hoboken=None,
 ):
     """Single PATH station board (NYC, 33rd, or NJ). Never raises."""
     station = _PATH_STATION_LOOKUP.get(station_label)
@@ -558,6 +589,11 @@ def get_path_station_board(
 
     dest_fn = _dest_filter_fn(dest_filter) if isinstance(dest_filter, str) else dest_filter
     pool = raw_pool or max(max_trains, PATH_MAX_TRAINS)
+    hoboken_ok = (
+        bool(allow_hoboken)
+        if allow_hoboken is not None
+        else bool(station.get("allow_hoboken"))
+    )
 
     if direction == "nyc":
         dir_filter = _is_nyc_direction
@@ -587,7 +623,7 @@ def get_path_station_board(
             payload,
             dir_filter,
             dest_filter=dest_fn,
-            allow_hoboken=bool(station.get("allow_hoboken")),
+            allow_hoboken=hoboken_ok,
         )
     board = {
         "label": station["label"],

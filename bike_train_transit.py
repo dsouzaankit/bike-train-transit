@@ -131,7 +131,6 @@ THUMB_FLOAT_BTN_H_BASE = 50
 THUMB_PROLONG_W_BASE = 108
 THUMB_FLOAT_TAB_W_BASE = 100
 THUMB_FLOAT_SCALE_MAX = 1.12
-THUMB_FLOAT_TAP_HIGHLIGHT = "#1a5fd4"  # instant tap ack (brighter than accent)
 TAB_BUSY_BG = "#252b33"  # tab pills while refresh in progress
 
 LAN_DEBUG_ENABLED = True
@@ -142,7 +141,24 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v71"
+BUILD_TAG = "hblr-path-v75"
+
+TAB_TRANSIT_JOBS = {
+    "from_jc": ("pathAll", "subway"),
+    "to_jc": ("pathAll", "subwayToJc"),
+    "hblr_path": ("pathAll",),
+    "tunnels": ("tunnels",),
+    "mt_to_jc": ("pathAll",),
+}
+
+TAB_CACHE_KEYS = {
+    "cbike_jc": ("snapshots",),
+    "from_jc": ("path_boards", "path_33rd_boards", "subway_boards"),
+    "to_jc": ("path_nj_boards", "subway_to_jc_boards"),
+    "hblr_path": ("hblr_path_sections", "path_exchange_wtc", "subway_wtc_north"),
+    "tunnels": ("tunnel_boards",),
+    "mt_to_jc": ("mt_to_jc_rows",),
+}
 
 
 def _cache_ttl_suffix() -> str:
@@ -578,6 +594,16 @@ def get_hblr_path_sections(path_bundle):
     return build_hblr_path_sections(path_bundle, fetch_json=fetch_transit_json)
 
 
+def get_mt_to_jc_rows(path_bundle):
+    from lib.debug_flags import is_active
+    from lib.mt_to_jc import build_mt_to_jc_rows
+
+    if not is_active("subway") or not is_active("path") or not is_active("hblr"):
+        log_event("debug: mt_to_jc inactive — skip MT→JC rows")
+        return []
+    return build_mt_to_jc_rows(path_bundle, fetch_json=fetch_transit_json)
+
+
 def _transit_fetch_jobs():
     """Ordered transit fetch jobs (one TLS burst each)."""
     from lib.debug_flags import is_active
@@ -608,10 +634,15 @@ def _transit_fetch_jobs():
     return jobs
 
 
-def _assemble_transit_boards(results):
-    """Merge staged transit job results into render payload fields."""
+def _assemble_transit_boards(results, scope=None):
+    """Merge staged transit job results into render payload fields.
+
+    scope=None — full assembly (returns tuple for CLI).
+    scope=<tab> — only fields needed for that tab (returns dict).
+    """
     from lib.debug_flags import is_active
 
+    full = scope is None
     path_bundle = results.get("pathAll") or {}
     path_boards = path_bundle.get("nyc") or []
     path_33rd_boards = path_bundle.get("33rd") or []
@@ -619,7 +650,7 @@ def _assemble_transit_boards(results):
     subway_boards = results.get("subway") or []
     subway_to_jc_boards = results.get("subwayToJc") or []
     tunnel_boards = results.get("tunnels") or []
-    if is_active("subway") and is_active("path"):
+    if (full or scope == "from_jc") and is_active("subway") and is_active("path"):
         try:
             log_event(
                 "step: transit connections (subway={} path33={})".format(
@@ -635,42 +666,77 @@ def _assemble_transit_boards(results):
             log_event(traceback.format_exc())
     path_exchange_wtc = None
     subway_wtc_north = []
-    try:
-        hblr_path_sections = get_hblr_path_sections(path_bundle)
-    except Exception as exc:
-        log_event("HBLR path sections failed: {}".format(exc))
-        log_event(traceback.format_exc())
-        hblr_path_sections = []
-    lsp_primary = None
-    if hblr_path_sections:
-        lsp_primary = (hblr_path_sections[0] or {}).get("primary")
-    if is_active("path") and is_active("subway"):
+    hblr_path_sections = []
+    if full or scope == "hblr_path":
         try:
-            from lib.hblr_path import HBLR_PATH_MAX_TRAINS
-            from lib.path_trains import get_exchange_place_wtc_board
-            from lib.subway_trains import (
-                apply_exchange_wtc_subway_connections,
-                get_wtc_north_boards,
-            )
-
-            path_exchange_wtc = get_exchange_place_wtc_board(
-                fetch_transit_json,
-                panynj_payload=path_bundle.get("_payload"),
-                max_trains=HBLR_PATH_MAX_TRAINS,
-            )
-            subway_wtc_north = apply_exchange_wtc_subway_connections(
-                path_exchange_wtc,
-                get_wtc_north_boards(fetch_transit_json),
-                lsp_primary=lsp_primary,
-            )
+            hblr_path_sections = get_hblr_path_sections(path_bundle)
         except Exception as exc:
-            log_event("PATH+subway WTC connection failed: {}".format(exc))
+            log_event("HBLR path sections failed: {}".format(exc))
             log_event(traceback.format_exc())
-    elif not is_active("path"):
-        log_event("debug: path inactive — skip Exchange WTC PATH")
-    elif not is_active("subway"):
-        log_event("debug: subway inactive — skip WTC subway chain")
-    log_event("step: HBLR↔PATH sections ({})".format(len(hblr_path_sections or [])))
+            hblr_path_sections = []
+        lsp_primary = None
+        if hblr_path_sections:
+            lsp_primary = (hblr_path_sections[0] or {}).get("primary")
+        if is_active("path") and is_active("subway"):
+            try:
+                from lib.hblr_path import HBLR_PATH_MAX_TRAINS
+                from lib.path_trains import get_exchange_place_wtc_board
+                from lib.subway_trains import (
+                    apply_exchange_wtc_subway_connections,
+                    get_wtc_north_boards,
+                )
+
+                path_exchange_wtc = get_exchange_place_wtc_board(
+                    fetch_transit_json,
+                    panynj_payload=path_bundle.get("_payload"),
+                    max_trains=HBLR_PATH_MAX_TRAINS,
+                )
+                subway_wtc_north = apply_exchange_wtc_subway_connections(
+                    path_exchange_wtc,
+                    get_wtc_north_boards(fetch_transit_json),
+                    lsp_primary=lsp_primary,
+                )
+            except Exception as exc:
+                log_event("PATH+subway WTC connection failed: {}".format(exc))
+                log_event(traceback.format_exc())
+        elif not is_active("path"):
+            log_event("debug: path inactive — skip Exchange WTC PATH")
+        elif not is_active("subway"):
+            log_event("debug: subway inactive — skip WTC subway chain")
+        log_event("step: HBLR↔PATH sections ({})".format(len(hblr_path_sections or [])))
+    mt_to_jc_rows = []
+    if full or scope == "mt_to_jc":
+        try:
+            mt_to_jc_rows = get_mt_to_jc_rows(path_bundle)
+        except Exception as exc:
+            log_event("MT→JC rows failed: {}".format(exc))
+            log_event(traceback.format_exc())
+        log_event("step: MT→JC rows ({})".format(len(mt_to_jc_rows or [])))
+
+    if not full:
+        if scope == "from_jc":
+            return {
+                "path_boards": path_boards,
+                "path_33rd_boards": path_33rd_boards,
+                "subway_boards": subway_boards,
+            }
+        if scope == "to_jc":
+            return {
+                "path_nj_boards": path_nj_boards,
+                "subway_to_jc_boards": subway_to_jc_boards,
+            }
+        if scope == "hblr_path":
+            return {
+                "hblr_path_sections": hblr_path_sections,
+                "path_exchange_wtc": path_exchange_wtc,
+                "subway_wtc_north": subway_wtc_north,
+            }
+        if scope == "tunnels":
+            return {"tunnel_boards": tunnel_boards}
+        if scope == "mt_to_jc":
+            return {"mt_to_jc_rows": mt_to_jc_rows}
+        return {}
+
     log_event("step: transit boards assembled")
     return (
         path_boards,
@@ -682,7 +748,30 @@ def _assemble_transit_boards(results):
         hblr_path_sections,
         path_exchange_wtc,
         subway_wtc_north,
+        mt_to_jc_rows,
     )
+
+
+def _fetch_tab_transit_boards(tab):
+    """Fetch transit data for one tab only; never raise."""
+    wanted = TAB_TRANSIT_JOBS.get(tab)
+    if not wanted:
+        return {}
+    job_keys = set(wanted)
+    log_event("step: tab {} transit jobs ({})".format(tab, ",".join(wanted)))
+    results = {}
+    for key, fn in _transit_fetch_jobs():
+        if key not in job_keys:
+            continue
+        log_event("step: transit {} start".format(key))
+        try:
+            results[key] = fn()
+            log_event("step: transit {} ok".format(key))
+        except Exception as exc:
+            log_event("{} fetch failed: {}".format(key, exc))
+            log_event(traceback.format_exc())
+            results[key] = [] if key != "pathAll" else {}
+    return _assemble_transit_boards(results, scope=tab)
 
 
 def _fetch_transit_boards():
@@ -747,6 +836,7 @@ def main_cli():
             hblr_path_sections,
             path_exchange_wtc,
             subway_wtc_north,
+            mt_to_jc_rows,
         ) = _fetch_transit_boards()
         print_snapshots(snapshots)
         print("")
@@ -1165,7 +1255,7 @@ if HAS_UI:
                 pill.add_subview(eta)
                 y += row_h
 
-    def _haptic_prolong_press():
+    def _haptic_pill_press():
         try:
             from objc_util import ObjCClass
 
@@ -1180,6 +1270,70 @@ if HAS_UI:
                 sound.play_effect("ui:click")
             except Exception:
                 pass
+
+    class SectionPill(ui.View):
+        """Section tab pill — red + haptic on press (docked and thumb float)."""
+
+        def __init__(self, title):
+            super().__init__()
+            self._title = title
+            self.corner_radius = 8
+            self.enabled = True
+            self._pressed = False
+            self._owner = None
+            self.action = None
+            self._label = make_label(
+                title, font_size=14, color=COLORS["text"], align=ui.ALIGN_CENTER
+            )
+            self.add_subview(self._label)
+
+        @property
+        def font(self):
+            return self._label.font
+
+        @font.setter
+        def font(self, value):
+            self._label.font = value
+
+        @property
+        def tint_color(self):
+            return self._label.text_color
+
+        @tint_color.setter
+        def tint_color(self, value):
+            self._label.text_color = value
+
+        def layout(self):
+            self._label.frame = self.bounds
+
+        def _clear_press(self):
+            if not self._pressed:
+                return
+            self._pressed = False
+            if self._owner is not None:
+                self._owner._style_tabs()
+
+        def touch_began(self, touch):
+            if not self.enabled:
+                return False
+            self._pressed = True
+            self.background_color = COLORS["bad"]
+            _haptic_pill_press()
+            return True
+
+        def touch_moved(self, touch):
+            loc = touch.location
+            if loc[0] < 0 or loc[1] < 0 or loc[0] > self.width or loc[1] > self.height:
+                self._clear_press()
+
+        def touch_ended(self, touch):
+            tapped = self._pressed
+            self._clear_press()
+            if tapped and self.enabled and self.action:
+                self.action(self)
+
+        def touch_cancelled(self, touch):
+            self._clear_press()
 
     class ProlongPill(ui.View):
         """Hold pauses the thumb-float countdown; release re-arms +5s."""
@@ -1220,7 +1374,7 @@ if HAS_UI:
         def touch_began(self, touch):
             self._holding = True
             self._set_holding_visual(True)
-            _haptic_prolong_press()
+            _haptic_pill_press()
             self.on_press()
             return True
 
@@ -1264,35 +1418,39 @@ if HAS_UI:
             self.header.background_color = COLORS["bg"]
 
             self.title_label = make_label(APP_TITLE, font_size=24, bold=True)
-            # Manual Refresh pill removed (v68) — data loads on kickoff + LAN refresh only.
+            # Manual Refresh pill removed (v68) — data loads on tab tap + LAN refresh.
 
             self.status_label = make_label("", font_size=12, color=COLORS["muted"])
 
             self.tab_bar = ui.View()
             self.tab_bar.background_color = COLORS["bg"]
-            self.tab_cbike_btn = ui.Button(title="Cbike JC")
-            self.tab_from_btn = ui.Button(title="From JC")
-            self.tab_to_btn = ui.Button(title="To JC")
-            self.tab_hblr_path_btn = ui.Button(title="HBLR↔PATH")
-            self.tab_tunnels_btn = ui.Button(title="Tunnels")
+            self.tab_cbike_btn = SectionPill("Cbike JC")
+            self.tab_from_btn = SectionPill("From JC")
+            self.tab_to_btn = SectionPill("To JC")
+            self.tab_hblr_path_btn = SectionPill("HBLR↔PATH")
+            self.tab_tunnels_btn = SectionPill("Tunnels")
+            self.tab_mt_to_jc_btn = SectionPill("MT→JC")
             for btn in (
                 self.tab_cbike_btn,
                 self.tab_from_btn,
                 self.tab_to_btn,
                 self.tab_hblr_path_btn,
                 self.tab_tunnels_btn,
+                self.tab_mt_to_jc_btn,
             ):
-                btn.corner_radius = 8
+                btn._owner = self
             self.tab_cbike_btn.action = self._tab_cbike_tapped
             self.tab_from_btn.action = self._tab_from_tapped
             self.tab_to_btn.action = self._tab_to_tapped
             self.tab_hblr_path_btn.action = self._tab_hblr_path_tapped
             self.tab_tunnels_btn.action = self._tab_tunnels_tapped
+            self.tab_mt_to_jc_btn.action = self._tab_mt_to_jc_tapped
             self.tab_bar.add_subview(self.tab_cbike_btn)
             self.tab_bar.add_subview(self.tab_from_btn)
             self.tab_bar.add_subview(self.tab_to_btn)
             self.tab_bar.add_subview(self.tab_hblr_path_btn)
             self.tab_bar.add_subview(self.tab_tunnels_btn)
+            self.tab_bar.add_subview(self.tab_mt_to_jc_btn)
 
             self.scroll = ui.ScrollView()
             self.scroll.background_color = COLORS["bg"]
@@ -1313,6 +1471,7 @@ if HAS_UI:
                 self.tab_to_btn,
                 self.tab_hblr_path_btn,
                 self.tab_tunnels_btn,
+                self.tab_mt_to_jc_btn,
             )
 
         def _thumb_float_buttons(self):
@@ -1561,6 +1720,7 @@ if HAS_UI:
             try:
                 self._exit_thumb_float(repaint=False)
                 self._set_tab(tab, force=True)
+                self.refresh_tab(tab)
             except Exception as exc:
                 log_event("section tap dock failed: {}".format(exc))
                 log_event(traceback.format_exc())
@@ -1581,6 +1741,7 @@ if HAS_UI:
                 ("to_jc", self.tab_to_btn),
                 ("hblr_path", self.tab_hblr_path_btn),
                 ("tunnels", self.tab_tunnels_btn),
+                ("mt_to_jc", self.tab_mt_to_jc_btn),
             ):
                 btn.enabled = not busy
                 if busy:
@@ -1599,29 +1760,6 @@ if HAS_UI:
                     btn.font = ("<system-bold>", tab_pt) if is_active else ("<system>", tab_pt)
                 else:
                     btn.font = ("<system-bold>", 14) if is_active else ("<system>", 14)
-
-        def _acknowledge_float_pill_tap(self, tab):
-            """Immediate visual feedback before deferred dock/paint (main thread)."""
-            if not self._thumb_float_active:
-                return
-            tab_pt, _ = (
-                self._thumb_float_fonts(self.width, self.height)
-                if self.width and self.height
-                else (13, 14)
-            )
-            for name, btn in (
-                ("cbike_jc", self.tab_cbike_btn),
-                ("from_jc", self.tab_from_btn),
-                ("to_jc", self.tab_to_btn),
-                ("hblr_path", self.tab_hblr_path_btn),
-                ("tunnels", self.tab_tunnels_btn),
-            ):
-                tapped = name == tab
-                btn.background_color = (
-                    THUMB_FLOAT_TAP_HIGHLIGHT if tapped else "#2a3441"
-                )
-                btn.tint_color = COLORS["text"]
-                btn.font = ("<system-bold>", tab_pt) if tapped else ("<system>", tab_pt)
 
         def _set_tab(self, tab, force=False):
             if self._active_tab == tab and not force:
@@ -1645,10 +1783,11 @@ if HAS_UI:
             if self._busy:
                 return
             if self._thumb_float_active:
-                self._acknowledge_float_pill_tap(tab)
                 ui.delay(lambda: self._dock_and_select_tab(tab), 0)
                 return
-            self._set_tab(tab)
+            if self._active_tab != tab:
+                self._set_tab(tab)
+            self.refresh_tab(tab)
 
         def _tab_cbike_tapped(self, sender):
             self._on_section_tap("cbike_jc")
@@ -1665,6 +1804,9 @@ if HAS_UI:
         def _tab_tunnels_tapped(self, sender):
             self._on_section_tap("tunnels")
 
+        def _tab_mt_to_jc_tapped(self, sender):
+            self._on_section_tap("mt_to_jc")
+
         def _poll_remote_control(self):
             import ui
 
@@ -1677,7 +1819,7 @@ if HAS_UI:
                     else:
                         clear_control()
                         log_event("LAN refresh requested")
-                        self.refresh()
+                        self.refresh_tab(self._active_tab)
             except Exception:
                 pass
             self._check_thumb_float_expired()
@@ -1698,14 +1840,15 @@ if HAS_UI:
                 self.tab_bar.frame = (0, tab_top, width, TAB_BAR_HEIGHT)
                 tab_gap = 4
                 tab_side = 6
-                tab_count = 5
-                tab_w = max((width - tab_side * 2 - tab_gap * (tab_count - 1)) // tab_count, 64)
+                tab_count = 6
+                tab_w = max((width - tab_side * 2 - tab_gap * (tab_count - 1)) // tab_count, 52)
                 tab_btns = (
                     self.tab_cbike_btn,
                     self.tab_from_btn,
                     self.tab_to_btn,
                     self.tab_hblr_path_btn,
                     self.tab_tunnels_btn,
+                    self.tab_mt_to_jc_btn,
                 )
                 if self._thumb_float_active:
                     self._float_layer.hidden = False
@@ -1725,7 +1868,7 @@ if HAS_UI:
                             tab_w,
                             TAB_BAR_HEIGHT - 4,
                         )
-                        btn.font = ("<system>", 12)
+                        btn.font = ("<system>", 11)
                 self.status_label.frame = (16, status_top, width - 32, 16)
                 scroll_bottom = max(bottom, 8)
                 self.scroll.frame = (
@@ -1738,7 +1881,7 @@ if HAS_UI:
                 log_event("layout failed: {}".format(exc))
                 log_event(traceback.format_exc())
 
-        def _apply_refresh_payload(self, payload):
+        def _apply_tab_refresh_payload(self, payload):
             from lib import app_state
 
             refresh_id = payload.get("refresh_id")
@@ -1746,31 +1889,83 @@ if HAS_UI:
                 log_event("step: stale refresh #{} apply skipped".format(refresh_id))
                 return
 
+            tab = payload.get("tab") or self._active_tab
             if payload.get("error"):
                 app_state.set_error(payload["error"])
                 self.status_label.text = "Error: %s" % payload["error"]
                 return
 
             try:
-                log_event("step: finish render start")
-                self.render_snapshots(
-                    payload["snapshots"],
-                    payload["path_boards"],
-                    payload["path_33rd_boards"],
-                    payload["subway_boards"],
-                    payload["path_nj_boards"],
-                    payload["subway_to_jc_boards"],
-                    payload["tunnel_boards"],
-                    payload["hblr_path_sections"],
-                    path_exchange_wtc=payload["path_exchange_wtc"],
-                    subway_wtc_north=payload["subway_wtc_north"],
+                log_event("step: finish render start ({})".format(tab))
+                for key in TAB_CACHE_KEYS.get(tab, ()):
+                    if key in payload:
+                        self._cache[key] = payload[key]
+                self._log_tab_refresh(tab, payload)
+                self._paint_active_tab()
+                app_state.update_refresh(
+                    self._cache.get("snapshots") or [],
+                    path_boards=self._cache.get("path_boards"),
+                    subway_boards=self._cache.get("subway_boards"),
+                    path_33rd_boards=self._cache.get("path_33rd_boards"),
+                    path_nj_boards=self._cache.get("path_nj_boards"),
+                    subway_to_jc_boards=self._cache.get("subway_to_jc_boards"),
+                    tunnel_boards=self._cache.get("tunnel_boards"),
+                    active_tab=self._active_tab,
+                    tagged_name_fn=tagged_name,
                 )
-                log_event("step: finish render done")
+                log_event("step: finish render done ({})".format(tab))
             except Exception as exc:
                 app_state.set_error(str(exc))
                 self.status_label.text = "Error: %s" % exc
                 log_event("UI finish failed: {}".format(exc))
                 log_event(traceback.format_exc())
+
+        def _log_tab_refresh(self, tab, payload):
+            if tab == "cbike_jc":
+                for snapshot in payload.get("snapshots") or []:
+                    log_event(
+                        "{} filled={} empty={}".format(
+                            tagged_name(snapshot), snapshot["bikes"], snapshot["docks"]
+                        )
+                    )
+                log_event(
+                    "Refresh OK: {} stations".format(len(payload.get("snapshots") or []))
+                )
+                return
+            if tab == "from_jc":
+                self._log_transit_boards("PATH", payload.get("path_boards"))
+                self._log_transit_boards("PATH33", payload.get("path_33rd_boards"))
+                self._log_transit_boards("SUBWAY", payload.get("subway_boards"))
+            elif tab == "to_jc":
+                self._log_transit_boards("PATHNJ", payload.get("path_nj_boards"))
+                self._log_transit_boards("SUBWAYJC", payload.get("subway_to_jc_boards"))
+            elif tab == "tunnels":
+                self._log_transit_boards("TUNNEL", payload.get("tunnel_boards"))
+            elif tab == "hblr_path":
+                for section in payload.get("hblr_path_sections") or []:
+                    if section.get("layout") == "shared_primary":
+                        self._log_transit_boards("HBLRPATH", [section.get("primary")])
+                        for conn in section.get("connections") or []:
+                            self._log_transit_boards("HBLRPATH", [conn.get("board")])
+                    else:
+                        for key in ("primary", "secondary"):
+                            self._log_transit_boards("HBLRPATH", [section.get(key)])
+                if payload.get("path_exchange_wtc") or payload.get("subway_wtc_north"):
+                    if payload.get("path_exchange_wtc"):
+                        self._log_transit_boards("HBLRPATH", [payload["path_exchange_wtc"]])
+                    self._log_transit_boards("HBLRPATH", payload.get("subway_wtc_north"))
+            elif tab == "mt_to_jc":
+                for row in payload.get("mt_to_jc_rows") or []:
+                    self._log_transit_boards("MTJC", [row.get("subway")])
+                    self._log_transit_boards(
+                        "MTJC",
+                        [
+                            row.get("path_primary"),
+                            row.get("path_wtc"),
+                            row.get("hblr_newport"),
+                            row.get("hblr_exchange"),
+                        ],
+                    )
 
         def _finish_refresh(self, refresh_id):
             if refresh_id != self._refresh_gen:
@@ -1783,28 +1978,20 @@ if HAS_UI:
             if self._thumb_float_active:
                 self._arm_thumb_float_timer()
 
-        def _refresh_step_transit(self, refresh_id, payload):
-            """Main thread only — no @ui.in_background (Pythonista TLS crash)."""
+        def _refresh_step_tab_transit(self, refresh_id, tab):
+            """Main thread only — fetch transit for one tab."""
             if refresh_id != self._refresh_gen:
                 return
             if not self._busy:
                 log_event("step: transit #{} skipped (not busy)".format(refresh_id))
                 return
+            payload = {"refresh_id": refresh_id, "tab": tab, "error": None}
             try:
-                log_event("step: fetch transit")
-                (
-                    payload["path_boards"],
-                    payload["path_33rd_boards"],
-                    payload["subway_boards"],
-                    payload["path_nj_boards"],
-                    payload["subway_to_jc_boards"],
-                    payload["tunnel_boards"],
-                    payload["hblr_path_sections"],
-                    payload["path_exchange_wtc"],
-                    payload["subway_wtc_north"],
-                ) = _fetch_transit_boards()
-                log_event("step: transit ok")
+                log_event("step: fetch transit ({})".format(tab))
+                payload.update(_fetch_tab_transit_boards(tab))
+                log_event("step: transit ok ({})".format(tab))
             except Exception as exc:
+                payload["error"] = str(exc)
                 log_event("Transit fetch failed: {}".format(exc))
                 log_event(traceback.format_exc())
 
@@ -1814,12 +2001,12 @@ if HAS_UI:
                 return
 
             try:
-                self._apply_refresh_payload(payload)
+                self._apply_tab_refresh_payload(payload)
             finally:
                 self._finish_refresh(refresh_id)
 
         def _refresh_step_bikes(self, refresh_id):
-            """Main thread only — fetch GBFS, then yield before transit."""
+            """Main thread only — Cbike JC tab GBFS fetch."""
             if refresh_id != self._refresh_gen:
                 return
             if not self._busy:
@@ -1827,17 +2014,9 @@ if HAS_UI:
                 return
             payload = {
                 "refresh_id": refresh_id,
+                "tab": "cbike_jc",
                 "error": None,
                 "snapshots": None,
-                "path_boards": [],
-                "path_33rd_boards": [],
-                "subway_boards": [],
-                "path_nj_boards": [],
-                "subway_to_jc_boards": [],
-                "tunnel_boards": [],
-                "hblr_path_sections": [],
-                "path_exchange_wtc": None,
-                "subway_wtc_north": [],
             }
             try:
                 log_event("step: fetch bikes")
@@ -1847,20 +2026,18 @@ if HAS_UI:
                 payload["error"] = str(exc)
                 log_event("Refresh failed: {}".format(payload["error"]))
                 log_event(traceback.format_exc())
-                try:
-                    self._apply_refresh_payload(payload)
-                finally:
-                    self._finish_refresh(refresh_id)
-                return
 
             if refresh_id != self._refresh_gen:
                 log_event("step: stale fetch #{} discarded".format(refresh_id))
                 self._finish_refresh(refresh_id)
                 return
 
-            ui.delay(lambda: self._refresh_step_transit(refresh_id, payload), 0.05)
+            try:
+                self._apply_tab_refresh_payload(payload)
+            finally:
+                self._finish_refresh(refresh_id)
 
-        def refresh(self):
+        def refresh_tab(self, tab):
             if self._busy:
                 log_event("refresh skipped (busy)")
                 return
@@ -1873,9 +2050,15 @@ if HAS_UI:
             app_state.set_busy(True)
             self._style_tabs()
             self.status_label.text = "Updating..." + _cache_ttl_suffix()
-            log_event("Refresh started (#{})".format(refresh_id))
+            log_event("Refresh tab {} (#{})".format(tab, refresh_id))
             reset_stats()
-            ui.delay(lambda: self._refresh_step_bikes(refresh_id), 0.05)
+            if tab == "cbike_jc":
+                ui.delay(lambda: self._refresh_step_bikes(refresh_id), 0.05)
+            else:
+                ui.delay(lambda: self._refresh_step_tab_transit(refresh_id, tab), 0.05)
+
+        def refresh(self):
+            self.refresh_tab(self._active_tab)
 
         def _log_transit_boards(self, prefix, boards):
             if not boards:
@@ -2070,11 +2253,11 @@ if HAS_UI:
                     (self._pick_board(subway, "Chris St", by_line=True), "↑", "None catchable"),
                 ],
                 [
-                    (self._pick_board(path33, "9th St"), "33", "No 33rd St"),
+                    (self._pick_board(path33, "9 St"), "33", "No 33rd St"),
                     (self._pick_board(subway, "West 4 St", by_line=True), "↑", "None catchable"),
                 ],
                 [
-                    (self._pick_board(path33, "14 St PATH"), "33", "No 33rd St"),
+                    (self._pick_board(path33, "14 St"), "33", "No 33rd St"),
                     (self._pick_board(subway, "6 Av", by_line=True), "↑", "None catchable"),
                     (self._pick_board(subway, "14 St - Union Sq", by_line=True), "↑", "None catchable"),
                 ],
@@ -2105,6 +2288,7 @@ if HAS_UI:
             hblr_path_sections=None,
             path_exchange_wtc=None,
             subway_wtc_north=None,
+            mt_to_jc_rows=None,
             partial=False,
         ):
             from lib import app_state
@@ -2121,6 +2305,7 @@ if HAS_UI:
                 self._cache["hblr_path_sections"] = hblr_path_sections
                 self._cache["path_exchange_wtc"] = path_exchange_wtc
                 self._cache["subway_wtc_north"] = subway_wtc_north
+                self._cache["mt_to_jc_rows"] = mt_to_jc_rows
                 for snapshot in snapshots or []:
                     log_event(
                         "{} filled={} empty={}".format(
@@ -2145,6 +2330,17 @@ if HAS_UI:
                     if path_exchange_wtc:
                         self._log_transit_boards("HBLRPATH", [path_exchange_wtc])
                     self._log_transit_boards("HBLRPATH", subway_wtc_north)
+                for row in mt_to_jc_rows or []:
+                    self._log_transit_boards("MTJC", [row.get("subway")])
+                    self._log_transit_boards(
+                        "MTJC",
+                        [
+                            row.get("path_primary"),
+                            row.get("path_wtc"),
+                            row.get("hblr_newport"),
+                            row.get("hblr_exchange"),
+                        ],
+                    )
                 log_event("Refresh OK: {} stations".format(len(snapshots or [])))
                 app_state.update_refresh(
                     snapshots or self._cache.get("snapshots") or [],
@@ -2175,6 +2371,8 @@ if HAS_UI:
                     y = self._paint_to_jc(pad, inner_w, card_width, partial=partial)
                 elif self._active_tab == "hblr_path":
                     y = self._paint_hblr_path(pad, inner_w, card_width, partial=partial)
+                elif self._active_tab == "mt_to_jc":
+                    y = self._paint_mt_to_jc(pad, inner_w, card_width, partial=partial)
                 elif self._active_tab == "tunnels":
                     y = self._paint_tunnels(pad, inner_w, card_width, partial=partial)
                 else:
@@ -2189,6 +2387,7 @@ if HAS_UI:
                         "from_jc": REGION,
                         "to_jc": "To JC",
                         "hblr_path": "JC HBLR ↔ PATH",
+                        "mt_to_jc": "MT to JC",
                         "tunnels": "Tunnels",
                     }
                     self.status_label.text = "Updated %s · %s%s" % (
@@ -2313,6 +2512,85 @@ if HAS_UI:
                 y += SECTION_GAP
             return y + pad
 
+        def _append_mt_to_jc_row(self, y, pad, inner_w, col_w, row):
+            header = SectionHeader(row.get("label") or "MT→JC")
+            header.frame = (pad, y, inner_w, SECTION_HEADER_HEIGHT)
+            self.scroll.add_subview(header)
+            y += SECTION_HEADER_HEIGHT + CARD_GAP
+
+            eta_w = HBLR_PATH_ETA_WIDTH
+            stack_gap = CARD_GAP
+            subway = row["subway"]
+            path_a = row["path_primary"]
+            path_b = row["path_wtc"]
+            hblr_a = row["hblr_newport"]
+            hblr_b = row["hblr_exchange"]
+
+            h_sub = transit_card_height(
+                subway, col_w, wrap_text=False, eta_column_width=eta_w
+            )
+            h_pa = transit_card_height(
+                path_a, col_w, wrap_text=False, eta_column_width=eta_w
+            )
+            h_pb = transit_card_height(
+                path_b, col_w, wrap_text=False, eta_column_width=eta_w
+            )
+            h_ha = transit_card_height(
+                hblr_a, col_w, wrap_text=False, eta_column_width=eta_w
+            )
+            h_hb = transit_card_height(
+                hblr_b, col_w, wrap_text=False, eta_column_width=eta_w
+            )
+            stack_path_h = h_pa + stack_gap + h_pb
+            stack_hblr_h = h_ha + stack_gap + h_hb
+            row_h = max(h_sub, stack_path_h, stack_hblr_h)
+
+            x_sub = pad
+            x_path = pad + col_w + CARD_GAP
+            x_hblr = pad + 2 * (col_w + CARD_GAP)
+            sub_y = y + (row_h - h_sub) // 2
+            path_y = y + (row_h - stack_path_h) // 2
+            hblr_y = y + (row_h - stack_hblr_h) // 2
+
+            tiles = (
+                (subway, "↓", "No downtown trains", (x_sub, sub_y, col_w, h_sub)),
+                (path_a, "NJ", "None catchable", (x_path, path_y, col_w, h_pa)),
+                (
+                    path_b,
+                    "NJ",
+                    "None catchable",
+                    (x_path, path_y + h_pa + stack_gap, col_w, h_pb),
+                ),
+                (hblr_a, "HBLR", "None catchable", (x_hblr, hblr_y, col_w, h_ha)),
+                (
+                    hblr_b,
+                    "HBLR",
+                    "None catchable",
+                    (x_hblr, hblr_y + h_ha + stack_gap, col_w, h_hb),
+                ),
+            )
+            for board, tag, empty_text, frame in tiles:
+                card = TransitCard(
+                    board,
+                    frame[2],
+                    tag=tag,
+                    empty_text=empty_text,
+                    wrap_text=False,
+                    eta_column_width=eta_w,
+                )
+                card.frame = frame
+                self.scroll.add_subview(card)
+            return y + row_h + SECTION_GAP
+
+        def _paint_mt_to_jc(self, pad, inner_w, card_width, partial=False):
+            if partial:
+                return pad
+            y = pad
+            col_w = max((inner_w - 2 * CARD_GAP) // 3, 96)
+            for row in self._cache.get("mt_to_jc_rows") or []:
+                y = self._append_mt_to_jc_row(y, pad, inner_w, col_w, row)
+            return y + pad
+
         def _paint_tunnels(self, pad, inner_w, card_width, partial=False):
             if partial:
                 return pad
@@ -2343,16 +2621,15 @@ if HAS_UI:
             return False
 
     def _kickoff_ui(view):
-        """Start polling and first refresh once the UI run loop is active."""
+        """Start polling and thumb float; data loads when user taps a tab."""
         try:
             from lib.app_control import clear_control
 
             clear_control()
-            log_event("kickoff: poll + first refresh")
+            log_event("kickoff: poll (tap tab to load)")
             view.start_remote_poll()
-            view.status_label.text = "Starting..." + _cache_ttl_suffix()
+            view.status_label.text = "Tap a tab to load" + _cache_ttl_suffix()
             view._enter_startup_thumb_float()
-            view.refresh()
         except Exception as exc:
             log_event("kickoff failed: {}".format(exc))
             log_event(traceback.format_exc())

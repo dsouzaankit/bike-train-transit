@@ -18,9 +18,9 @@ EXCHANGE_WTC_PATH_WALK = 8
 # Subway station -> (PATH 33rd board label, walk minutes from PATH platform).
 SUBWAY_PATH_WALKS = {
     "Chris St": ("Chris St", 5),
-    "West 4 St": ("9th St", 5),
-    "6 Av": ("14 St PATH", 2),
-    "14 St - Union Sq": ("14 St PATH", 6),
+    "West 4 St": ("9 St", 5),
+    "6 Av": ("14 St", 2),
+    "14 St - Union Sq": ("14 St", 6),
 }
 
 NORTH_SUBWAY_ORDER = (
