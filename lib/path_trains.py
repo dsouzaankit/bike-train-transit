@@ -134,6 +134,18 @@ def _is_nwk_jsq_destination(name):
     return False
 
 
+def _is_jsq_destination(name):
+    """PATH toward Journal Square only (excludes Newark, WTC, 33rd, Hoboken)."""
+    text = _headsign_text(name).casefold()
+    if _is_wtc_destination(name) or _is_33rd_destination(name):
+        return False
+    if "newark" in text:
+        return False
+    if _is_hoboken_destination(name):
+        return False
+    return "journal square" in text or re.search(r"\bjsq\b", text)
+
+
 def _is_mt_to_jc_path_destination(name):
     """PATH toward Newark, Journal Square, or Hoboken (MT→JC tab)."""
     if _is_nwk_jsq_destination(name):
@@ -482,6 +494,62 @@ def _load_14th_path_board(fetch_json, panynj_payload=None, max_trains=PATH_33RD_
     )
 
 
+def _load_14th_nj_jsq_board(fetch_json, panynj_payload=None, max_trains=PATH_MAX_TRAINS):
+    """NJ-bound PATH at 14 St — Journal Square departures only (To JC tab)."""
+    payload = panynj_payload
+    error = None
+    if payload is None:
+        try:
+            payload = _fetch_panynj_payload(fetch_json)
+        except Exception as exc:
+            error = str(exc)
+            payload = None
+
+    trains = []
+    if payload is not None:
+        trains = _parse_panynj_station(
+            PATH_14TH_STATION["panynj"],
+            payload,
+            _is_nj_direction,
+            dest_filter=_is_jsq_destination,
+        )
+    board = {
+        "label": PATH_14TH_STATION["label"],
+        "trains": trains[:max_trains],
+        "error": error if not trains else None,
+        "source": "panynj" if trains else None,
+    }
+    if not trains and fetch_json is not None:
+        board = _maybe_enrich_with_razza(
+            board,
+            PATH_14TH_STATION,
+            fetch_json,
+            PATH_DIRECTION_NJ,
+            dest_filter=_is_jsq_destination,
+            max_trains=max_trains,
+        )
+    return board
+
+
+def _insert_14th_nj_jsq_board(boards, fetch_json, panynj_payload=None, max_trains=PATH_MAX_TRAINS):
+    """Insert 14 St JSQ board before 33 St in PATH → NJ list."""
+    fourteenth = _load_14th_nj_jsq_board(
+        fetch_json,
+        panynj_payload=panynj_payload,
+        max_trains=max_trains,
+    )
+    result = []
+    inserted = False
+    for board in boards:
+        if board.get("label") == "33 St" and not inserted:
+            result.append(fourteenth)
+            inserted = True
+        result.append(board)
+    if not inserted:
+        result.append(fourteenth)
+    return result
+
+
 _PATH_STATION_LOOKUP = {}
 for _entry in (
     PATH_STATIONS
@@ -715,12 +783,17 @@ def get_all_path_boards(
             max_trains,
         ),
         "33rd": path_33rd,
-        "nj": _build(
-            PATH_NJ_STATIONS,
-            PATH_DIRECTION_NJ,
-            _is_nj_direction,
-            None,
-            max_trains,
+        "nj": _insert_14th_nj_jsq_board(
+            _build(
+                PATH_NJ_STATIONS,
+                PATH_DIRECTION_NJ,
+                _is_nj_direction,
+                None,
+                max_trains,
+            ),
+            fetch_json,
+            panynj_payload=payload,
+            max_trains=max_trains,
         ),
         "_payload": payload,
     }
@@ -778,7 +851,7 @@ def get_exchange_place_wtc_board(
 
 
 def get_path_nj_boards(fetch_json, max_trains=PATH_MAX_TRAINS, panynj_payload=None):
-    boards, _payload = _load_boards(
+    boards, payload = _load_boards(
         PATH_NJ_STATIONS,
         fetch_json,
         direction=PATH_DIRECTION_NJ,
@@ -786,7 +859,12 @@ def get_path_nj_boards(fetch_json, max_trains=PATH_MAX_TRAINS, panynj_payload=No
         max_trains=max_trains,
         panynj_payload=panynj_payload,
     )
-    return boards
+    return _insert_14th_nj_jsq_board(
+        boards,
+        fetch_json,
+        panynj_payload=payload,
+        max_trains=max_trains,
+    )
 
 
 def print_path_boards(boards, title="PATH"):

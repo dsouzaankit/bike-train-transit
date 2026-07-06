@@ -60,5 +60,42 @@ class PathDestinationShortTests(unittest.TestCase):
         self.assertEqual(trains[0]["destination"], "WTC")
 
 
+    def test_parse_14th_nj_jsq(self):
+        from lib.path_trains import _is_jsq_destination, _load_14th_nj_jsq_board
+
+        payload = {
+            "results": [
+                {
+                    "consideredStation": "14S",
+                    "destinations": [
+                        {
+                            "label": "ToNJ",
+                            "messages": [
+                                {
+                                    "headSign": "Journal Square",
+                                    "arrivalTimeMessage": "6 min",
+                                },
+                                {
+                                    "headSign": "Newark",
+                                    "arrivalTimeMessage": "3 min",
+                                },
+                                {
+                                    "headSign": "33rd Street",
+                                    "arrivalTimeMessage": "1 min",
+                                },
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        board = _load_14th_nj_jsq_board(None, panynj_payload=payload)
+        self.assertEqual(board["label"], "14 St")
+        self.assertEqual(len(board["trains"]), 1)
+        self.assertEqual(board["trains"][0]["destination"], "JSQ")
+        self.assertTrue(_is_jsq_destination("Journal Square via Hoboken"))
+        self.assertFalse(_is_jsq_destination("Newark"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

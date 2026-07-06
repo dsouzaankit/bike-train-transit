@@ -11,7 +11,7 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
 - **PATH + subway connections** — From JC **33rd St** subway cards only show trains reachable after the earliest paired PATH arrival + walk time; **HBLR↔PATH** has **PATH + Subway via WTC** under **HBLR → PATH** (**WTC Cortlandt** / **WTC** northbound, catchable after **LSP HBLR +11** then **Exchange PATH +8** walk at WTC)
 - **HBLR ↔ PATH tab** — timed transfers; **Transit App API** is used only on this tab (see [Transit App API usage](#transit-app-api-usage))
-- **PATH schedules** — trains terminating at **Hoboken** are excluded, but **"via Hoboken"** routings (the overnight 33rd↔JSQ service) are kept; **World Trade Center** additionally shows **Hoboken-bound** PATH trains; for travel near **Liberty State Park**, **change at Exchange Place** (HBLR ↔ PATH) — see [HBLR↔PATH](#jc-hblr--path)
+- **PATH schedules** — trains terminating at **Hoboken** are excluded on most cards, but **"via Hoboken"** routings (overnight 33rd↔JSQ) are kept; **World Trade Center** shows **Hoboken-bound** PATH (**Hoboken line** serves **Exchange Place** and **Newport** in JC — alight there even when the headsign is Hoboken); for **Liberty State Park**, **change at Exchange Place** (HBLR ↔ PATH) — see [HBLR↔PATH](#jc-hblr--path)
 - **PATH & subway** — real-time departures in grouped sections (see [App tabs](#app-tabs) below); PATH uses one PANYNJ fetch for all boards
 - **Compact ETAs** — `5m`, `Due`, `Delay` / `~5m`; southbound **6** (Union Sq) and **4/5** (Bleecker St express local) trains show **↓** (e.g. `14m↓`); card notes and destinations **wrap** within narrow columns (taller cards when needed)
 - **Sorted departures** — train rows on each card sorted by ascending ETA
@@ -182,16 +182,16 @@ Transit-only tab (no bike grid) to keep scrolling short. **To JC** subway cards 
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **Subway + PATH . Nwk** | WTC Cortlandt, World Trade Center (subway + PATH) | Downtown 1 / E toward South Ferry / WTC; NJ-bound PATH at WTC (incl. Hoboken) |
-| **PATH → NJ** | Christopher St, 9th St, 33rd St | Next NJ-bound PATH trains |
+| **Subway + PATH . Nwk** | WTC Cortlandt, World Trade Center (subway + PATH) | Downtown 1 / E toward South Ferry / WTC; NJ-bound PATH at WTC (incl. **Hoboken line** → **Exchange Place** / **Newport**) |
+| **PATH → NJ** | Chris St, 9 St, **14 St** (JSQ only), 33 St | NJ-bound PATH; **14 St** shows **Journal Square** departures only (incl. **JSQ via Hob** overnight) |
 
-**World Trade Center subway:** uses direct E-line arrivals when available. If not, estimates from **Canal St** WTC-bound departures **+2 min** (shown with `~` and note “est. Canal St + 2 min”). Cards show **up to 2 ETAs per line** when multiple lines serve the station. The **PATH WTC** card (tag `NJ`) sits in this section next to the subway tiles, and includes **Hoboken-bound** PATH trains on the **WTC–Hoboken** line.
+**World Trade Center subway:** uses direct E-line arrivals when available. If not, estimates from **Canal St** WTC-bound departures **+2 min** (shown with `~` and note “est. Canal St + 2 min”). Cards show **up to 2 ETAs per line** when multiple lines serve the station. The **PATH WTC** card (tag `NJ`) sits in this section next to the subway tiles. It includes **Hoboken-bound** trains on the **WTC–Hoboken** line — these stop at **Exchange Place** and **Newport** in JC before Hoboken (alight there for JC destinations even when the headsign says Hoboken). **Newark-line** departures (Newark / JSQ headsigns) on the same card also serve Exchange and Newport.
 
-**LSP area travel — change at Exchange Place:** Trips near **Liberty State Park** should **change at Exchange Place** (**HBLR → PATH**, same station complex). On **HBLR↔PATH**, watch **LSP HBLR +11 min** then **Exchange Place PATH → WTC** (and **PATH + Subway via WTC** uses the same Exchange → WTC leg). **Weekends through ~9 PM**, only if Exchange timing is poor: **northbound HBLR** to **Hoboken Terminal** and the **WTC–Hoboken** PATH shuttle (**Hoboken-bound** at **World Trade Center** on this tab).
+**LSP area travel — change at Exchange Place:** Trips near **Liberty State Park** should **change at Exchange Place** (**HBLR → PATH**, same station complex). On **HBLR↔PATH**, watch **LSP HBLR +11 min** then **Exchange Place PATH → WTC** (and **PATH + Subway via WTC** uses the same Exchange → WTC leg). From downtown Manhattan, **Hoboken-line** PATH at **WTC** (above) is another way to reach **Exchange Place** or **Newport** in JC.
 
 ### JC HBLR ↔ PATH
 
-**Near Liberty State Park:** **change at Exchange Place** — HBLR and PATH share the same station (light rail upstairs, PATH downstairs). Use the **HBLR → PATH** section below (**LSP +11 min** → **Exchange Place PATH → WTC**). Weekend **WTC–Hoboken** via Hoboken Terminal is an alternate only when Exchange timing is poor.
+**Near Liberty State Park:** **change at Exchange Place** — HBLR and PATH share the same station (light rail upstairs, PATH downstairs). Use the **HBLR → PATH** section below (**LSP +11 min** → **Exchange Place PATH → WTC**). From **WTC** in Manhattan, **Hoboken-line** PATH (**Hoboken-bound** on **To JC**) also reaches **Exchange Place** and **Newport** in JC.
 
 Four connection sections (primary departures + catchable secondary after the offset):
 
@@ -207,7 +207,7 @@ Four connection sections (primary departures + catchable secondary after the off
 
 **Exchange Place + LSP:** **Exchange Place** is the usual **HBLR ↔ PATH** transfer for the LSP area — ride **HBLR from Liberty State Park to Exchange Place**, then **change** to PATH toward **WTC** or **33rd St** (same complex; no street transfer). The app’s **HBLR → PATH** and **PATH + Subway via WTC** cards are timed for that **change at Exchange Place** (+11 min walk/connection from LSP HBLR).
 
-**WTC–Hoboken PATH (weekends through ~9 PM):** **Not** the primary LSP route — use **Exchange Place** first (above). On **weekend** service (roughly **noon–9 PM**), if Exchange PATH timing is tight, an alternate is **northbound HBLR** from LSP to **Hoboken Terminal**, then the **WTC–Hoboken** PATH shuttle (**Hoboken-bound** trains at **World Trade Center** on **To JC**). Separate from **Newark-line** WTC departures at **Exchange Place** in weekend sync tests (20‑min **8th St** HBLR pairing).
+**WTC–Hoboken PATH (To JC WTC card):** **Hoboken-bound** trains run on the **Hoboken line** and stop at **Exchange Place** and **Newport** in JC before Hoboken — useful from downtown Manhattan when you need those JC stations, not only a ride through to Hoboken. Shown on **To JC** because other PATH cards filter out Hoboken-terminating headsigns. Separate from **Newark-line** WTC departures at **Exchange Place** in weekend sync tests (20‑min **8th St** HBLR pairing).
 
 **PATH + Subway via WTC:** first row — **Exchange Place** PATH → WTC (raw PANYNJ realtime, no LSP offset). Second row — **WTC Cortlandt** / **WTC** northbound subway, catchable after **LSP HBLR +11** then **Exchange PATH +8** walk at WTC. When PANYNJ or the subway API pool is too shallow, **Transit API** retries Exchange PATH and/or WTC subway stops (filter pool **8**); otherwise **current subway** (`· current subway`).
 
@@ -571,7 +571,7 @@ Live PATH fetching in `lib/path_trains.py` does not filter by PATH line color; N
 
 | File | Configure |
 |------|-----------|
-| `path_trains.py` | PATH stations; PANYNJ `ridepath.json`; `_is_mt_to_jc_path_destination()` (Nwk/JSQ/Hoboken); `get_path_transit_board()` for transfer retry (`PATH:554` Exchange, `PATH:520` Newport, `PATH:553` WTC, `PATH:552` Chris St, `PATH:551` 9 St) |
+| `path_trains.py` | PATH stations; PANYNJ `ridepath.json`; `_is_jsq_destination()` for **14 St → JSQ** (To JC); `_is_mt_to_jc_path_destination()` (Nwk/JSQ/Hoboken); `get_path_transit_board()` for transfer retry (`PATH:554` Exchange, `PATH:520` Newport, `PATH:553` WTC, `PATH:552` Chris St, `PATH:551` 9 St) |
 | `mt_to_jc.py` | MT→JC three rows; chained offsets; PATH Hoboken on **9 St**, **Chris St**, and **WTC** cards (`allow_hoboken=True`); Transit retry for PATH and HBLR |
 | `light_rail.py` | HBLR station boards by direction; Transit API key (`transit_credentials.json` / `TRANSIT_API_KEY`); optional NJT creds (`njt_credentials.json`) — **NJT dev API currently unavailable**; PDF fallback via `hblr_schedule_data.json` |
 | `transit_app.py` | Transit App v4 `/stop_departures` client; uses shared `http_cache.py` (2 min, persistent) |
@@ -628,7 +628,7 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 | Email fails | Use Yahoo **app password** in `.env`, not account password |
 | `deploy.ps1`: iCloud folder not found | Enable iCloud Drive on Windows or set `iCloudDownloads` in windows config |
 | WTC subway shows `~` prefix | Estimated from Canal St +2 min — direct WTC E-line data was unavailable |
-| PATH missing Hoboken | Hoboken-terminating trains are filtered out; "via Hoboken" routings are kept, and World Trade Center shows Hoboken-bound trains |
+| PATH missing Hoboken | Hoboken-terminating trains are filtered out on most cards; "via Hoboken" routings are kept. **WTC** shows Hoboken-bound trains because the **Hoboken line** serves **Exchange Place** and **Newport** in JC |
 | HBLR shows `~`/`sched` | PDF timetable fallback — Transit App key missing or fetch failed. On Pythonista, confirm `transit_credentials.json` is in **Documents/bike_train_transit/** (run `bike_train_transit.py` once after adding it to your edit folder). Card note may say `sched · …` if the API key was found but the fetch failed |
 | NJT `njt_credentials.json` does nothing | Expected for now — **NJ Transit developer API tokens for HBLR are currently unavailable**; live HBLR is Transit App only, then PDF. Code path kept for if access returns |
 | HBLR empty / “None catchable” | No train meets the offset from the primary. **HBLR → PATH** PATH cards stay empty (note `LSP HBLR +11` / `+21`). **PATH → HBLR** may show `· current HBLR`; **WTC subway** may show `· current subway`. PDF (`~`) HBLR boards stay empty when nothing is catchable |
