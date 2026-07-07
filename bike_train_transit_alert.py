@@ -67,8 +67,8 @@ def resolve_station_ids(config: dict[str, Any]) -> list[str]:
     stations = config.get("stations", [])
     if not stations:
         raise ValueError("config.json must include a non-empty 'stations' list")
-    if len(stations) > 12:
-        raise ValueError("This script is configured for up to 12 stations")
+    if len(stations) > 15:
+        raise ValueError("This script is configured for up to 15 stations")
     return [str(station) for station in stations]
 
 

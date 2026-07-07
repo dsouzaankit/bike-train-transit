@@ -12,7 +12,10 @@
     "Grove St PATH",
     "Liberty Light Rail",
     "Exchange Pl",
-    "JC Medical Center"
+    "JC Medical Center",
+    "Arlington Ave & Bramhall Ave",
+    "Communipaw & Berry Lane",
+    "Garfield Light Rail"
   ],
   "alert_min_bikes": 2,
   "alert_min_docks": 2,

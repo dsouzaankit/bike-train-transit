@@ -32,6 +32,8 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 | Washington St | City Hall | Grove St PATH |
 | Liberty Light Rail | Exchange Pl | |
 | JC Medical Center | | |
+| Arlington & Bramhall | Communipaw & Berry Ln | |
+| Garfield Light Rail | | |
 
 All stations are tagged `[JC]` in logs, email, and the **Cbike JC** tab.
 
@@ -70,7 +72,7 @@ Five rows — **50 St (8Av)**, **50 St (7Av)**, **Lex/53 St**, plus **50 St (2)*
 | **50 St (2)** | 2 | Chris St +15m | Newport +13m |
 | **50 St (A/C)** | A/C | 9 St +15m | Newport +14m |
 
-Log markers: `build=hblr-path-v90`, `step: MT→JC rows (5)`.
+Log markers: `build=hblr-path-v91`, `step: MT→JC rows (5)`.
 
 ### Subway headsign filters (by tab)
 
@@ -177,9 +179,9 @@ Not called on refresh: **NJT HBLR API** (unavailable), **path.api.razza.dev** (d
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **Citibike grid** | 12 JC stations | GBFS bike/dock counts |
+| **Citibike grid** | 15 JC stations | GBFS bike/dock counts |
 
-**Liberty Light Rail** and **Exchange Pl** share a row above **JC Medical Center** (own row at the bottom); long titles use two lines (`Liberty` / `Light Rail`, `JC` / `Medical Center`).
+**Liberty Light Rail** and **Exchange Pl** share a row above **JC Medical Center** (own row). **Arlington & Bramhall**, **Communipaw & Berry Ln**, and **Garfield Light Rail** are on two rows at the bottom; long titles use two lines (`Liberty` / `Light Rail`, `JC` / `Medical Center`, `Arlington` / `& Bramhall`, etc.).
 
 ### From JC
 
@@ -481,7 +483,7 @@ Runs on the **iPhone** (not PC). Your PC reads logs over Wi‑Fi.
 | URL | Description |
 |-----|-------------|
 | `http://<phone-ip>:8765/` | HTML dashboard with live log tail |
-| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v90`; HBLR boards log `[transit]` / `[pdf]` source) |
+| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v91`; HBLR boards log `[transit]` / `[pdf]` source) |
 | `/bike_train_transit_progress.txt` | Last 12 log lines |
 | `/status.json` | App state (stations, transit boards, active tab, errors, **`httpCache` hits/misses**) |
 | `/refresh` | Trigger refresh on the phone from PC |
@@ -632,7 +634,7 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 | Field | Description |
 |-------|-------------|
 | `region` | Prefix tag for email reports (e.g. `JC`) |
-| `stations` | List of station names (up to 12) |
+| `stations` | List of station names (up to 15) |
 | `alert_min_bikes` | Email alert threshold |
 | `alert_min_docks` | Email alert threshold |
 | `email_always` | `true` = email every run; `false` = only on alert |

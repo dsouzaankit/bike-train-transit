@@ -57,6 +57,9 @@ STATIONS = [
     "Liberty Light Rail",
     "Exchange Pl",
     "JC Medical Center",
+    "Arlington Ave & Bramhall Ave",
+    "Communipaw & Berry Lane",
+    "Garfield Light Rail",
 ]
 # Shorter labels for compact UI (same order as STATIONS). Use \n for a two-line name.
 STATION_LABELS = [
@@ -72,11 +75,15 @@ STATION_LABELS = [
     "Liberty\nLight Rail",
     "Exchange Pl",
     "JC\nMedical Center",
+    "Arlington\n& Bramhall",
+    "Communipaw\n& Berry Ln",
+    "Garfield\nLight Rail",
 ]
 # Snapshot indices (matches STATIONS order above):
 #   0 Dixon Mills  1 Montgomery  |  2 Brunswick  3 Monmouth  4 Jersey & 6th
 #   5 Newport PATH  6 Washington  |  7 City Hall  8 Grove St PATH
 #   9 Liberty Light Rail  10 Exchange Pl  |  11 JC Medical Center (own row)
+#  12 Arlington & Bramhall  13 Communipaw & Berry Ln  |  14 Garfield Light Rail (own row)
 #
 # Group 1 — 6th St (2x2, empty cell beside Jersey)
 # Group 2 — Newport PATH, Washington St
@@ -88,6 +95,8 @@ GRID_GROUPS = [
     [(7, 8)],              # City Hall, Grove St PATH
     [(9, 10)],             # Liberty Light Rail, Exchange Pl
     [(11, None)],          # JC Medical Center
+    [(12, 13)],            # Arlington & Bramhall, Communipaw & Berry Ln
+    [(14, None)],          # Garfield Light Rail
 ]
 
 
@@ -139,7 +148,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v90"
+BUILD_TAG = "hblr-path-v91"
 
 TAB_TRANSIT_JOBS = {
     "from_jc": ("pathAll", "subway"),
