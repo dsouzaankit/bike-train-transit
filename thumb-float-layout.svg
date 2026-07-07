@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 920" font-family="system-ui, Segoe UI, sans-serif">
+  <style>
+    .phone { fill: #0f1419; stroke: #2a3441; stroke-width: 1; }
+    .header { fill: #1c2430; }
+    .pill { fill: #2a3441; stroke: #3d4f63; stroke-width: 1; }
+    .pill-dock { fill: #252b33; stroke: #3d4f63; stroke-width: 1; }
+    .label { fill: #ffffff; font-size: 11px; font-weight: 600; text-anchor: middle; }
+    .label-sm { fill: #8b98a5; font-size: 9px; }
+    .guide { stroke: #003da5; stroke-width: 1; stroke-dasharray: 4 3; fill: none; opacity: 0.7; }
+    .title { fill: #ffffff; font-size: 14px; font-weight: 700; }
+    .subtitle { fill: #8b98a5; font-size: 10px; }
+  </style>
+
+  <text x="20" y="28" class="title">Tab pill layouts (hblr-path-v99)</text>
+  <text x="20" y="46" class="subtitle">Stack centered at 65% usable height; Cbike JC beside From JC at stack top</text>
+
+  <g transform="translate(20, 60)">
+    <text x="175" y="16" class="title" text-anchor="middle" font-size="12">Startup thumb float</text>
+    <rect class="phone" x="0" y="24" width="390" height="844" rx="12"/>
+    <rect class="header" x="0" y="71" width="390" height="64"/>
+    <line class="guide" x1="195" y1="71" x2="195" y2="834"/>
+    <line class="guide" x1="0" y1="542" x2="390" y2="542"/>
+    <text x="10" y="537" class="label-sm">stack center 65% y=542</text>
+    <line class="guide" x1="10" y1="389" x2="380" y2="389"/>
+    <text x="10" y="384" class="label-sm">top row y=389: Cbike JC beside From JC</text>
+    <rect class="pill" x="35" y="389" width="100" height="50" rx="25"/><text x="85" y="419" class="label">Cbike JC</text>
+    <rect class="pill" x="35" y="453" width="100" height="50" rx="25"/><text x="85" y="483" class="label">Cbike S JC</text>
+    <rect class="pill" x="145" y="389" width="100" height="50" rx="25"/><text x="195" y="419" class="label">From JC</text>
+    <rect class="pill" x="145" y="453" width="100" height="50" rx="25"/><text x="195" y="483" class="label">To JC</text>
+    <rect class="pill" x="145" y="517" width="100" height="50" rx="25"/><text x="195" y="547" class="label">HBLR PATH</text>
+    <rect class="pill" x="145" y="581" width="100" height="50" rx="25"/><text x="195" y="611" class="label">Tunnels</text>
+    <rect class="pill" x="145" y="645" width="100" height="50" rx="25"/><text x="195" y="675" class="label">MT to JC</text>
+  </g>
+
+  <g transform="translate(430, 60)">
+    <text x="175" y="16" class="title" text-anchor="middle" font-size="12">Docked header ribbon (4/row)</text>
+    <rect class="phone" x="0" y="24" width="390" height="844" rx="12"/>
+    <rect class="header" x="0" y="71" width="390" height="64"/>
+    <rect fill="#1c2430" stroke="#2a3441" x="0" y="137" width="390" height="64"/>
+    <rect class="pill-dock" x="6" y="141" width="91" height="30" rx="8"/><text x="51" y="160" class="label" font-size="9">Cbike JC</text>
+    <rect class="pill-dock" x="101" y="141" width="91" height="30" rx="8"/><text x="146" y="160" class="label" font-size="9">Cbike S JC</text>
+    <rect class="pill-dock" x="196" y="141" width="91" height="30" rx="8"/><text x="241" y="160" class="label" font-size="9">From JC</text>
+    <rect class="pill-dock" x="291" y="141" width="91" height="30" rx="8"/><text x="336" y="160" class="label" font-size="9">To JC</text>
+    <rect class="pill-dock" x="6" y="175" width="91" height="30" rx="8"/><text x="51" y="194" class="label" font-size="9">HBLR PATH</text>
+    <rect class="pill-dock" x="101" y="175" width="91" height="30" rx="8"/><text x="146" y="194" class="label" font-size="9">Tunnels</text>
+    <rect class="pill-dock" x="196" y="175" width="91" height="30" rx="8"/><text x="241" y="194" class="label" font-size="9">MT to JC</text>
+  </g>
+</svg>

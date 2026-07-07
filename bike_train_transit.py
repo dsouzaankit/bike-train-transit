@@ -85,6 +85,7 @@ STATION_LABELS = [
 #   9 Liberty Light Rail  10 Exchange Pl  |  11 JC Medical Center (own row)
 #  12 Arlington & Bramhall  13 Communipaw & Berry Ln  |  14 Garfield Light Rail (own row)
 #
+# Cbike JC tab (indices 0–11):
 # Group 1 — 6th St (2x2, empty cell beside Jersey)
 # Group 2 — Newport PATH, Washington St
 # Group 3 — Dixon Mills, Montgomery St
@@ -95,21 +96,25 @@ GRID_GROUPS = [
     [(7, 8)],              # City Hall, Grove St PATH
     [(9, 10)],             # Liberty Light Rail, Exchange Pl
     [(11, None)],          # JC Medical Center
+]
+# Cbike S JC tab (indices 12–14) — south JC stations
+CBIKE_S_GRID_GROUPS = [
     [(12, 13)],            # Arlington & Bramhall, Communipaw & Berry Ln
     [(14, None)],          # Garfield Light Rail
 ]
 
 
-def _build_grid_slots():
+def _build_grid_slots(groups):
     slots = []
-    for row_pair in GRID_GROUPS:
+    for row_pair in groups:
         for left, right in row_pair:
             slots.append(left)
             slots.append(right)
     return slots
 
 
-GRID_SLOTS = _build_grid_slots()
+GRID_SLOTS = _build_grid_slots(GRID_GROUPS)
+CBIKE_S_GRID_SLOTS = _build_grid_slots(CBIKE_S_GRID_GROUPS)
 ALERT_MIN_BIKES = 2
 ALERT_MIN_DOCKS = 2
 # --- end edit ---
@@ -125,6 +130,8 @@ HBLR_PATH_ETA_WIDTH = 52
 SECTION_HEADER_HEIGHT = 26
 SECTION_GAP = 10
 TAB_BAR_HEIGHT = 34
+TAB_BAR_COLUMNS = 4  # docked header ribbon — max pills per row
+TAB_BAR_ROW_HEIGHT = 30
 TOP_CONTENT_INSET = 43  # fallback when safe_area_insets unavailable
 # Thumb float tuned for ~6" portrait (412×892 class); scales with safe area.
 PHONE6_REF_W = 412
@@ -132,7 +139,8 @@ PHONE6_REF_USABLE_H = 811  # 892 − ~47 top − ~34 home indicator
 THUMB_FLOAT_MARGIN_EDGE = 16
 THUMB_FLOAT_MARGIN_BOTTOM = 20  # stack anchor above home indicator
 THUMB_FLOAT_BTN_GAP = 14
-THUMB_FLOAT_STACK_X_RATIO = 0.50  # column on vertical screen center line
+THUMB_FLOAT_STACK_X_RATIO = 0.50  # transit column on vertical screen center line
+THUMB_FLOAT_COLUMN_GAP = 10  # horizontal gap between citibike and transit pill columns
 THUMB_FLOAT_STACK_Y_RATIO = 0.65  # stack center — lower half for thumb reach
 THUMB_FLOAT_BTN_H_BASE = 50
 THUMB_FLOAT_TAB_W_BASE = 100
@@ -148,7 +156,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v91"
+BUILD_TAG = "hblr-path-v99"
 
 TAB_TRANSIT_JOBS = {
     "from_jc": ("pathAll", "subway"),
@@ -160,6 +168,7 @@ TAB_TRANSIT_JOBS = {
 
 TAB_CACHE_KEYS = {
     "cbike_jc": ("snapshots",),
+    "cbike_s": ("snapshots",),
     "from_jc": ("path_boards", "path_33rd_boards", "subway_boards"),
     "to_jc": ("path_nj_boards", "subway_to_jc_boards"),
     "hblr_path": ("hblr_path_sections", "path_exchange_wtc", "subway_wtc_north"),
@@ -175,6 +184,73 @@ def _cache_ttl_suffix() -> str:
     if sec is None:
         return ""
     return " · cache %ds" % sec
+
+
+def compute_thumb_float_column_centers(width, tab_w, left=0, right=0):
+    """Place citibike column left of transit with a fixed edge gap (no overlap)."""
+    usable_w = width - left - right
+    edge = THUMB_FLOAT_MARGIN_EDGE
+    half = tab_w // 2
+    lo = left + edge + half
+    hi = width - right - edge - half
+    transit_center = left + int(usable_w * THUMB_FLOAT_STACK_X_RATIO)
+    transit_center = max(lo, min(transit_center, hi))
+    cbike_center = transit_center - tab_w - THUMB_FLOAT_COLUMN_GAP
+    if cbike_center < lo:
+        shift = lo - cbike_center
+        transit_center = min(hi, transit_center + shift)
+        cbike_center = transit_center - tab_w - THUMB_FLOAT_COLUMN_GAP
+        cbike_center = max(lo, cbike_center)
+    return cbike_center, transit_center
+
+
+def compute_thumb_float_stack_top_y(
+    top,
+    usable_h,
+    btn_h,
+    button_count,
+    *,
+    stack_y_ratio=THUMB_FLOAT_STACK_Y_RATIO,
+    margin_bottom=THUMB_FLOAT_MARGIN_BOTTOM,
+    gap=THUMB_FLOAT_BTN_GAP,
+):
+    """Top Y for a vertically centered pill stack (anchor on taller transit column)."""
+    total_h = button_count * btn_h + max(0, button_count - 1) * gap
+    stack_center_y = top + int(usable_h * stack_y_ratio)
+    start_y = stack_center_y - total_h // 2
+    min_y = top + 8
+    max_y = top + usable_h - margin_bottom - total_h
+    return max(min_y, min(start_y, max_y))
+
+
+def compute_docked_tab_layout(
+    width,
+    tab_count,
+    *,
+    columns=TAB_BAR_COLUMNS,
+    side=6,
+    gap=4,
+    row_height=TAB_BAR_ROW_HEIGHT,
+    row_gap=4,
+    min_tab_w=44,
+):
+    """Docked header ribbon: up to `columns` pills per row."""
+    rows = (tab_count + columns - 1) // columns
+    tab_w = max((width - side * 2 - gap * (columns - 1)) // columns, min_tab_w)
+    bar_h = rows * row_height + max(0, rows - 1) * row_gap
+    frames = []
+    for index in range(tab_count):
+        row = index // columns
+        col = index % columns
+        frames.append(
+            (
+                side + col * (tab_w + gap),
+                row * (row_height + row_gap),
+                tab_w,
+                row_height,
+            )
+        )
+    return bar_h, tab_w, frames
 
 COLORS = {
     "bg": "#0f1419",
@@ -491,6 +567,7 @@ def _placeholder_snapshot(label="No data"):
         "returning": False,
         "low_bikes": False,
         "low_docks": False,
+        "ebikes": 0,
     }
 
 
@@ -535,6 +612,7 @@ def get_snapshots():
         if not st:
             raise ValueError("No status for %s" % raw)
         bikes = int(st.get("num_bikes_available", 0))
+        ebikes = int(st.get("num_ebikes_available", 0))
         docks = int(st.get("num_docks_available", 0))
         cap = bikes + docks
         fill = None if cap == 0 else round(100.0 * bikes / cap, 1)
@@ -545,6 +623,7 @@ def get_snapshots():
                 "name": by_id.get(sid, raw),
                 "label": label,
                 "bikes": bikes,
+                "ebikes": ebikes,
                 "docks": docks,
                 "capacity": cap,
                 "fill": fill,
@@ -559,6 +638,13 @@ def get_snapshots():
 
 def tagged_name(snapshot):
     return "[%s] %s" % (snapshot["region"], snapshot.get("label", snapshot["name"]))
+
+
+def _snapshot_log_line(snapshot):
+    line = "{} filled={} empty={} e={}".format(
+        tagged_name(snapshot), snapshot["bikes"], snapshot["docks"], snapshot.get("ebikes", 0)
+    )
+    return line
 
 
 def get_path_boards():
@@ -819,7 +905,9 @@ def print_snapshots(snapshots):
         marker = " [!]" if alert else ""
         fill = "n/a" if snapshot["fill"] is None else "%s%%" % snapshot["fill"]
         print("%s%s" % (tagged_name(snapshot), marker))
-        print("  FILLED: %s   EMPTY: %s" % (snapshot["bikes"], snapshot["docks"]))
+        print("  FILLED: %s   EMPTY: %s   E-BIKES: %s" % (
+            snapshot["bikes"], snapshot["docks"], snapshot.get("ebikes", 0)
+        ))
         print("  %s full  |  capacity %s" % (fill, snapshot["capacity"]))
         if snapshot["low_bikes"]:
             print("  ** low bikes")
@@ -936,15 +1024,24 @@ if HAS_UI:
                 name = make_label(label_text, font_size=13, bold=True)
                 name.frame = (38, 4, card_width - 46, 18)
 
-            filled = make_label(str(snapshot["bikes"]), font_size=28, bold=True)
+            filled = make_label(str(snapshot["bikes"]), font_size=24, bold=True)
             filled.text_color = COLORS["bad"] if snapshot["low_bikes"] else COLORS["filled"]
             filled.alignment = ui.ALIGN_CENTER
-            filled.frame = (8, 26, (card_width - 16) // 2, 34)
+            filled.frame = (8, 22, (card_width - 16) // 2, 28)
 
             empty = make_label(str(snapshot["docks"]), font_size=28, bold=True)
             empty.text_color = COLORS["bad"] if snapshot["low_docks"] else COLORS["empty"]
             empty.alignment = ui.ALIGN_CENTER
             empty.frame = (8 + (card_width - 16) // 2, 26, (card_width - 16) // 2, 34)
+
+            ebike = make_label(
+                "E %d" % snapshot.get("ebikes", 0),
+                font_size=10,
+                bold=True,
+                color=COLORS["warn"],
+                align=ui.ALIGN_CENTER,
+            )
+            ebike.frame = (8, 48, (card_width - 16) // 2, 12)
 
             fill = "off" if snapshot["fill"] is None else "%s%%" % int(snapshot["fill"])
             meta = make_label(
@@ -952,9 +1049,9 @@ if HAS_UI:
                 font_size=10,
                 color=COLORS["muted"],
             )
-            meta.frame = (8, 58, card_width - 16, 14)
+            meta.frame = (8, 60, card_width - 16, 14)
 
-            for item in (tag, name, filled, empty, meta):
+            for item in (tag, name, filled, empty, ebike, meta):
                 self.add_subview(item)
 
     class SpacerCard(ui.View):
@@ -1371,6 +1468,7 @@ if HAS_UI:
             self.tab_bar = ui.View()
             self.tab_bar.background_color = COLORS["bg"]
             self.tab_cbike_btn = SectionPill("Cbike JC")
+            self.tab_cbike_s_btn = SectionPill("Cbike S JC")
             self.tab_from_btn = SectionPill("From JC")
             self.tab_to_btn = SectionPill("To JC")
             self.tab_hblr_path_btn = SectionPill("HBLR↔PATH")
@@ -1378,6 +1476,7 @@ if HAS_UI:
             self.tab_mt_to_jc_btn = SectionPill("MT→JC")
             for btn in (
                 self.tab_cbike_btn,
+                self.tab_cbike_s_btn,
                 self.tab_from_btn,
                 self.tab_to_btn,
                 self.tab_hblr_path_btn,
@@ -1386,12 +1485,14 @@ if HAS_UI:
             ):
                 btn._owner = self
             self.tab_cbike_btn.action = self._tab_cbike_tapped
+            self.tab_cbike_s_btn.action = self._tab_cbike_s_tapped
             self.tab_from_btn.action = self._tab_from_tapped
             self.tab_to_btn.action = self._tab_to_tapped
             self.tab_hblr_path_btn.action = self._tab_hblr_path_tapped
             self.tab_tunnels_btn.action = self._tab_tunnels_tapped
             self.tab_mt_to_jc_btn.action = self._tab_mt_to_jc_tapped
             self.tab_bar.add_subview(self.tab_cbike_btn)
+            self.tab_bar.add_subview(self.tab_cbike_s_btn)
             self.tab_bar.add_subview(self.tab_from_btn)
             self.tab_bar.add_subview(self.tab_to_btn)
             self.tab_bar.add_subview(self.tab_hblr_path_btn)
@@ -1413,6 +1514,7 @@ if HAS_UI:
         def _tab_buttons_ordered(self):
             return (
                 self.tab_cbike_btn,
+                self.tab_cbike_s_btn,
                 self.tab_from_btn,
                 self.tab_to_btn,
                 self.tab_hblr_path_btn,
@@ -1420,9 +1522,19 @@ if HAS_UI:
                 self.tab_mt_to_jc_btn,
             )
 
-        def _thumb_float_buttons(self):
-            """Bottom → top on screen: MT→JC (thumb), …, Cbike JC at top."""
-            return tuple(reversed(self._tab_buttons_ordered()))
+        def _thumb_float_cbike_buttons(self):
+            """Top → bottom: Cbike JC beside From JC, then Cbike S JC."""
+            return (self.tab_cbike_btn, self.tab_cbike_s_btn)
+
+        def _thumb_float_transit_buttons(self):
+            """Top → bottom: From JC, …, MT→JC at thumb."""
+            return (
+                self.tab_from_btn,
+                self.tab_to_btn,
+                self.tab_hblr_path_btn,
+                self.tab_tunnels_btn,
+                self.tab_mt_to_jc_btn,
+            )
 
         def _rehome_button(self, btn, parent):
             if btn.superview is parent:
@@ -1464,12 +1576,13 @@ if HAS_UI:
             scale = self._thumb_float_scale(width, height)
             return max(12, int(round(13 * scale)))
 
-        def _thumb_float_column_center_x(self, width, max_btn_w):
-            """Shared vertical axis; clamped so the widest pill stays on-screen."""
+        def _thumb_float_column_center_x(self, width, max_btn_w, x_ratio=None):
+            """Vertical axis for a pill column; clamped so the widest pill stays on-screen."""
             left, top, right, bottom = self._layout_insets()
             usable_w = width - left - right
             edge = THUMB_FLOAT_MARGIN_EDGE
-            center_x = left + int(usable_w * THUMB_FLOAT_STACK_X_RATIO)
+            ratio = THUMB_FLOAT_STACK_X_RATIO if x_ratio is None else x_ratio
+            center_x = left + int(usable_w * ratio)
             half = max_btn_w // 2
             lo = left + edge + half
             hi = width - right - edge - half
@@ -1493,27 +1606,54 @@ if HAS_UI:
             layer_h = min(height - layer_y, max_y - min_y + pad * 2)
             return (layer_x, layer_y, layer_w, layer_h)
 
-        def _thumb_float_screen_frames(self, width, height):
-            """Vertical pill stack toward screen center (left-hand thumb on ~6 inch screens)."""
-            left, top, right, bottom = self._layout_insets()
-            usable_h = height - top - bottom
-            tab_w, btn_h = self._thumb_float_sizes(width, height)
-            buttons = self._thumb_float_buttons()
+        def _thumb_float_stack_frames(
+            self, buttons, width, height, tab_w, btn_h, column_center_x, *, stack_top_y
+        ):
+            """Position one vertical pill column from a shared top anchor."""
             gap = THUMB_FLOAT_BTN_GAP
-            column_center_x = self._thumb_float_column_center_x(width, tab_w)
-            count = len(buttons)
-            total_h = count * btn_h + max(0, count - 1) * gap
-            stack_center_y = top + int(usable_h * THUMB_FLOAT_STACK_Y_RATIO)
-            start_y = stack_center_y - total_h // 2
-            min_y = top + 8
-            max_y = top + usable_h - THUMB_FLOAT_MARGIN_BOTTOM - total_h
-            start_y = max(min_y, min(start_y, max_y))
             frames = {}
-            y = start_y + total_h - btn_h
+            y = stack_top_y
             for btn in buttons:
                 x = self._thumb_float_stack_x(width, tab_w, column_center_x)
                 frames[btn] = (x, int(y), tab_w, btn_h)
-                y -= btn_h + gap
+                y += btn_h + gap
+            return frames
+
+        def _thumb_float_screen_frames(self, width, height):
+            """Citibike column top-left; transit on center line — top rows aligned."""
+            left, top, right, bottom = self._layout_insets()
+            usable_h = height - top - bottom
+            tab_w, btn_h = self._thumb_float_sizes(width, height)
+            cbike_center, transit_center = compute_thumb_float_column_centers(
+                width, tab_w, left, right
+            )
+            transit_buttons = self._thumb_float_transit_buttons()
+            stack_top_y = compute_thumb_float_stack_top_y(
+                top, usable_h, btn_h, len(transit_buttons)
+            )
+            frames = {}
+            frames.update(
+                self._thumb_float_stack_frames(
+                    self._thumb_float_cbike_buttons(),
+                    width,
+                    height,
+                    tab_w,
+                    btn_h,
+                    cbike_center,
+                    stack_top_y=stack_top_y,
+                )
+            )
+            frames.update(
+                self._thumb_float_stack_frames(
+                    transit_buttons,
+                    width,
+                    height,
+                    tab_w,
+                    btn_h,
+                    transit_center,
+                    stack_top_y=stack_top_y,
+                )
+            )
             return frames
 
         def _thumb_float_frames(self, width, height):
@@ -1528,6 +1668,7 @@ if HAS_UI:
         def _layout_thumb_float(self):
             if not self.width or not self.height:
                 return
+            self._move_tabs_to_float_layer()
             self._float_layer.frame = self._float_layer_frame(self.width, self.height)
             for btn, frame in self._thumb_float_frames(self.width, self.height).items():
                 btn.frame = frame
@@ -1595,6 +1736,7 @@ if HAS_UI:
             floating = self._thumb_float_active
             for tab, btn in (
                 ("cbike_jc", self.tab_cbike_btn),
+                ("cbike_s", self.tab_cbike_s_btn),
                 ("from_jc", self.tab_from_btn),
                 ("to_jc", self.tab_to_btn),
                 ("hblr_path", self.tab_hblr_path_btn),
@@ -1652,6 +1794,9 @@ if HAS_UI:
         def _tab_cbike_tapped(self, sender):
             self._on_section_tap("cbike_jc")
 
+        def _tab_cbike_s_tapped(self, sender):
+            self._on_section_tap("cbike_s")
+
         def _tab_from_tapped(self, sender):
             self._on_section_tap("from_jc")
 
@@ -1692,23 +1837,25 @@ if HAS_UI:
                 height = self.height
                 header_h = 64 + top
                 tab_top = header_h + 2
-                status_top = tab_top + TAB_BAR_HEIGHT + 2
-
-                self.header.frame = (0, 0, width, header_h)
-                self.title_label.frame = (16, top + 8, width - 32, 28)
-                self.tab_bar.frame = (0, tab_top, width, TAB_BAR_HEIGHT)
-                tab_gap = 4
-                tab_side = 6
-                tab_count = 6
-                tab_w = max((width - tab_side * 2 - tab_gap * (tab_count - 1)) // tab_count, 52)
                 tab_btns = (
                     self.tab_cbike_btn,
+                    self.tab_cbike_s_btn,
                     self.tab_from_btn,
                     self.tab_to_btn,
                     self.tab_hblr_path_btn,
                     self.tab_tunnels_btn,
                     self.tab_mt_to_jc_btn,
                 )
+                tab_gap = 4
+                tab_side = 6
+                tab_bar_h, tab_w, tab_frames = compute_docked_tab_layout(
+                    width, len(tab_btns), gap=tab_gap, side=tab_side
+                )
+                status_top = tab_top + tab_bar_h + 2
+
+                self.header.frame = (0, 0, width, header_h)
+                self.title_label.frame = (16, top + 8, width - 32, 28)
+                self.tab_bar.frame = (0, tab_top, width, tab_bar_h)
                 if self._thumb_float_active:
                     self._float_layer.hidden = False
                     self._float_layer.touch_enabled = True
@@ -1720,12 +1867,7 @@ if HAS_UI:
                     if self.tab_cbike_btn.superview is not self.tab_bar:
                         self._restore_docked_chrome()
                     for index, btn in enumerate(tab_btns):
-                        btn.frame = (
-                            tab_side + index * (tab_w + tab_gap),
-                            0,
-                            tab_w,
-                            TAB_BAR_HEIGHT - 4,
-                        )
+                        btn.frame = tab_frames[index]
                         btn.font = ("<system>", 11)
                 self.status_label.frame = (16, status_top, width - 32, 16)
                 scroll_bottom = max(bottom, 8)
@@ -1779,13 +1921,14 @@ if HAS_UI:
                 log_event(traceback.format_exc())
 
         def _log_tab_refresh(self, tab, payload):
-            if tab == "cbike_jc":
-                for snapshot in payload.get("snapshots") or []:
-                    log_event(
-                        "{} filled={} empty={}".format(
-                            tagged_name(snapshot), snapshot["bikes"], snapshot["docks"]
-                        )
-                    )
+            if tab in ("cbike_jc", "cbike_s"):
+                grid_slots = CBIKE_S_GRID_SLOTS if tab == "cbike_s" else GRID_SLOTS
+                snapshots = payload.get("snapshots") or []
+                for slot in grid_slots:
+                    if slot is None or slot >= len(snapshots):
+                        continue
+                    snapshot = snapshots[slot]
+                    log_event(_snapshot_log_line(snapshot))
                 log_event(
                     "Refresh OK: {} stations".format(len(payload.get("snapshots") or []))
                 )
@@ -1861,8 +2004,8 @@ if HAS_UI:
             finally:
                 self._finish_refresh(refresh_id)
 
-        def _refresh_step_bikes(self, refresh_id):
-            """Main thread only — Cbike JC tab GBFS fetch."""
+        def _refresh_step_bikes(self, refresh_id, tab):
+            """Main thread only — Cbike tab GBFS fetch (shared cache for JC + S)."""
             if refresh_id != self._refresh_gen:
                 return
             if not self._busy:
@@ -1870,7 +2013,7 @@ if HAS_UI:
                 return
             payload = {
                 "refresh_id": refresh_id,
-                "tab": "cbike_jc",
+                "tab": tab,
                 "error": None,
                 "snapshots": None,
             }
@@ -1908,8 +2051,8 @@ if HAS_UI:
             self.status_label.text = "Updating..." + _cache_ttl_suffix()
             log_event("Refresh tab {} (#{})".format(tab, refresh_id))
             reset_stats()
-            if tab == "cbike_jc":
-                ui.delay(lambda: self._refresh_step_bikes(refresh_id), 0.05)
+            if tab in ("cbike_jc", "cbike_s"):
+                ui.delay(lambda: self._refresh_step_bikes(refresh_id, tab), 0.05)
             else:
                 ui.delay(lambda: self._refresh_step_tab_transit(refresh_id, tab), 0.05)
 
@@ -2165,11 +2308,7 @@ if HAS_UI:
                 self._cache["subway_wtc_north"] = subway_wtc_north
                 self._cache["mt_to_jc_rows"] = mt_to_jc_rows
                 for snapshot in snapshots or []:
-                    log_event(
-                        "{} filled={} empty={}".format(
-                            tagged_name(snapshot), snapshot["bikes"], snapshot["docks"]
-                        )
-                    )
+                    log_event(_snapshot_log_line(snapshot))
                 self._log_transit_boards("PATH", path_boards)
                 self._log_transit_boards("PATH33", path_33rd_boards)
                 self._log_transit_boards("PATHNJ", path_nj_boards)
@@ -2224,7 +2363,13 @@ if HAS_UI:
             card_width = (inner_w - CARD_GAP * (CARD_COLUMNS - 1)) // CARD_COLUMNS
             try:
                 if self._active_tab == "cbike_jc":
-                    y = self._paint_cbike_jc(pad, inner_w, card_width, partial=partial)
+                    y = self._paint_cbike_grid(
+                        pad, inner_w, card_width, GRID_SLOTS, partial=partial
+                    )
+                elif self._active_tab == "cbike_s":
+                    y = self._paint_cbike_grid(
+                        pad, inner_w, card_width, CBIKE_S_GRID_SLOTS, partial=partial
+                    )
                 elif self._active_tab == "to_jc":
                     y = self._paint_to_jc(pad, inner_w, card_width, partial=partial)
                 elif self._active_tab == "hblr_path":
@@ -2242,6 +2387,7 @@ if HAS_UI:
                 if not partial:
                     tab_labels = {
                         "cbike_jc": "Cbike JC",
+                        "cbike_s": "Cbike S JC",
                         "from_jc": REGION,
                         "to_jc": "To JC",
                         "hblr_path": "JC HBLR ↔ PATH",
@@ -2258,10 +2404,10 @@ if HAS_UI:
                 log_event(traceback.format_exc())
                 self.status_label.text = "UI error: %s" % exc
 
-        def _paint_cbike_jc(self, pad, inner_w, card_width, partial=False):
+        def _paint_cbike_grid(self, pad, inner_w, card_width, grid_slots, partial=False):
             snapshots = self._cache.get("snapshots") or []
-            rows = (len(GRID_SLOTS) + CARD_COLUMNS - 1) // CARD_COLUMNS
-            for index, slot in enumerate(GRID_SLOTS):
+            rows = (len(grid_slots) + CARD_COLUMNS - 1) // CARD_COLUMNS
+            for index, slot in enumerate(grid_slots):
                 col = index % CARD_COLUMNS
                 row = index // CARD_COLUMNS
                 x = pad + col * (card_width + CARD_GAP)

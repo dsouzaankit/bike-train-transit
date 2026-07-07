@@ -60,6 +60,7 @@ def update_refresh(
             "name": tagged_name_fn(s),
             "bikes": s["bikes"],
             "docks": s["docks"],
+            "ebikes": s.get("ebikes", 0),
         }
         for s in snapshots
     ]

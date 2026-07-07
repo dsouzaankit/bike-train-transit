@@ -1,13 +1,13 @@
 # JC <-> NYC Transit
 
-Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **JC <-> NYC Transit** — tabs: **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, and **MT→JC**. Includes a Pythonista app, optional PC email alerts, and a LAN debug server for reading logs from your desktop.
+Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **JC <-> NYC Transit** — tabs: **Cbike JC**, **Cbike S JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, and **MT→JC**. Includes a Pythonista app, optional PC email alerts, and a LAN debug server for reading logs from your desktop.
 
 Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — no Citibike account login required.
 
 ## Features
 
-- **Six tabs** — **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, and **MT→JC**
-- **iPhone app** — compact 2-column Citibike grid on the **Cbike JC** tab (filled bikes and empty docks for JC stations)
+- **Seven tabs** — **Cbike JC**, **Cbike S JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, and **MT→JC**
+- **iPhone app** — compact 2-column Citibike grids on **Cbike JC** (12 downtown stations) and **Cbike S JC** (3 south stations)
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
 - **PATH + subway connections** — From JC **33rd St** subway cards only show trains reachable after the earliest paired PATH arrival + walk time; **HBLR↔PATH** has **PATH + Subway via WTC** under **HBLR → PATH** (**WTC Cortlandt** / **WTC** northbound, catchable after **LSP HBLR +11** then **Exchange PATH +8** walk at WTC)
 - **HBLR ↔ PATH tab** — timed transfers; **Transit App API** is used only on this tab (see [Transit App API usage](#transit-app-api-usage))
@@ -21,7 +21,8 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **PC email script** — optional Yahoo SMTP status/alert emails
 - **iOS Shortcut** — one-tap launch from Home Screen; separate **`debug_server.py`** shortcut for safe mode (LAN logs only)
 - **Fullscreen UI** — Pythonista script title bar hidden; layout uses **safe area insets** on iPhone 12+ (notch / Dynamic Island / home indicator)
-- **Startup thumb float** — on open, section tabs stack **vertically** toward screen center until you **tap a section** (no auto-dock timer)
+- **Startup thumb float** — on open, section tabs stack in **two vertical columns** (citibike left, transit on center line), centered at **65%** usable height, until you **tap a section** (no auto-dock timer)
+- **Docked tab bar** — **seven** section pills wrap at **four per row** (two rows) after you tap a floating pill
 
 ## Jersey City stations (`JC`)
 
@@ -35,11 +36,11 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 | Arlington & Bramhall | Communipaw & Berry Ln | |
 | Garfield Light Rail | | |
 
-All stations are tagged `[JC]` in logs, email, and the **Cbike JC** tab.
+All stations are tagged `[JC]` in logs, email, and the **Cbike JC** / **Cbike S JC** tabs.
 
 ## App tabs
 
-Tap **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, or **MT→JC** in the tab bar. Data loads when you **tap a tab** (or LAN `/refresh` for the active tab only); switching tabs without a new tap uses in-memory cache. See [HTTP cache and refresh API calls](#http-cache-and-refresh-api-calls).
+Tap **Cbike JC**, **Cbike S JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, or **MT→JC** in the tab bar. Data loads when you **tap a tab** (or LAN `/refresh` for the active tab only); switching tabs without a new tap uses in-memory cache. See [HTTP cache and refresh API calls](#http-cache-and-refresh-api-calls).
 
 ### MT→JC tab
 
@@ -72,7 +73,7 @@ Five rows — **50 St (8Av)**, **50 St (7Av)**, **Lex/53 St**, plus **50 St (2)*
 | **50 St (2)** | 2 | Chris St +15m | Newport +13m |
 | **50 St (A/C)** | A/C | 9 St +15m | Newport +14m |
 
-Log markers: `build=hblr-path-v91`, `step: MT→JC rows (5)`.
+Log markers: `build=hblr-path-v99`, `step: MT→JC rows (5)`.
 
 ### Subway headsign filters (by tab)
 
@@ -91,19 +92,24 @@ Most **From JC** subway cards use API `direction` + line specs only — **no hea
 
 ### Startup thumb float (~6" screens)
 
-On launch (after `present()`), section tabs **float** in a vertical column on the screen center line (left-hand thumb on ~6" phones):
+On launch (after `present()`), section tabs **float** in **two vertical columns** (left-hand thumb on ~6" phones):
 
 | Behavior | Detail |
 |----------|--------|
 | **Trigger** | App startup only (no auto-fetch until you tap a tab) |
-| **Position** | Vertical stack on screen center line; stack center at 65% usable height |
+| **Citibike column** | **Cbike JC** (top) + **Cbike S JC** below, left of transit — top row beside **From JC** |
+| **Transit column** | **From JC** (top) … **MT→JC** at bottom on center line (~50% width); stack centered at **65%** usable height |
 | **Duration** | Stays floating until you **tap a section tab** (no 5s timeout) |
 | **Section tabs (idle)** | Same dark gray on every pill while floating (no pre-selected blue) |
 | **Press feedback** | **Red** flash + haptic on every pill (same as docked tabs) |
 | **Section tab tap** | Docks to top bar (active tab turns blue), fetches that tab only |
 | **While fetching** | All tabs grayed until the fetch finishes |
 
-Log markers: `build=hblr-path-v78`, `kickoff: poll (tap tab to load)`, `thumb float (tap section to dock)`, `Refresh tab mt_to_jc (#1)`.
+**Docked ribbon** (after tap): row 1 — **Cbike JC**, **Cbike S JC**, **From JC**, **To JC**; row 2 — **HBLR↔PATH**, **Tunnels**, **MT→JC**.
+
+Layout diagram: `thumb-float-layout.svg` (thumb float + docked ribbon, v99 coordinates).
+
+Log markers: `build=hblr-path-v99`, `thumb float (tap section to dock)`, `Refresh tab cbike_s (#1)`.
 
 ## HTTP cache and refresh API calls
 
@@ -154,7 +160,8 @@ WTC/Cortlandt are fetched twice (south for **To JC**, north for **HBLR**) with d
 
 | Tab | Primary sources | Attributed calls* |
 |-----|-----------------|------------------:|
-| **Cbike JC** | GBFS | **2** |
+| **Cbike JC** | GBFS (12 stations) | **2** |
+| **Cbike S JC** | GBFS (3 stations; same fetch as JC) | **2** |
 | **From JC** | PANYNJ slice + From JC subway | **12** |
 | **To JC** | PANYNJ NJ slice + To JC subway | **2–3** |
 | **HBLR↔PATH** | Transit HBLR + PANYNJ PATH slice + WTC subway north + optional retries | **5–9** |
@@ -179,9 +186,19 @@ Not called on refresh: **NJT HBLR API** (unavailable), **path.api.razza.dev** (d
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **Citibike grid** | 15 JC stations | GBFS bike/dock counts |
+| **Citibike grid** | 12 downtown JC stations (indices 0–11) | GBFS bike/dock counts |
 
-**Liberty Light Rail** and **Exchange Pl** share a row above **JC Medical Center** (own row). **Arlington & Bramhall**, **Communipaw & Berry Ln**, and **Garfield Light Rail** are on two rows at the bottom; long titles use two lines (`Liberty` / `Light Rail`, `JC` / `Medical Center`, `Arlington` / `& Bramhall`, etc.).
+**Liberty Light Rail** and **Exchange Pl** share a row above **JC Medical Center** (own row). Long titles use two lines (`Liberty` / `Light Rail`, `JC` / `Medical Center`, etc.).
+
+### Cbike S JC
+
+| Section | Stations | Data |
+|---------|----------|------|
+| **Citibike grid** | 3 south JC stations (indices 12–14) | Same GBFS fetch as **Cbike JC** |
+
+**Arlington & Bramhall** and **Communipaw & Berry Ln** share a row; **Garfield Light Rail** is on its own row. Tapping either citibike tab refreshes all 15 stations into the shared cache.
+
+Every station card shows an **E** count under filled bikes (`num_ebikes_available` from GBFS). Total bikes still includes e-bikes.
 
 ### From JC
 
@@ -259,7 +276,7 @@ Four connection sections (primary departures + catchable secondary after the off
 
 #### Transit App API usage
 
-Requires `TRANSIT_API_KEY` or gitignored `transit_credentials.json`. Other tabs (**Cbike JC**, **From JC**, **To JC**, **Tunnels**) do **not** call the Transit App API.
+Requires `TRANSIT_API_KEY` or gitignored `transit_credentials.json`. Other tabs (**Cbike JC**, **Cbike S JC**, **From JC**, **To JC**, **Tunnels**) do **not** call the Transit App API.
 
 | Tab / section | Card | Role |
 |---------------|------|------|
@@ -372,7 +389,7 @@ Optional: set `iCloudDownloads` in `windows\bike-train-transit-windows.json` if 
 
 On first launch the app will:
 
-- Show the **From JC** tab (default) and refresh live data; bikes appear on **Cbike JC**
+- Show the **From JC** tab (default) and refresh live data; bikes appear on **Cbike JC** / **Cbike S JC**
 - Start the LAN debug server on port **8765**
 - Copy itself to **On This iPhone → Documents/bike_train_transit/** (for the Home Screen URL), including **`transit_credentials.json`** / **`njt_credentials.json`** when they sit next to the main script
 - Remove the obsolete **`RunBikeTrainTransit.py`** stub if present (its `runpy` launch breaks the UI loop; the Home Screen uses the direct UI-script URL instead — see [iOS Home Screen](#ios-home-screen-one-tap-launch))
@@ -405,7 +422,7 @@ Always copy the **entire folder including `lib/`**, not just the main script.
 
 ### Edit stations (optional)
 
-In `bike_train_transit.py`, edit `STATIONS`, `STATION_LABELS`, `GRID_GROUPS`, and `REGION` at the top. Transit station lists live in `lib/path_trains.py` and `lib/subway_trains.py`.
+In `bike_train_transit.py`, edit `STATIONS`, `STATION_LABELS`, `GRID_GROUPS`, `CBIKE_S_GRID_GROUPS`, and `REGION` at the top. Transit station lists live in `lib/path_trains.py` and `lib/subway_trains.py`.
 
 ---
 
@@ -483,7 +500,7 @@ Runs on the **iPhone** (not PC). Your PC reads logs over Wi‑Fi.
 | URL | Description |
 |-----|-------------|
 | `http://<phone-ip>:8765/` | HTML dashboard with live log tail |
-| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v91`; HBLR boards log `[transit]` / `[pdf]` source) |
+| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v99`) |
 | `/bike_train_transit_progress.txt` | Last 12 log lines |
 | `/status.json` | App state (stations, transit boards, active tab, errors, **`httpCache` hits/misses**) |
 | `/refresh` | Trigger refresh on the phone from PC |
@@ -605,7 +622,9 @@ Live PATH fetching in `lib/path_trains.py` does not filter by PATH line color; N
 | `REGION` | `JC` | Tag shown on bike cards and in logs |
 | `STATIONS` | JC names | GBFS station names or partial matches |
 | `STATION_LABELS` | Short names | Compact UI labels (same order); use `\n` for a two-line card title |
-| `GRID_GROUPS` | See file | 2-column card layout groups; `None` = empty spacer cell |
+| `GRID_GROUPS` | See file | **Cbike JC** 2-column card layout; `None` = empty spacer cell |
+| `CBIKE_S_GRID_GROUPS` | See file | **Cbike S JC** 2-column card layout |
+| `TAB_BAR_COLUMNS` | `4` | Docked header ribbon — max pills per row |
 | `ALERT_MIN_BIKES` | `2` | Highlight when bikes ≤ this |
 | `ALERT_MIN_DOCKS` | `2` | Highlight when empty docks ≤ this |
 | `LAN_DEBUG_PORT` | `8765` | LAN debug server port |
@@ -689,7 +708,8 @@ Live bike data from:
 - `https://gbfs.citibikenyc.com/gbfs/en/station_information.json`
 - `https://gbfs.citibikenyc.com/gbfs/en/station_status.json`
 
-**Filled** = `num_bikes_available`  
+**Filled** = `num_bikes_available`
+**E-bikes** = `num_ebikes_available` (shown on every card as **E n** under filled bikes)
 **Empty** = `num_docks_available` (open docks)
 
 Transit data sources:
