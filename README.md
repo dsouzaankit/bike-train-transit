@@ -60,8 +60,6 @@ Five rows — **50 St (8Av)**, **50 St (7Av)**, **Lex/53 St**, plus **50 St (2)*
 | **WTC** (7Av) | **WTC Cortlandt** southbound 1 (South Ferry) |
 | **WTC** (Lex) | **WTC** southbound E only |
 
-**Southbound headsign filter** (row + gate cards): accepts all southbound departures except clearly **uptown** headsigns (Bronx, Inwood, Van Cortlandt, **168 St**, …). Brooklyn/Queens terminals (**Far Rockaway**, **Lefferts Blvd**, **Rockaway Park**, **Euclid Av**, WTC, …) are kept — older builds wrongly hid **A/C** trains when headsigns omitted “Brooklyn” or “downtown”.
-
 **Offset chain**:
 
 | Row | Subway | PATH (from subway) | HBLR (from PATH) |
@@ -72,7 +70,22 @@ Five rows — **50 St (8Av)**, **50 St (7Av)**, **Lex/53 St**, plus **50 St (2)*
 | **50 St (2)** | 2 | Chris St +15m | Newport +13m |
 | **50 St (A/C)** | A/C | 9 St +15m | Newport +14m |
 
-Log markers: `build=hblr-path-v89`, `step: MT→JC rows (5)`.
+Log markers: `build=hblr-path-v90`, `step: MT→JC rows (5)`.
+
+### Subway headsign filters (by tab)
+
+Most **From JC** subway cards use API `direction` + line specs only — **no headsign text filter** (**B, D, M, 4, 5, 6** at West 4 / Union Sq / 51 St / Bleecker). Exceptions:
+
+| Tab | Card | Filter | Keeps | Drops |
+|-----|------|--------|-------|-------|
+| **MT→JC** | Row + downtown gate cards | Deny **uptown** headsigns | Brooklyn/Queens terminals (Far Rockaway, Lefferts, Jamaica, Flatbush, Canarsie, WTC, …) | Bronx, Inwood, Van Cortlandt, **168 St**, … |
+| **MT→JC** | Chris St gate | Per row: **1** (7Av) or **2** (**50 St (2)**) | Matching line at Chris St south | Wrong line at gate |
+| **From JC** | **6 Av** (L) | **`canarsie`** or **`rockaway`** in headsign | Brooklyn/east L (e.g. Canarsie–Rockaway Pkwy) | **8 Av** (Manhattan/west). Intermediate Brooklyn stops (Lorimer, Bedford, Myrtle–Wyckoff) are eastbound too but API usually signs the **Canarsie** terminal |
+| **To JC** | WTC Cortlandt **1** | **`south ferry`** in headsign | South Ferry 1 | Other 1 destinations |
+| **To JC** | WTC **E** | None on direct fetch; Canal St fallback | WTC-bound only | — |
+| **HBLR↔PATH** | WTC Cortlandt ↑ / WTC ↑ | Deny **downtown/Brooklyn** headsigns (uptown filter) | Uptown **1** / **A/C/E** | Brooklyn/downtown-signed trains |
+
+**MT→JC F line:** shown Mon–Fri **6:00 AM–9:30 PM** only (`f_line_active`); outside those hours F is removed from row cards with note **`F wkdys 6a–9:30p`** when the API had F arrivals.
 
 ### Startup thumb float (~6" screens)
 
@@ -183,11 +196,11 @@ Not called on refresh: **NJT HBLR API** (unavailable), **path.api.razza.dev** (d
 |-------|------|--------|------|
 | 1 | Christopher St | Christopher St | 5 min |
 | 2 | 9th St | West 4 St | 5 min |
-
-From JC subway cards use **single-line** rows; long headsigns truncate with `…` like other stations.
 | 3 | 14 St PATH | 6 Av (L East/Bk), 14 St - Union Sq | 2 / 6 min |
 | 4 | — | 51 St (4/5 ↑), 50 St (A express local) | — |
 | 5 | — | Bleecker St (4/5 express local) | — |
+
+From JC subway cards use **single-line** rows; long headsigns truncate with `…` like other stations. **West 4 St**, **Union Sq**, **51 St**, and **Bleecker St** do not filter by headsign text (see [Subway headsign filters](#subway-headsign-filters-by-tab)).
 
 **51 St**, **50 St**, and **Bleecker St** only list **express** trains when they make a **local stop** (4/5 at 51 St and Bleecker; A at 50 St). When express is skipping, the card says **Express not stopping** and notes which local lines are running (e.g. `Express skip · local 6` or `Express skip · local C/E`). When express is stopping, the note is **Express local stop**.
 
@@ -468,7 +481,7 @@ Runs on the **iPhone** (not PC). Your PC reads logs over Wi‑Fi.
 | URL | Description |
 |-----|-------------|
 | `http://<phone-ip>:8765/` | HTML dashboard with live log tail |
-| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v89`; HBLR boards log `[transit]` / `[pdf]` source) |
+| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v90`; HBLR boards log `[transit]` / `[pdf]` source) |
 | `/bike_train_transit_progress.txt` | Last 12 log lines |
 | `/status.json` | App state (stations, transit boards, active tab, errors, **`httpCache` hits/misses**) |
 | `/refresh` | Trigger refresh on the phone from PC |
