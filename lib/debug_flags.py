@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Debug toggles — disable data sources via BTT_INACTIVE env (comma-separated)."""
+"""Debug toggles — disable data sources via BIKE_TRAIN_TRANSIT_INACTIVE or --inactive."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def inactive_summary() -> str:
 
 
 def set_inactive(*sources: str) -> None:
-    """Replace inactive set (used by debug entrypoint scripts)."""
+    """Replace inactive set (bike_train_transit.py --inactive or env)."""
     normalized = []
     for source in sources:
         key = source.strip().lower()

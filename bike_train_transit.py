@@ -10,13 +10,12 @@ Setup:
 
 LAN debug (from PC on same Wi-Fi):
    http://<phone-ip>:8765/
-   python debug_server.py --safe   # logs only after a crash
+   python bike_train_transit.py --safe          # logs only after a crash
+   debug_server.py                              # same — one-tap safe mode on Pythonista
 
-Debug entrypoints (disable one data source; full UI otherwise):
-   python debug_citibike_inactive.py
-   python debug_path_inactive.py
-   python debug_subway_inactive.py
-   python debug_hblr_inactive.py
+Disable data sources (full UI otherwise):
+   python bike_train_transit.py --inactive subway
+   python bike_train_transit.py --inactive citibike --inactive path
    # or: BIKE_TRAIN_TRANSIT_INACTIVE=subway,path python bike_train_transit.py --cli
 """
 
@@ -140,7 +139,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v78"
+BUILD_TAG = "hblr-path-v88"
 
 TAB_TRANSIT_JOBS = {
     "from_jc": ("pathAll", "subway"),
@@ -1912,6 +1911,8 @@ if HAS_UI:
             if not boards:
                 return
             for board in boards:
+                if not board:
+                    continue
                 if board.get("error"):
                     log_event("{} {} unavailable: {}".format(prefix, board["label"], board["error"]))
                     continue
@@ -2370,9 +2371,9 @@ if HAS_UI:
             stack_gap = CARD_GAP
             subway = row["subway"]
             path_a = row["path_primary"]
-            path_b = row["path_wtc"]
+            path_b = row.get("path_wtc")
             hblr_a = row["hblr_newport"]
-            hblr_b = row["hblr_exchange"]
+            hblr_b = row.get("hblr_exchange")
 
             h_sub = transit_card_height(
                 subway, col_w, wrap_text=False, eta_column_width=eta_w
@@ -2380,17 +2381,25 @@ if HAS_UI:
             h_pa = transit_card_height(
                 path_a, col_w, wrap_text=False, eta_column_width=eta_w
             )
-            h_pb = transit_card_height(
-                path_b, col_w, wrap_text=False, eta_column_width=eta_w
+            h_pb = (
+                transit_card_height(
+                    path_b, col_w, wrap_text=False, eta_column_width=eta_w
+                )
+                if path_b
+                else 0
             )
             h_ha = transit_card_height(
                 hblr_a, col_w, wrap_text=False, eta_column_width=eta_w
             )
-            h_hb = transit_card_height(
-                hblr_b, col_w, wrap_text=False, eta_column_width=eta_w
+            h_hb = (
+                transit_card_height(
+                    hblr_b, col_w, wrap_text=False, eta_column_width=eta_w
+                )
+                if hblr_b
+                else 0
             )
-            stack_path_h = h_pa + stack_gap + h_pb
-            stack_hblr_h = h_ha + stack_gap + h_hb
+            stack_path_h = h_pa + (stack_gap + h_pb if path_b else 0)
+            stack_hblr_h = h_ha + (stack_gap + h_hb if hblr_b else 0)
             row_h = max(h_sub, stack_path_h, stack_hblr_h)
 
             x_sub = pad
@@ -2400,23 +2409,31 @@ if HAS_UI:
             path_y = y + (row_h - stack_path_h) // 2
             hblr_y = y + (row_h - stack_hblr_h) // 2
 
-            tiles = (
+            tiles = [
                 (subway, "↓", "No downtown trains", (x_sub, sub_y, col_w, h_sub)),
                 (path_a, "NJ", "None catchable", (x_path, path_y, col_w, h_pa)),
-                (
-                    path_b,
-                    "NJ",
-                    "None catchable",
-                    (x_path, path_y + h_pa + stack_gap, col_w, h_pb),
-                ),
-                (hblr_a, "HBLR", "None catchable", (x_hblr, hblr_y, col_w, h_ha)),
-                (
-                    hblr_b,
-                    "HBLR",
-                    "None catchable",
-                    (x_hblr, hblr_y + h_ha + stack_gap, col_w, h_hb),
-                ),
+            ]
+            if path_b:
+                tiles.append(
+                    (
+                        path_b,
+                        "NJ",
+                        "None catchable",
+                        (x_path, path_y + h_pa + stack_gap, col_w, h_pb),
+                    )
+                )
+            tiles.append(
+                (hblr_a, "HBLR", "None catchable", (x_hblr, hblr_y, col_w, h_ha))
             )
+            if hblr_b:
+                tiles.append(
+                    (
+                        hblr_b,
+                        "HBLR",
+                        "None catchable",
+                        (x_hblr, hblr_y + h_ha + stack_gap, col_w, h_hb),
+                    )
+                )
             for board, tag, empty_text, frame in tiles:
                 card = TransitCard(
                     board,

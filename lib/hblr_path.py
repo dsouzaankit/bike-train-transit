@@ -100,6 +100,17 @@ def _is_live_realtime_board(board):
     return True
 
 
+def _secondary_pool(secondary_board):
+    """Trains eligible for PATH/subway transfer filter (respect line_specs when set)."""
+    source = (secondary_board or {}).get("_raw_trains") or (secondary_board or {}).get("trains") or []
+    line_specs = (secondary_board or {}).get("_line_specs")
+    if not line_specs:
+        return source
+    from .subway_trains import _trains_per_line
+
+    return _trains_per_line(source, line_specs=tuple(line_specs), per_line=50)
+
+
 def apply_transfer_filter(
     primary_board,
     secondary_board,
@@ -118,7 +129,7 @@ def apply_transfer_filter(
         new_board["note"] = "no %s yet" % primary_short
         return new_board
     threshold = primary_min + offset
-    source = (secondary_board or {}).get("_raw_trains") or (secondary_board or {}).get("trains") or []
+    source = _secondary_pool(secondary_board)
     catchable = [
         train
         for train in source
@@ -181,6 +192,7 @@ def resolve_transfer_board(
         transit_primary_fetcher
         and transit_app.has_api_key()
         and (primary or {}).get("source") != "transit"
+        and not (primary or {}).get("closed")
     ):
         transit_primary = transit_primary_fetcher()
         if transit_primary:

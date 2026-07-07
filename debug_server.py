@@ -1,44 +1,61 @@
 #!python3
-# Safe mode: LAN log server only (no Bike Train Transit UI). Run after a crash to read persisted logs.
-#
-#   python debug_server.py
-#   python debug_server.py --port 8765
-#   python bike_train_transit.py --safe
-#
-# Open from PC: http://<phone-ip>:8765/
+"""One-tap safe mode — LAN log server only (no UI).
 
-import asyncio
+Pythonista Home Screen URL:
+  pythonista3://bike_train_transit/debug_server.py?action=run
+
+Equivalent to: bike_train_transit.py --safe
+"""
+
+from __future__ import annotations
+
+import os
+import runpy
 import sys
 
-LISTEN_HOST = "0.0.0.0"
-LAN_DEBUG_PORT = 8765
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+DEFAULT_PORT = 8765
 
 
-def _parse_port() -> int:
-    for i, arg in enumerate(sys.argv):
-        if arg in ("--port", "-p") and i + 1 < len(sys.argv):
-            return int(sys.argv[i + 1])
-    return LAN_DEBUG_PORT
+def _parse_port(default: int = DEFAULT_PORT) -> int:
+    argv = sys.argv[1:]
+    for flag in ("--port", "-p"):
+        if flag in argv:
+            idx = argv.index(flag)
+            if idx + 1 < len(argv):
+                try:
+                    return int(argv[idx + 1])
+                except ValueError:
+                    pass
+    return default
 
 
-def run_safe_mode(port: int | None = None) -> None:
-    from lib.file_logging import setup_safe_mode_logging
-    from lib.lan_debug_server import run_lan_debug_server
-    from lib.log_paths import LATEST_LOG, ensure_log_dirs
-    from lib.net_util import format_lan_debug_url
-
-    port = LAN_DEBUG_PORT if port is None else port
-    ensure_log_dirs()
-    setup_safe_mode_logging(port)
-    print("Safe mode — LAN log server only (no Bike Train Transit UI)", flush=True)
-    print("Log dir:", ensure_log_dirs(), flush=True)
-    print("Open", format_lan_debug_url(port, listen_host=LISTEN_HOST), flush=True)
-    print("Log", format_lan_debug_url(port, "/" + LATEST_LOG, listen_host=LISTEN_HOST), flush=True)
+def main() -> None:
+    app_root = _ROOT
     try:
-        asyncio.run(run_lan_debug_server(LISTEN_HOST, port, safe_mode=True))
-    except KeyboardInterrupt:
-        print("Stopped.", flush=True)
+        from lib import local_deploy
+
+        app_root = local_deploy.deploy_local_app(_ROOT)
+    except Exception as exc:
+        print("Deploy skipped: %s" % exc, flush=True)
+
+    port = _parse_port()
+    argv = [
+        os.path.join(app_root, "bike_train_transit.py"),
+        "--safe",
+        "--port",
+        str(port),
+    ]
+    saved = sys.argv
+    try:
+        sys.argv = argv
+        runpy.run_path(argv[0], run_name="__main__")
+    finally:
+        sys.argv = saved
 
 
 if __name__ == "__main__":
-    run_safe_mode(_parse_port())
+    main()

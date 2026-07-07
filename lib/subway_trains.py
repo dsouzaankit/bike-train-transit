@@ -94,6 +94,70 @@ SUBWAY_WTC_E_NORTH = {
     "transit_stop_id": "MTAS:19012",
 }
 
+WTC_CORTLANDT_NORTH_LINE_SPECS = (("1", SUBWAY_DIRECTION_NORTH),)
+WTC_E_NORTH_LINE_SPECS = (
+    ("A", SUBWAY_DIRECTION_NORTH),
+    ("C", SUBWAY_DIRECTION_NORTH),
+    ("E", SUBWAY_DIRECTION_NORTH),
+)
+
+WTC_E_SOUTH_LINE_SPECS = (("E", SUBWAY_DIRECTION_SOUTH),)
+WTC_CORTLANDT_SOUTH_LINE_SPECS = (("1", SUBWAY_DIRECTION_SOUTH),)
+WEST_4_SOUTH_LINE_SPECS = (
+    ("E", SUBWAY_DIRECTION_SOUTH),
+    ("F", SUBWAY_DIRECTION_SOUTH),
+)
+CHRIS_SOUTH_LINE_SPECS = (("1", SUBWAY_DIRECTION_SOUTH),)
+FIFTY_ST_2_SOUTH_LINE_SPECS = (("2", SUBWAY_DIRECTION_SOUTH),)
+FIFTY_ST_AC_SOUTH_LINE_SPECS = (
+    ("A", SUBWAY_DIRECTION_SOUTH),
+    ("C", SUBWAY_DIRECTION_SOUTH),
+)
+
+SUBWAY_CHRIS_SOUTH = {
+    "station_id": "133",
+    "label": "Chris St",
+    "direction": SUBWAY_DIRECTION_SOUTH,
+}
+
+SUBWAY_FIFTY_ST_7AV_SOUTH = {
+    "station_id": "125",
+    "label": "50 St",
+    "direction": SUBWAY_DIRECTION_SOUTH,
+}
+
+SUBWAY_FIFTY_ST_8AV_SOUTH = {
+    "station_id": "A25",
+    "label": "50 St",
+    "direction": SUBWAY_DIRECTION_SOUTH,
+}
+
+SUBWAY_LEX_53_SOUTH = {
+    "station_id": "F11",
+    "label": "Lex/53 St",
+    "direction": SUBWAY_DIRECTION_SOUTH,
+}
+
+FIFTY_ST_8AV_SOUTH_LINE_SPECS = (
+    ("E", SUBWAY_DIRECTION_SOUTH),
+    ("F", SUBWAY_DIRECTION_SOUTH),
+)
+FIFTY_ST_7AV_SOUTH_LINE_SPECS = (
+    ("1", SUBWAY_DIRECTION_SOUTH),
+    ("F", SUBWAY_DIRECTION_SOUTH),
+)
+LEX_53_SOUTH_LINE_SPECS = (
+    ("E", SUBWAY_DIRECTION_SOUTH),
+    ("1", SUBWAY_DIRECTION_SOUTH),
+    ("F", SUBWAY_DIRECTION_SOUTH),
+)
+
+SUBWAY_WEST_4_SOUTH = {
+    "station_id": ["A32", "D20"],
+    "label": "West 4 St",
+    "direction": SUBWAY_DIRECTION_SOUTH,
+}
+
 SUBWAY_CANAL_ACE = {
     "station_id": "A34",
     "label": "Canal St",
@@ -222,6 +286,46 @@ def _is_wtc_bound_headsign(headsign):
 def _is_south_ferry_headsign(headsign):
     text = (headsign or "").casefold()
     return "south ferry" in text
+
+
+def _is_downtown_subway_headsign(headsign):
+    """Southbound trains toward downtown / Brooklyn / South Ferry (MT→JC)."""
+    text = (headsign or "").casefold()
+    if not text:
+        return True
+    uptown_hints = (
+        "uptown",
+        "bronx",
+        "van cortlandt",
+        "inwood",
+        "woodlawn",
+        "241 st",
+        "242 st",
+        "207 st",
+        "fordham",
+        "pelham",
+        "dyre",
+        "norwood",
+        "wakefield",
+    )
+    if any(hint in text for hint in uptown_hints):
+        return False
+    downtown_hints = (
+        "downtown",
+        "brooklyn",
+        "south ferry",
+        "world trade",
+        "wtc",
+        "canarsie",
+        "flatbush",
+        "stillwell",
+        "coney",
+        "new lots",
+        "bk bridge",
+        "borough hall",
+        "euclid",
+    )
+    return any(hint in text for hint in downtown_hints)
 
 
 def _is_brooklyn_l_headsign(headsign):
@@ -397,6 +501,8 @@ def _load_line_board(
             estimated=estimated,
         )
         trains = _trains_per_line(raw, line_specs=line_specs, per_line=per_line)
+        if line_specs is not None:
+            raw = _trains_per_line(raw, line_specs=line_specs, per_line=fetch_limit)
     except Exception as exc:
         error = str(exc)
     board = {
@@ -604,13 +710,9 @@ def get_subway_transit_board(station, *, max_trains=3, raw_pool=8, per_line=1):
     line_specs = None
     label = station.get("label")
     if label == "WTC Cortlandt":
-        line_specs = [("1", SUBWAY_DIRECTION_NORTH)]
+        line_specs = list(WTC_CORTLANDT_NORTH_LINE_SPECS)
     elif label == "WTC":
-        line_specs = [
-            ("A", SUBWAY_DIRECTION_NORTH),
-            ("C", SUBWAY_DIRECTION_NORTH),
-            ("E", SUBWAY_DIRECTION_NORTH),
-        ]
+        line_specs = list(WTC_E_NORTH_LINE_SPECS)
     try:
         payload = transit_app.fetch_stop_departures(stop_id, max_departures=pool)
         raw = transit_app.parse_route_departures(
@@ -627,11 +729,12 @@ def get_subway_transit_board(station, *, max_trains=3, raw_pool=8, per_line=1):
         return None
     if not raw:
         return None
-    trains = _trains_per_line(raw, line_specs=line_specs, per_line=per_line)
+    filtered_pool = _trains_per_line(raw, line_specs=line_specs, per_line=pool)
+    trains = _trains_per_line(filtered_pool, line_specs=line_specs, per_line=per_line)
     return {
         "label": station["label"],
         "trains": trains[:max_trains],
-        "_raw_trains": raw,
+        "_raw_trains": filtered_pool,
         "by_line": True,
         "error": None,
         "source": "transit",
@@ -723,6 +826,8 @@ def get_wtc_north_boards(fetch_json):
         return _load_line_board(
             SUBWAY_WTC_CORTLANDT_NORTH,
             fetch_json,
+            line_specs=WTC_CORTLANDT_NORTH_LINE_SPECS,
+            headsign_filter=_is_uptown_subway_headsign,
             fetch_limit=SUBWAY_FETCH_LIMIT,
         )
 
@@ -730,6 +835,8 @@ def get_wtc_north_boards(fetch_json):
         return _load_line_board(
             SUBWAY_WTC_E_NORTH,
             fetch_json,
+            line_specs=WTC_E_NORTH_LINE_SPECS,
+            headsign_filter=_is_uptown_subway_headsign,
             fetch_limit=SUBWAY_FETCH_LIMIT,
         )
 
@@ -802,13 +909,16 @@ def get_subway_to_jc_boards(fetch_json):
     per_line = TO_JC_ETAS_PER_LINE
 
     def _cortlandt():
-        return _load_line_board(
+        board = _load_line_board(
             SUBWAY_WTC_CORTLANDT,
             fetch_json,
             headsign_filter=_is_south_ferry_headsign,
             fetch_limit=SUBWAY_FETCH_LIMIT,
             per_line=per_line,
         )
+        if not board.get("trains") and not board.get("error"):
+            board["note"] = "No South Ferry 1"
+        return board
 
     results = run_parallel(
         {

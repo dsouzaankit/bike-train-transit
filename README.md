@@ -1,12 +1,12 @@
 # JC <-> NYC Transit
 
-Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **JC <-> NYC Transit** — tabs: **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, and **Tunnels**. Includes a Pythonista app, optional PC email alerts, and a LAN debug server for reading logs from your desktop.
+Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **JC <-> NYC Transit** — tabs: **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, and **MT→JC**. Includes a Pythonista app, optional PC email alerts, and a LAN debug server for reading logs from your desktop.
 
 Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — no Citibike account login required.
 
 ## Features
 
-- **Five tabs** — **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, and **MT→JC**
+- **Six tabs** — **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, and **MT→JC**
 - **iPhone app** — compact 2-column Citibike grid on the **Cbike JC** tab (filled bikes and empty docks for JC stations)
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
 - **PATH + subway connections** — From JC **33rd St** subway cards only show trains reachable after the earliest paired PATH arrival + walk time; **HBLR↔PATH** has **PATH + Subway via WTC** under **HBLR → PATH** (**WTC Cortlandt** / **WTC** northbound, catchable after **LSP HBLR +11** then **Exchange PATH +8** walk at WTC)
@@ -19,7 +19,7 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **LAN debug server** — browse logs and status from a PC on the same Wi‑Fi (`:8765`)
 - **PC deploy script** — `deploy.ps1` zips the project to iCloud Downloads for Pythonista sync
 - **PC email script** — optional Yahoo SMTP status/alert emails
-- **iOS Shortcut** — one-tap launch from Home Screen
+- **iOS Shortcut** — one-tap launch from Home Screen; separate **`debug_server.py`** shortcut for safe mode (LAN logs only)
 - **Fullscreen UI** — Pythonista script title bar hidden; layout uses **safe area insets** on iPhone 12+ (notch / Dynamic Island / home indicator)
 - **Startup thumb float** — on open, section tabs stack **vertically** toward screen center until you **tap a section** (no auto-dock timer)
 
@@ -41,23 +41,35 @@ Tap **Cbike JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, or **MT�
 
 ### MT→JC tab
 
-Three rows (**50 St 8Av**, **50 St 7Av**, **Lex/53 St**). Each row is **5 cards in 3 columns**:
+Five rows — **50 St (8Av)**, **50 St (7Av)**, **Lex/53 St**, plus **50 St (2)** and **50 St (A/C)** shuttles (no WTC PATH). Full rows use **5 cards**; shuttle rows use **3 cards**.
 
 | Column | Cards |
 |--------|--------|
-| **Subway** | **50 St (8Av):** E · **50 St (7Av):** 1 · **Lex/53:** E/1/F (F **Mon–Fri 6a–9:30p** only) |
-| **PATH stack** | NJ-bound **Newark / JSQ / Hoboken** from **9 St** or **Chris St** (+offset from subway) and **WTC** (+offset from subway); **all six PATH cards** use the same destination filter and **`allow_hoboken`** (terminating Hoboken kept; **via Hoboken** overnight routings excluded). **Transit App retry** (`PATH:551` 9 St, `PATH:552` Chris St, `PATH:553` WTC) when PANYNJ pool is shallow |
-| **HBLR stack** | Southbound **Newport** (+offset from 9 St/Chris PATH) and **Exchange Place** (+offset from WTC PATH); **Transit retry**, empty if nothing catchable (no “current HBLR” platform times) |
+| **Subway** | **50 St (8Av)** E (+ F wkdys); **50 St (7Av)** 1 (+ F wkdys); **Lex/53** E/1/F; **50 St (2)** red **2**; **50 St (A/C)** blue **A/C** |
+| **PATH stack** | NJ-bound from **9 St** / **Chris St** / **WTC** (+offset from uptown subway); shuttle rows omit WTC PATH |
+| **HBLR stack** | **Newport** ← 9 St/Chris PATH; **Exchange** ← WTC PATH (full rows only) |
 
-**Offset chain** (subway → PATH → HBLR; PATH/HBLR use `resolve_transfer_board` + Transit retry, no `· current` fallback):
+**Downtown gates** (not shown as rows): southbound monitors at **WTC** E, **WTC Cortlandt** 1, **West 4 St** E/F, **Chris St** 1 clear dependent PATH legs as **None catchable** when empty:
+
+| PATH leg | Downtown gate(s) |
+|----------|------------------|
+| **9 St** | **West 4 St** southbound E/F |
+| **Chris St** | **Chris St** southbound 1 |
+| **WTC** (8Av / Lex E) | **WTC** southbound E |
+| **WTC** (7Av) | **WTC Cortlandt** southbound 1 (South Ferry) |
+| **WTC** (Lex) | **WTC** southbound E only |
+
+**Offset chain**:
 
 | Row | Subway | PATH (from subway) | HBLR (from PATH) |
 |-----|--------|--------------------|------------------|
-| **50 St (8Av)** | E (+ F wkdys) | 9 St +15m, WTC +**19**m | Newport +14m ← 9 St; Exchange +7m ← WTC |
-| **50 St (7Av)** | 1 (+ F wkdys) | Chris St +15m, WTC +20m | Newport +13m ← Chris St; Exchange +7m ← WTC |
-| **Lex/53 St** | E/1/F | 9 St +20m, WTC +25m | Newport +14m ← 9 St; Exchange +7m ← WTC |
+| **50 St (8Av)** | E (+ F wkdys) | 9 St +15m, WTC +19m | Newport +14m; Exchange +7m |
+| **50 St (7Av)** | 1 (+ F wkdys) | Chris St +15m, WTC +20m | Newport +13m; Exchange +7m |
+| **Lex/53 St** | E/1/F | 9 St +20m, WTC +25m | Newport +14m; Exchange +7m |
+| **50 St (2)** | 2 | Chris St +15m | Newport +13m |
+| **50 St (A/C)** | A/C | 9 St +15m | Newport +14m |
 
-Log markers: `build=hblr-path-v75`, `step: MT→JC rows (3)`.
+Log markers: `build=hblr-path-v88`, `step: MT→JC rows (5)`.
 
 ### Startup thumb float (~6" screens)
 
@@ -132,15 +144,16 @@ WTC/Cortlandt are fetched twice (south for **To JC**, north for **HBLR**) with d
 
 \*PANYNJ PATH (**1**) and GBFS (**2**) are **shared** — do not sum the “Attributed” column for a total.
 
-#### Debug entrypoints (fewer calls)
+#### Debug flags (fewer calls)
 
-| Script / env | Skips |
-|--------------|--------|
-| `debug_citibike_inactive.py` | GBFS (−2) |
-| `debug_path_inactive.py` | PANYNJ PATH (−1) |
-| `debug_subway_inactive.py` | subwayinfo.nyc (−15–16) |
-| `debug_hblr_inactive.py` | HBLR Transit (−3; PDF = 0 HTTP) |
-| `BIKE_TRAIN_TRANSIT_INACTIVE=…` | Same flags, combinable |
+Use **`bike_train_transit.py --inactive SOURCE`** (repeatable) or env **`BIKE_TRAIN_TRANSIT_INACTIVE=citibike,path`**:
+
+| Source | Skips |
+|--------|--------|
+| `citibike` | GBFS (−2) |
+| `path` | PANYNJ PATH (−1) |
+| `subway` | subwayinfo.nyc (−15–16) |
+| `hblr` | HBLR Transit (−3; PDF = 0 HTTP) |
 
 Not called on refresh: **NJT HBLR API** (unavailable), **path.api.razza.dev** (disabled).
 
@@ -254,15 +267,12 @@ Requires `TRANSIT_API_KEY` or gitignored `transit_credentials.json`. Other tabs 
 
 ```
 bike_train_transit/
-  bike_train_transit.py           # iPhone UI (Pythonista)
+  bike_train_transit.py           # iPhone UI (Pythonista); --safe, --inactive, --cli
   bike_train_transit_alert.py     # PC email script
   deploy.ps1                      # Zip + copy to iCloud Downloads (PC → iPhone)
   config.json                     # PC stations + thresholds
-  debug_server.py                 # Safe mode: logs only (no UI)
-  debug_citibike_inactive.py      # Full UI; skip GBFS (placeholder dock cards)
-  debug_path_inactive.py          # Full UI; skip PATH / PANYNJ
-  debug_subway_inactive.py        # Full UI; skip subway APIs
-  debug_hblr_inactive.py          # Full UI; skip HBLR↔PATH tab
+  debug_server.py                 # One-tap safe mode (LAN logs only; Pythonista shortcut)
+  archive/debug_shims/            # Old inactive shims (not deployed)
   lib/
     path_trains.py                # PATH NYC / 33rd / NJ (PANYNJ single-fetch; Hoboken-terminating filtered, via-Hoboken kept, WTC allows Hoboken)
     hblr_path.py                  # HBLR↔PATH tab: four transfer pairs + offset filter
@@ -282,7 +292,7 @@ bike_train_transit/
     credential_paths.py           # Resolve API credential JSON on PC and Pythonista Documents
     file_logging.py, log_paths.py # Session logs + safe-mode preservation
     http_cache.py                 # 2 min persistent HTTP JSON cache (all API fetches)
-    debug_flags.py                # BIKE_TRAIN_TRANSIT_INACTIVE env (debug entrypoints)
+    debug_flags.py                # BIKE_TRAIN_TRANSIT_INACTIVE / --inactive
     lan_debug_server.py           # LAN debug HTTP server
   tests/                          # Unit tests (HBLR, PATH transfers, MT→JC chains, weekend sync, From JC express-local)
   tools/
@@ -429,6 +439,16 @@ pythonista3://iCloud/Downloads/bike_train_transit/bike_train_transit.py?action=r
 
 Use this only for the iCloud/Downloads copy; the Documents URL above is preferred for the Home Screen.
 
+### Safe mode shortcut (LAN logs only)
+
+After a crash (or when the full UI won’t start), use the same **URL → Open URLs** recipe with:
+
+```
+pythonista3://bike_train_transit/debug_server.py?action=run
+```
+
+This runs **`debug_server.py`** — equivalent to `bike_train_transit.py --safe` (no dashboard UI; serves logs on `:8765`). Run the main app once first so `debug_server.py` is deployed to **Documents/bike_train_transit/**. Quit the full app before safe mode if port 8765 is already in use.
+
 ### Shortcut help in logs
 
 Each UI launch logs shortcut setup steps to:
@@ -445,7 +465,7 @@ Runs on the **iPhone** (not PC). Your PC reads logs over Wi‑Fi.
 | URL | Description |
 |-----|-------------|
 | `http://<phone-ip>:8765/` | HTML dashboard with live log tail |
-| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v16`; HBLR boards log `[transit]` / `[pdf]` source) |
+| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v88`; HBLR boards log `[transit]` / `[pdf]` source) |
 | `/bike_train_transit_progress.txt` | Last 12 log lines |
 | `/status.json` | App state (stations, transit boards, active tab, errors, **`httpCache` hits/misses**) |
 | `/refresh` | Trigger refresh on the phone from PC |
@@ -463,25 +483,30 @@ Console output (`stdout`/`stderr`), thread tracebacks, and crash markers are cap
 If the UI won’t start but you need logs:
 
 ```text
-python debug_server.py
 python bike_train_transit.py --safe
 ```
 
+On Pythonista, run **`debug_server.py`** (one tap) or add a Home Screen shortcut:
+
+```text
+pythonista3://bike_train_transit/debug_server.py?action=run
+```
+
+Run the main app once first so it deploys to **On This iPhone → Documents/bike_train_transit**. The console prints both URLs when you run `bike_train_transit.py`.
+
 Safe mode serves logs only — the dashboard shows crash marker, latest log, and previous session history. Run the full app again when ready.
 
-### Debug entrypoints (isolate data sources)
+### Debug flags (isolate data sources)
 
-Run the **full UI** with one feed disabled (logs include `debug: … inactive`):
+Run the **full UI** with feeds disabled (logs include `debug: … inactive`):
 
-| Script | Disabled |
-|--------|----------|
-| `debug_citibike_inactive.py` | Citibike GBFS — placeholder dock cards |
-| `debug_path_inactive.py` | PATH / PANYNJ — all PATH tabs empty |
-| `debug_subway_inactive.py` | Subway APIs — From/To JC subway + WTC chain |
-| `debug_hblr_inactive.py` | HBLR↔PATH tab |
+```text
+python bike_train_transit.py --inactive subway
+python bike_train_transit.py --inactive citibike --inactive path
+```
 
-Combine on PC: `python bike_train_transit.py --cli --inactive subway --inactive path`  
 Or env: `BIKE_TRAIN_TRANSIT_INACTIVE=subway,path`  
+Or PC CLI: `python bike_train_transit.py --cli --inactive subway --inactive path`  
 LAN `/status.json` includes `"inactive": "subway, path"` when set.
 
 ### PC helpers (Windows)
@@ -572,8 +597,8 @@ Live PATH fetching in `lib/path_trains.py` does not filter by PATH line color; N
 
 | File | Configure |
 |------|-----------|
-| `path_trains.py` | PATH stations; PANYNJ `ridepath.json`; `_is_jsq_destination()` for **14 St → JSQ** (To JC); `_is_mt_to_jc_path_destination()` (Nwk/JSQ/Hoboken); `get_path_transit_board()` for transfer retry (`PATH:554` Exchange, `PATH:520` Newport, `PATH:553` WTC, `PATH:552` Chris St, `PATH:551` 9 St) |
-| `mt_to_jc.py` | MT→JC three rows; chained offsets; PATH Hoboken on **9 St**, **Chris St**, and **WTC** cards (`allow_hoboken=True`); Transit retry for PATH and HBLR |
+| `path_trains.py` | PATH stations; PANYNJ `ridepath.json`; **9 St overnight closure** (~11:59 PM–5 AM ET schedule + optional Everbridge overlay); `_is_jsq_destination()` for **14 St → JSQ** (To JC); `_is_mt_to_jc_path_destination()` (Nwk/JSQ/Hoboken); `get_path_transit_board()` for transfer retry (`PATH:554` Exchange, `PATH:520` Newport, `PATH:553` WTC, `PATH:552` Chris St, `PATH:551` 9 St) |
+| `mt_to_jc.py` | MT→JC five uptown rows + **50 St (2)/(A/C)**; downtown gate monitors for PATH legs; chained offsets |
 | `light_rail.py` | HBLR station boards by direction; Transit API key (`transit_credentials.json` / `TRANSIT_API_KEY`); optional NJT creds (`njt_credentials.json`) — **NJT dev API currently unavailable**; PDF fallback via `hblr_schedule_data.json` |
 | `transit_app.py` | Transit App v4 `/stop_departures` client; uses shared `http_cache.py` (2 min, persistent) |
 | `http_cache.py` | Persistent JSON cache for all HTTP fetches (GBFS, PANYNJ, subway, Transit) |
@@ -611,7 +636,7 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 | Problem | Fix |
 |---------|-----|
 | Stale code on iPhone after PC edits | Force quit Pythonista, delete old folder in Files, run `.\deploy.ps1`, reinstall from zip |
-| App stuck in safe mode | Run `bike_train_transit.py` (full UI), not `debug_server.py` or `--safe` |
+| App stuck in safe mode | Run `bike_train_transit.py` (full UI), not `--safe` |
 | Safe mode shows empty log | Update to latest code — safe mode now preserves crash logs; check **Previous session** on dashboard |
 | Console errors not in LAN log | Update to latest code — stdout/stderr and thread errors are now captured |
 | UI stuck on “Updating…” / black screen | Transit fetch may be slow on the main thread (UI freezes until done). Check log for `step: fetch bikes` → `step: transit ok` → `finish render done`; redeploy latest code |
@@ -621,6 +646,8 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 | Thumb float tabs stay grayed | Expected while `Updating…` is shown — tabs re-enable when the tab fetch finishes |
 | Shortcut tap does nothing / Pythonista doesn’t open | In Shortcuts use the **two-action** recipe: **URL** action + **Open URLs** action (a single inline “Open URLs” often fails for `pythonista3://`). Test the URL in **Safari** first. |
 | Shortcut launches but refresh hangs / app freezes | The icon points at the `RunBikeTrainTransit.py` `runpy` stub, which breaks the UI loop. Point it at `pythonista3://bike_train_transit/bike_train_transit.py?action=run` instead (run as main script). |
+| Safe mode: port already in use | Force quit the full app first, then run `debug_server.py` or `bike_train_transit.py --safe` |
+| Old `debug_*_inactive.py` missing | Removed — use `bike_train_transit.py --inactive citibike|path|subway|hblr` (archived copies under `archive/debug_shims/`) |
 | Shortcut: “unable to locate file” | Run `bike_train_transit.py` once so it deploys to Documents; URL must be `pythonista3://bike_train_transit/bike_train_transit.py?action=run` |
 | Wrong IP in log (`10.115.x.x`) | That’s a VPN tunnel IP; use Wi‑Fi IP from Settings for PC access |
 | `ModuleNotFoundError: lib` | Copy the whole folder including `lib/` |
@@ -629,6 +656,7 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 | `deploy.ps1`: iCloud folder not found | Enable iCloud Drive on Windows or set `iCloudDownloads` in windows config |
 | WTC subway shows `~` prefix | Estimated from Canal St +2 min — direct WTC E-line data was unavailable |
 | PATH missing Hoboken | Hoboken-terminating trains are filtered out on most cards; "via Hoboken" routings are kept. **WTC** shows Hoboken-bound trains because the **Hoboken line** serves **Exchange Place** and **Newport** in JC |
+| **9 St** PATH empty overnight | Expected **~11:59 PM–5 AM** — card shows `Closed until 5 AM · use Chris St / 14 St / 33 St` (PANYNJ may still list via-Hoboken times; app suppresses them). Optional Everbridge alert can extend closure |
 | HBLR shows `~`/`sched` | PDF timetable fallback — Transit App key missing or fetch failed. On Pythonista, confirm `transit_credentials.json` is in **Documents/bike_train_transit/** (run `bike_train_transit.py` once after adding it to your edit folder). Card note may say `sched · …` if the API key was found but the fetch failed |
 | NJT `njt_credentials.json` does nothing | Expected for now — **NJ Transit developer API tokens for HBLR are currently unavailable**; live HBLR is Transit App only, then PDF. Code path kept for if access returns |
 | HBLR empty / “None catchable” | No train meets the offset from the primary. **HBLR → PATH** PATH cards stay empty (note `LSP HBLR +11` / `+21`). **PATH → HBLR** may show `· current HBLR`; **WTC subway** may show `· current subway`. PDF (`~`) HBLR boards stay empty when nothing is catchable |

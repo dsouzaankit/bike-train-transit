@@ -7,10 +7,20 @@ from datetime import datetime
 
 PATH_API_BASE = "https://path.api.razza.dev/v1/stations"
 PANYNJ_PATH_URL = "https://www.panynj.gov/bin/portauthority/ridepath.json"
+PANYNJ_EVERBRIDGE_URL = (
+    "https://www.panynj.gov/bin/portauthority/everbridge/incidents"
+    "?status=Active&department=Path"
+)
 PATH_DIRECTION_NYC = "TO_NY"
 PATH_DIRECTION_NJ = "TO_NJ"
 PATH_MAX_TRAINS = 2
 PATH_33RD_MAX_TRAINS = 1
+NINTH_STREET_PANYNJ = "09S"
+# PATH overnight advisory: 9 St + 23 St close ~11:59 PM–5:00 AM (America/New_York).
+NINTH_STREET_CLOSE_START_MIN = 23 * 60 + 59
+NINTH_STREET_CLOSE_END_MIN = 5 * 60
+NINTH_STREET_CLOSED_NOTE = "Closed until 5 AM · use Chris St / 14 St / 33 St"
+_EVERBRIDGE_CACHE = {"fetched_at": 0.0, "incidents": None}
 
 # slug = path.api.razza.dev name; panynj = ridepath.json consideredStation code
 PATH_STATIONS = [
@@ -151,6 +161,96 @@ def _is_mt_to_jc_path_destination(name):
     if _is_nwk_jsq_destination(name):
         return True
     return _is_hoboken_destination(name)
+
+
+def _path_now_et(now=None):
+    if now is not None:
+        return now
+    try:
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo("America/New_York"))
+    except Exception:
+        return datetime.now()
+
+
+def _clock_minutes(dt):
+    return dt.hour * 60 + dt.minute
+
+
+def _ninth_street_closed_by_schedule(now=None):
+    """True during PATH nightly 9 St / 23 St closure window."""
+    mins = _clock_minutes(_path_now_et(now))
+    return mins >= NINTH_STREET_CLOSE_START_MIN or mins < NINTH_STREET_CLOSE_END_MIN
+
+
+def _everbridge_incident_text(incident):
+    parts = []
+    for key in ("title", "name", "message", "description", "body", "summary"):
+        value = incident.get(key)
+        if value:
+            parts.append(str(value))
+    return " ".join(parts).casefold()
+
+
+def _everbridge_closes_ninth_street(incidents):
+    station_hints = ("9 st", "9th", "09s", "23 st", "23rd", "23s")
+    closure_words = ("close", "closed", "overnight", "not open", "out of service")
+    for incident in incidents or []:
+        text = _everbridge_incident_text(incident)
+        if not any(hint in text for hint in station_hints):
+            continue
+        if any(word in text for word in closure_words):
+            return True
+    return False
+
+
+def _load_everbridge_incidents(fetch_json):
+    if fetch_json is None:
+        return []
+    cache_age = time.time() - _EVERBRIDGE_CACHE["fetched_at"]
+    if _EVERBRIDGE_CACHE["incidents"] is not None and cache_age < 120:
+        return _EVERBRIDGE_CACHE["incidents"]
+    incidents = []
+    try:
+        payload = fetch_json(PANYNJ_EVERBRIDGE_URL)
+        if isinstance(payload, dict):
+            incidents = payload.get("data") or []
+        elif isinstance(payload, list):
+            incidents = payload
+    except Exception:
+        incidents = []
+    _EVERBRIDGE_CACHE["fetched_at"] = time.time()
+    _EVERBRIDGE_CACHE["incidents"] = incidents
+    return incidents
+
+
+def ninth_street_closure(fetch_json=None, now=None):
+    """Return (closed, note). Schedule first; Everbridge may extend closure."""
+    if _ninth_street_closed_by_schedule(now):
+        return True, NINTH_STREET_CLOSED_NOTE
+    if fetch_json is not None and _everbridge_closes_ninth_street(
+        _load_everbridge_incidents(fetch_json)
+    ):
+        return True, NINTH_STREET_CLOSED_NOTE
+    return False, None
+
+
+def _is_ninth_street_station(station):
+    if not station:
+        return False
+    return station.get("panynj") == NINTH_STREET_PANYNJ or station.get("label") == "9 St"
+
+
+def _ninth_street_closed_board(station, note=NINTH_STREET_CLOSED_NOTE):
+    return {
+        "label": station["label"],
+        "trains": [],
+        "error": None,
+        "note": note,
+        "closed": True,
+        "source": "closed",
+    }
 
 
 def _parse_utc_iso(iso_text):
@@ -296,7 +396,13 @@ def _board_from_payload(
     direction_filter,
     dest_filter=None,
     max_trains=PATH_MAX_TRAINS,
+    fetch_json=None,
+    now=None,
 ):
+    if _is_ninth_street_station(station):
+        closed, note = ninth_street_closure(fetch_json=fetch_json, now=now)
+        if closed:
+            return _ninth_street_closed_board(station, note)
     trains = _parse_panynj_station(
         station["panynj"],
         payload,
@@ -348,6 +454,7 @@ def _load_boards_from_payload(
     dest_filter=None,
     max_trains=PATH_MAX_TRAINS,
     try_razza=False,
+    now=None,
 ):
     boards = []
     for station in stations:
@@ -357,8 +464,10 @@ def _load_boards_from_payload(
             direction_filter,
             dest_filter=dest_filter,
             max_trains=max_trains,
+            fetch_json=fetch_json,
+            now=now,
         )
-        if try_razza and not board.get("trains"):
+        if try_razza and not board.get("trains") and not board.get("closed"):
             board = _maybe_enrich_with_razza(
                 board,
                 station,
@@ -404,6 +513,11 @@ def _load_boards(
 
     boards = []
     for station in stations:
+        if _is_ninth_street_station(station):
+            closed, note = ninth_street_closure(fetch_json=fetch_json)
+            if closed:
+                boards.append(_ninth_street_closed_board(station, note))
+                continue
         board = {
             "label": station["label"],
             "trains": [],
@@ -421,7 +535,7 @@ def _load_boards(
     return boards, payload
 
 
-def _load_14th_path_board(fetch_json, panynj_payload=None, max_trains=PATH_33RD_MAX_TRAINS):
+def _load_14th_path_board(fetch_json, panynj_payload=None, max_trains=PATH_33RD_MAX_TRAINS, now=None):
     """33rd-bound PATH at 14 St; fallback estimate from 9 St +1 min."""
     payload = panynj_payload
     if payload is None:
@@ -448,36 +562,38 @@ def _load_14th_path_board(fetch_json, panynj_payload=None, max_trains=PATH_33RD_
             "estimated": False,
         }
 
-    ninth = _parse_panynj_station(
-        "09S",
-        payload,
-        _is_nyc_direction,
-        dest_filter=_is_33rd_destination,
-    )
-    if ninth:
-        estimated = []
-        for train in ninth:
-            minutes = train.get("minutes")
-            if minutes is not None:
-                minutes = minutes + NINTH_ST_ESTIMATE_TO_14TH_MINUTES
-            eta_text = train.get("eta")
-            if minutes is not None and minutes > 0:
-                eta_text = "~%sm" % minutes
-            estimated.append(
-                {
-                    **train,
-                    "minutes": minutes,
-                    "eta": eta_text,
-                    "estimated": True,
-                }
-            )
-        return {
-            "label": PATH_14TH_STATION["label"],
-            "trains": estimated[:max_trains],
-            "error": None,
-            "estimated": True,
-            "note": "est. 9 St + %s min" % NINTH_ST_ESTIMATE_TO_14TH_MINUTES,
-        }
+    closed, _note = ninth_street_closure(fetch_json=fetch_json, now=now)
+    if not closed:
+        ninth = _parse_panynj_station(
+            "09S",
+            payload,
+            _is_nyc_direction,
+            dest_filter=_is_33rd_destination,
+        )
+        if ninth:
+            estimated = []
+            for train in ninth:
+                minutes = train.get("minutes")
+                if minutes is not None:
+                    minutes = minutes + NINTH_ST_ESTIMATE_TO_14TH_MINUTES
+                eta_text = train.get("eta")
+                if minutes is not None and minutes > 0:
+                    eta_text = "~%sm" % minutes
+                estimated.append(
+                    {
+                        **train,
+                        "minutes": minutes,
+                        "eta": eta_text,
+                        "estimated": True,
+                    }
+                )
+            return {
+                "label": PATH_14TH_STATION["label"],
+                "trains": estimated[:max_trains],
+                "error": None,
+                "estimated": True,
+                "note": "est. 9 St + %s min" % NINTH_ST_ESTIMATE_TO_14TH_MINUTES,
+            }
 
     board = {
         "label": PATH_14TH_STATION["label"],
@@ -603,6 +719,7 @@ def get_path_transit_board(
     dest_filter=None,
     max_trains=PATH_MAX_TRAINS,
     raw_pool=8,
+    now=None,
 ):
     """Transit App PATH departures — deeper schedule pool for transfer filters."""
     from . import transit_app
@@ -611,6 +728,10 @@ def get_path_transit_board(
     station = _PATH_STATION_LOOKUP.get(station_label)
     if station is None or not transit_app.has_api_key():
         return None
+    if _is_ninth_street_station(station):
+        closed, _note = ninth_street_closure(now=now)
+        if closed:
+            return None
     stop_id = station.get("transit_stop_id")
     if not stop_id:
         return None
@@ -649,11 +770,17 @@ def get_path_station_board(
     max_trains=PATH_MAX_TRAINS,
     raw_pool=None,
     allow_hoboken=None,
+    now=None,
 ):
     """Single PATH station board (NYC, 33rd, or NJ). Never raises."""
     station = _PATH_STATION_LOOKUP.get(station_label)
     if station is None:
         return {"label": station_label, "trains": [], "error": "Unknown PATH station"}
+
+    if _is_ninth_street_station(station):
+        closed, note = ninth_street_closure(fetch_json=fetch_json, now=now)
+        if closed:
+            return _ninth_street_closed_board(station, note)
 
     dest_fn = _dest_filter_fn(dest_filter) if isinstance(dest_filter, str) else dest_filter
     pool = raw_pool or max(max_trains, PATH_MAX_TRAINS)

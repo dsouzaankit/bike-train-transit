@@ -17,6 +17,7 @@ from . import local_deploy
 
 LAUNCHER_NAME = "RunBikeTrainTransit.py"
 UI_SCRIPT_REL = "bike_train_transit/bike_train_transit.py"
+SAFE_SCRIPT_REL = "bike_train_transit/debug_server.py"
 # Obsolete launcher scripts deleted from On This iPhone on each run. The
 # RunBikeTrainTransit.py stub is included: it breaks UI launch (see module docstring).
 _STALE_LAUNCHER_NAMES = (
@@ -50,6 +51,16 @@ def shortcuts_run_url() -> str:
         return shortcuts.pythonista_url(UI_SCRIPT_REL, action="run")
     except ImportError:
         return "pythonista3://%s?action=run" % UI_SCRIPT_REL
+
+
+def shortcuts_safe_mode_url() -> str:
+    """Direct URL to safe mode (LAN logs only, no UI)."""
+    try:
+        import shortcuts
+
+        return shortcuts.pythonista_url(SAFE_SCRIPT_REL, action="run")
+    except ImportError:
+        return "pythonista3://%s?action=run" % SAFE_SCRIPT_REL
 
 
 def handoff_to_ui_app() -> bool:
@@ -118,11 +129,16 @@ def launcher_help_lines(app_dir: str | None = None, install: bool = True) -> lis
     if install:
         install_launcher(source_dir)
     url = shortcuts_run_url()
+    safe_url = shortcuts_safe_mode_url()
     run_dir = local_deploy.local_app_dir() if _is_pythonista() else source_dir
     lines = [
         "",
         "=== iOS Home Screen (run as main script) ===",
         "URL: %s" % url,
+        "",
+        "=== Safe mode (LAN logs only, after a crash) ===",
+        "URL: %s" % safe_url,
+        "Or run debug_server.py in Pythonista (same as bike_train_transit.py --safe)",
         "",
         "Runs from On This iPhone (Files -> iCloud Downloads is NOT URL-runnable):",
         "  %s" % run_dir,

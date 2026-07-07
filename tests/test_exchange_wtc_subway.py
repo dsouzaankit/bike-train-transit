@@ -110,6 +110,63 @@ class ExchangeWtcSubwayTests(unittest.TestCase):
         )
         self.assertEqual(connected[0]["trains"], [])
 
+    def test_transit_pool_ignores_other_lines_at_cortlandt(self):
+        path_board = {
+            "label": "Exchange Place",
+            "trains": [{"destination": "WTC", "minutes": 10, "eta": "10m"}],
+        }
+        subway_boards = [
+            {
+                "label": "WTC Cortlandt",
+                "trains": [],
+                "_raw_trains": [],
+                "by_line": True,
+                "source": "subwayapi",
+            },
+        ]
+        transit_board = {
+            "label": "WTC Cortlandt",
+            "trains": [
+                {
+                    "line": "1",
+                    "direction": "N",
+                    "minutes": 20,
+                    "eta": "20m",
+                    "destination": "Van Cortlandt",
+                }
+            ],
+            "_raw_trains": [
+                {
+                    "line": "N",
+                    "direction": "N",
+                    "minutes": 19,
+                    "eta": "19m",
+                    "destination": "Astoria",
+                },
+                {
+                    "line": "1",
+                    "direction": "N",
+                    "minutes": 20,
+                    "eta": "20m",
+                    "destination": "Van Cortlandt",
+                },
+            ],
+            "by_line": True,
+            "source": "transit",
+            "_line_specs": [("1", "N")],
+        }
+        with mock.patch("lib.transit_app.has_api_key", return_value=True):
+            with mock.patch("lib.path_trains.get_path_transit_board", return_value=None):
+                with mock.patch(
+                    "lib.subway_trains.get_subway_transit_board",
+                    return_value=transit_board,
+                ):
+                    connected = apply_exchange_wtc_subway_connections(path_board, subway_boards)
+        cortlandt = connected[0]
+        self.assertEqual(len(cortlandt["trains"]), 1)
+        self.assertEqual(cortlandt["trains"][0]["line"], "1")
+        self.assertNotIn("N", [train["line"] for train in cortlandt["trains"]])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
