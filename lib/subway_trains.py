@@ -302,6 +302,7 @@ def _is_downtown_subway_headsign(headsign):
         "241 st",
         "242 st",
         "207 st",
+        "168 st",
         "fordham",
         "pelham",
         "dyre",
@@ -310,22 +311,7 @@ def _is_downtown_subway_headsign(headsign):
     )
     if any(hint in text for hint in uptown_hints):
         return False
-    downtown_hints = (
-        "downtown",
-        "brooklyn",
-        "south ferry",
-        "world trade",
-        "wtc",
-        "canarsie",
-        "flatbush",
-        "stillwell",
-        "coney",
-        "new lots",
-        "bk bridge",
-        "borough hall",
-        "euclid",
-    )
-    return any(hint in text for hint in downtown_hints)
+    return True
 
 
 def _is_brooklyn_l_headsign(headsign):

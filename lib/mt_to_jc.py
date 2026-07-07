@@ -113,6 +113,13 @@ MT_DOWNTOWN_GATES = {
         "headsign_filter": _is_downtown_subway_headsign,
         "unavailable_note": "No downtown 1",
     },
+    "chris_st_2": {
+        "label": "Chris St",
+        "station": SUBWAY_CHRIS_SOUTH,
+        "line_specs": FIFTY_ST_2_SOUTH_LINE_SPECS,
+        "headsign_filter": _is_downtown_subway_headsign,
+        "unavailable_note": "No downtown 2",
+    },
 }
 
 # PATH station -> downtown gate key(s); any gate with southbound trains opens the leg.
@@ -130,7 +137,7 @@ MT_ROW_PATH_GATES = {
         "WTC": ("wtc_e",),
     },
     "mt_50_st_2": {
-        "Chris St": ("chris_st",),
+        "Chris St": ("chris_st_2",),
     },
     "mt_50_st_ac": {
         "9 St": ("west_4",),

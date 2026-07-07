@@ -49,15 +49,18 @@ Five rows — **50 St (8Av)**, **50 St (7Av)**, **Lex/53 St**, plus **50 St (2)*
 | **PATH stack** | NJ-bound from **9 St** / **Chris St** / **WTC** (+offset from uptown subway); shuttle rows omit WTC PATH |
 | **HBLR stack** | **Newport** ← 9 St/Chris PATH; **Exchange** ← WTC PATH (full rows only) |
 
-**Downtown gates** (not shown as rows): southbound monitors at **WTC** E, **WTC Cortlandt** 1, **West 4 St** E/F, **Chris St** 1 clear dependent PATH legs as **None catchable** when empty:
+**Downtown gates** (not shown as rows): southbound monitors clear dependent PATH legs as **None catchable** when empty. **Chris St** uses **1** for the 7Av row and **2** for the **50 St (2)** row; **9 St** (A/C row) uses **West 4 St** E/F:
 
 | PATH leg | Downtown gate(s) |
 |----------|------------------|
 | **9 St** | **West 4 St** southbound E/F |
-| **Chris St** | **Chris St** southbound 1 |
+| **Chris St** (7Av row) | **Chris St** southbound **1** |
+| **Chris St** (2 row) | **Chris St** southbound **2** |
 | **WTC** (8Av / Lex E) | **WTC** southbound E |
 | **WTC** (7Av) | **WTC Cortlandt** southbound 1 (South Ferry) |
 | **WTC** (Lex) | **WTC** southbound E only |
+
+**Southbound headsign filter** (row + gate cards): accepts all southbound departures except clearly **uptown** headsigns (Bronx, Inwood, Van Cortlandt, **168 St**, …). Brooklyn/Queens terminals (**Far Rockaway**, **Lefferts Blvd**, **Rockaway Park**, **Euclid Av**, WTC, …) are kept — older builds wrongly hid **A/C** trains when headsigns omitted “Brooklyn” or “downtown”.
 
 **Offset chain**:
 
@@ -69,7 +72,7 @@ Five rows — **50 St (8Av)**, **50 St (7Av)**, **Lex/53 St**, plus **50 St (2)*
 | **50 St (2)** | 2 | Chris St +15m | Newport +13m |
 | **50 St (A/C)** | A/C | 9 St +15m | Newport +14m |
 
-Log markers: `build=hblr-path-v88`, `step: MT→JC rows (5)`.
+Log markers: `build=hblr-path-v89`, `step: MT→JC rows (5)`.
 
 ### Startup thumb float (~6" screens)
 
@@ -465,7 +468,7 @@ Runs on the **iPhone** (not PC). Your PC reads logs over Wi‑Fi.
 | URL | Description |
 |-----|-------------|
 | `http://<phone-ip>:8765/` | HTML dashboard with live log tail |
-| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v88`; HBLR boards log `[transit]` / `[pdf]` source) |
+| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v89`; HBLR boards log `[transit]` / `[pdf]` source) |
 | `/bike_train_transit_progress.txt` | Last 12 log lines |
 | `/status.json` | App state (stations, transit boards, active tab, errors, **`httpCache` hits/misses**) |
 | `/refresh` | Trigger refresh on the phone from PC |
@@ -598,14 +601,14 @@ Live PATH fetching in `lib/path_trains.py` does not filter by PATH line color; N
 | File | Configure |
 |------|-----------|
 | `path_trains.py` | PATH stations; PANYNJ `ridepath.json`; **9 St overnight closure** (~11:59 PM–5 AM ET schedule + optional Everbridge overlay); `_is_jsq_destination()` for **14 St → JSQ** (To JC); `_is_mt_to_jc_path_destination()` (Nwk/JSQ/Hoboken); `get_path_transit_board()` for transfer retry (`PATH:554` Exchange, `PATH:520` Newport, `PATH:553` WTC, `PATH:552` Chris St, `PATH:551` 9 St) |
-| `mt_to_jc.py` | MT→JC five uptown rows + **50 St (2)/(A/C)**; downtown gate monitors for PATH legs; chained offsets |
+| `mt_to_jc.py` | MT→JC five uptown rows + **50 St (2)/(A/C)**; per-row downtown gates (**Chris St** 1 vs 2); chained offsets |
 | `light_rail.py` | HBLR station boards by direction; Transit API key (`transit_credentials.json` / `TRANSIT_API_KEY`); optional NJT creds (`njt_credentials.json`) — **NJT dev API currently unavailable**; PDF fallback via `hblr_schedule_data.json` |
 | `transit_app.py` | Transit App v4 `/stop_departures` client; uses shared `http_cache.py` (2 min, persistent) |
 | `http_cache.py` | Persistent JSON cache for all HTTP fetches (GBFS, PANYNJ, subway, Transit) |
 | `hblr_path.py` | HBLR↔PATH sections; `path_catchable_after_lsp()` (LSP → PATH + Transit retry); `resolve_transfer_board()` for PATH→HBLR and WTC subway (`· current HBLR` / `· current subway` fallbacks where applicable) |
 | `hblr_schedule.py` | Loads `hblr_schedule_data.json` for offline HBLR departures; **weekday daytime** fills PDF midday holes with service headway; PDF times have no per-line label — **northbound** PDF list index per station (LSP/Exchange default Hoboken/Tonnelle cycle; Exchange phase +1; Newport Tonnelle-first); **southbound** upstream stations label PDF columns by service-day order (`_south_labeled_explicit`; LSP index+1 only after midnight–02:45); `minutes_until_departure()` for service-night ETAs; terminals use branch-terminal pools; weekend south through **02:45** |
 | `path_schedule.py` | Weekend PATH phase helpers for unit tests only (not wired to live UI) |
-| `subway_trains.py` | Subway north/Queens and To JC; `SUBWAY_PATH_WALKS` for **33rd St** connection filtering; **PATH + Subway via WTC** on HBLR tab (`get_wtc_north_boards`, `get_subway_transit_board` at `MTAS:19443` / `MTAS:19012`, **LSP HBLR +11** then **Exchange +8**); **51 St** / **50 St** / **Bleecker St** express-local cards; southbound **6** (Union Sq) and **4/5** (Bleecker express local) ETAs append **↓** |
+| `subway_trains.py` | Subway north/Queens and To JC; MT→JC southbound headsign filter; `SUBWAY_PATH_WALKS` for **33rd St** connection filtering; **PATH + Subway via WTC** on HBLR tab (`get_wtc_north_boards`, `get_subway_transit_board` at `MTAS:19443` / `MTAS:19012`, **LSP HBLR +11** then **Exchange +8**); **51 St** / **50 St** / **Bleecker St** express-local cards; southbound **6** (Union Sq) and **4/5** (Bleecker express local) ETAs append **↓** |
 
 Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignored) with your [Transit App API](https://transitapp.com/apis) key. `deploy.ps1` includes this file when present so the iPhone gets live HBLR ETAs.
 

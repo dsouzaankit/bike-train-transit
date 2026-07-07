@@ -29,6 +29,7 @@ from lib.subway_trains import (  # noqa: E402
     SUBWAY_WEST_4_SOUTH,
     SUBWAY_WTC_CORTLANDT,
     SUBWAY_WTC_E,
+    _is_downtown_subway_headsign,
 )
 
 
@@ -52,6 +53,15 @@ def _mins(board):
 
 
 class MtToJcChainTests(unittest.TestCase):
+    def test_downtown_headsign_accepts_far_rockaway(self):
+        self.assertTrue(_is_downtown_subway_headsign("Far Rockaway-Mott Av"))
+        self.assertTrue(_is_downtown_subway_headsign("World Trade Center"))
+        self.assertTrue(_is_downtown_subway_headsign("Lefferts Blvd"))
+        self.assertTrue(_is_downtown_subway_headsign("Rockaway Park"))
+        self.assertTrue(_is_downtown_subway_headsign("Euclid Av"))
+        self.assertFalse(_is_downtown_subway_headsign("Van Cortlandt Park-242 St"))
+        self.assertFalse(_is_downtown_subway_headsign("168 St"))
+
     def test_path_from_subway_50_8av(self):
         cfg = MT_TO_JC_ROWS[0]
         subway = _board("50 St (8Av)", [20])
@@ -212,6 +222,29 @@ class MtToJcChainTests(unittest.TestCase):
         out = _gate_path_on_downtown(path, "WTC", "mt_lex_53", downtown)
         self.assertEqual(_mins(out), [])
         self.assertIn("no WTC southbound", out["note"])
+
+    def test_50_st_2_chris_gate_uses_line_2_not_1(self):
+        path = _board("Chris St", [18, 28])
+        downtown = {
+            "chris_st": {"label": "Chris St", "trains": []},
+            "chris_st_2": {
+                "label": "Chris St",
+                "trains": [{"minutes": 22, "line": "2", "eta": "22m"}],
+            },
+        }
+        out = _gate_path_on_downtown(path, "Chris St", "mt_50_st_2", downtown)
+        self.assertEqual(_mins(out), [18, 28])
+
+        downtown_only_1 = {
+            "chris_st": {
+                "label": "Chris St",
+                "trains": [{"minutes": 10, "line": "1", "eta": "10m"}],
+            },
+            "chris_st_2": {"label": "Chris St", "trains": []},
+        }
+        out = _gate_path_on_downtown(path, "Chris St", "mt_50_st_2", downtown_only_1)
+        self.assertEqual(_mins(out), [])
+        self.assertIn("no Chris St southbound", out["note"])
 
     def test_subway_unavailable_gates_path(self):
         subway = {"label": "50 St (8Av)", "trains": [], "unavailable": True}
