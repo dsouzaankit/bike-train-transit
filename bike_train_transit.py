@@ -58,6 +58,8 @@ STATIONS = [
     "Exchange Pl",
     "JC Medical Center",
     "Liberty Light Rail",
+    "York St & Marin Blvd",
+    "Marin Light Rail",
     "Communipaw & Berry Lane",
     "Arlington Ave & Bramhall Ave",
     "Garfield Light Rail",
@@ -83,6 +85,8 @@ STATION_LABELS = [
     "Exchange Pl",
     "JC\nMedical Center",
     "Liberty\nLight Rail",
+    "York St\n& Marin",
+    "Marin\nLight Rail",
     "Communipaw\n& Berry Ln",
     "Arlington\n& Bramhall",
     "Garfield\nLight Rail",
@@ -97,11 +101,12 @@ STATION_LABELS = [
 #   0 Dixon Mills  1 Montgomery  |  2 Brunswick  3 Monmouth  4 Jersey & 6th
 #   5 Newport PATH  6 Washington  |  7 City Hall  8 Grove St PATH
 #   9 Van Vorst Park  10 Exchange Pl  |  11 JC Medical Center  12 Liberty Light Rail
-#  13 Communipaw & Berry Ln  14 Arlington & Bramhall  |  15 Garfield  16 Carteret & Arlington
-#  17 Pacific & Communipaw (own row, blank 2nd cell)  |  18 Lafayette Park  19 Lena Edwards Park
-#  20 MLK & Bramhall  21 Astor Place
+#  13 York St & Marin Blvd  14 Marin Light Rail
+#  15 Communipaw & Berry Ln  16 Arlington & Bramhall  |  17 Garfield  18 Carteret & Arlington
+#  19 Pacific & Communipaw (own row, blank 2nd cell)  |  20 Lafayette Park  21 Lena Edwards Park
+#  22 MLK & Bramhall  23 Astor Place
 #
-# Cbike JC tab (indices 0–12):
+# Cbike JC tab (indices 0–14):
 # Group 1 — 6th St (2x2, empty cell beside Jersey)
 # Group 2 — Newport PATH, Washington St
 # Group 3 — Dixon Mills, Montgomery St
@@ -111,15 +116,16 @@ GRID_GROUPS = [
     [(5, 6)],              # Group 2
     [(7, 8)],              # City Hall, Grove St PATH
     [(9, 10)],             # Van Vorst Park, Exchange Pl
+    [(13, 14)],            # York St & Marin Blvd, Marin Light Rail
     [(11, 12)],            # JC Medical Center, Liberty Light Rail
 ]
-# Cbike S JC tab (indices 13–21) — south JC stations
+# Cbike S JC tab (indices 15–23) — south JC stations
 CBIKE_S_GRID_GROUPS = [
-    [(13, 14)],            # Communipaw & Berry Ln, Arlington & Bramhall
-    [(15, 16)],            # Garfield Light Rail, Carteret & Arlington
-    [(17, None)],          # Pacific & Communipaw (blank 2nd cell)
-    [(18, 19)],            # Lafayette Park, Lena Edwards Park
-    [(20, 21)],            # MLK Dr & Bramhall, Astor Place
+    [(15, 16)],            # Communipaw & Berry Ln, Arlington & Bramhall
+    [(17, 18)],            # Garfield Light Rail, Carteret & Arlington
+    [(19, None)],          # Pacific & Communipaw (blank 2nd cell)
+    [(20, 21)],            # Lafayette Park, Lena Edwards Park
+    [(22, 23)],            # MLK Dr & Bramhall, Astor Place
 ]
 
 
@@ -175,7 +181,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v101"
+BUILD_TAG = "hblr-path-v102"
 
 TAB_TRANSIT_JOBS = {
     "from_jc": ("pathAll", "subway"),

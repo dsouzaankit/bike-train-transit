@@ -7,7 +7,7 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 ## Features
 
 - **Seven tabs** — **Cbike JC**, **Cbike S JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, and **MT→JC**
-- **iPhone app** — compact 2-column Citibike grids on **Cbike JC** (13 downtown stations) and **Cbike S JC** (9 south stations)
+- **iPhone app** — compact 2-column Citibike grids on **Cbike JC** (15 downtown stations) and **Cbike S JC** (9 south stations)
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
 - **PATH + subway connections** — From JC **33rd St** subway cards only show trains reachable after the earliest paired PATH arrival + walk time; **HBLR↔PATH** has **PATH + Subway via WTC** under **HBLR → PATH** (**WTC Cortlandt** / **WTC** northbound, catchable after **LSP HBLR +11** then **Exchange PATH +8** walk at WTC)
 - **HBLR ↔ PATH tab** — timed transfers; **Transit App API** is used only on this tab (see [Transit App API usage](#transit-app-api-usage))
@@ -26,7 +26,7 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 
 ## Jersey City stations (`JC`)
 
-**Cbike JC** (13 stations, indices 0–12):
+**Cbike JC** (15 stations, indices 0–14):
 
 | | |
 |---|---|
@@ -36,9 +36,10 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 | Newport PATH | Washington St |
 | City Hall | Grove St PATH |
 | Van Vorst Park | Exchange Pl |
+| York St & Marin | Marin Light Rail |
 | JC Medical Center | Liberty Light Rail |
 
-**Cbike S JC** (9 stations, indices 13–21):
+**Cbike S JC** (9 stations, indices 15–23):
 
 | | |
 |---|---|
@@ -85,7 +86,7 @@ Five rows — **50 St (8Av)**, **50 St (7Av)**, **Lex/53 St**, plus **50 St (2)*
 | **50 St (2)** | 2 | Chris St +15m | Newport +13m |
 | **50 St (A/C)** | A/C | 9 St +15m | Newport +14m |
 
-Log markers: `build=hblr-path-v101`, `step: MT→JC rows (5)`.
+Log markers: `build=hblr-path-v102`, `step: MT→JC rows (5)`.
 
 ### Subway headsign filters (by tab)
 
@@ -121,7 +122,7 @@ On launch (after `present()`), section tabs **float** in **two vertical columns*
 
 Layout diagram: `thumb-float-layout.svg` (thumb float + docked ribbon, v99 coordinates).
 
-Log markers: `build=hblr-path-v101`, `thumb float (tap section to dock)`, `Refresh tab cbike_s (#1)`.
+Log markers: `build=hblr-path-v102`, `thumb float (tap section to dock)`, `Refresh tab cbike_s (#1)`.
 
 ## HTTP cache and refresh API calls
 
@@ -172,7 +173,7 @@ WTC/Cortlandt are fetched twice (south for **To JC**, north for **HBLR**) with d
 
 | Tab | Primary sources | Attributed calls* |
 |-----|-----------------|------------------:|
-| **Cbike JC** | GBFS (13 stations) | **2** |
+| **Cbike JC** | GBFS (15 stations) | **2** |
 | **Cbike S JC** | GBFS (9 stations; same fetch as JC) | **2** |
 | **From JC** | PANYNJ slice + From JC subway | **12** |
 | **To JC** | PANYNJ NJ slice + To JC subway | **2–3** |
@@ -198,17 +199,17 @@ Not called on refresh: **NJT HBLR API** (unavailable), **path.api.razza.dev** (d
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **Citibike grid** | 13 downtown JC stations (indices 0–12) | GBFS bike/dock counts |
+| **Citibike grid** | 15 downtown JC stations (indices 0–14) | GBFS bike/dock counts |
 
-**Van Vorst Park** and **Exchange Pl** share a row; **JC Medical Center** and **Liberty Light Rail** share the bottom row. Long titles use two lines (`Liberty` / `Light Rail`, `JC` / `Medical Center`, etc.).
+**Van Vorst Park** and **Exchange Pl** share a row; **York St & Marin** and **Marin Light Rail**; **JC Medical Center** and **Liberty Light Rail** on the bottom row. Long titles use two lines (`Liberty` / `Light Rail`, `JC` / `Medical Center`, etc.).
 
 ### Cbike S JC
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **Citibike grid** | 9 south JC stations (indices 13–21) | Same GBFS fetch as **Cbike JC** |
+| **Citibike grid** | 9 south JC stations (indices 15–23) | Same GBFS fetch as **Cbike JC** |
 
-**Communipaw & Berry Ln** and **Arlington & Bramhall** share a row; **Garfield Light Rail** and **Carteret & Arlington**; **Pacific & Communipaw** is alone on row 3 (blank 2nd cell); **Lafayette Park** and **Lena Edwards Park**; **MLK Dr & Bramhall** and **Astor Place** share the bottom row. Tapping either citibike tab refreshes all 22 stations into the shared cache.
+**Communipaw & Berry Ln** and **Arlington & Bramhall** share a row; **Garfield Light Rail** and **Carteret & Arlington**; **Pacific & Communipaw** is alone on row 3 (blank 2nd cell); **Lafayette Park** and **Lena Edwards Park**; **MLK Dr & Bramhall** and **Astor Place** share the bottom row. Tapping either citibike tab refreshes all 24 stations into the shared cache.
 
 Every station card shows an **E** count under filled bikes (`num_ebikes_available` from GBFS). Total bikes still includes e-bikes.
 
@@ -512,7 +513,7 @@ Runs on the **iPhone** (not PC). Your PC reads logs over Wi‑Fi.
 | URL | Description |
 |-----|-------------|
 | `http://<phone-ip>:8765/` | HTML dashboard with live log tail |
-| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v101`) |
+| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v102`) |
 | `/bike_train_transit_progress.txt` | Last 12 log lines |
 | `/status.json` | App state (stations, transit boards, active tab, errors, **`httpCache` hits/misses**) |
 | `/refresh` | Trigger refresh on the phone from PC |
@@ -665,7 +666,7 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 | Field | Description |
 |-------|-------------|
 | `region` | Prefix tag for email reports (e.g. `JC`) |
-| `stations` | List of station names (up to 22) |
+| `stations` | List of station names (up to 24) |
 | `alert_min_bikes` | Email alert threshold |
 | `alert_min_docks` | Email alert threshold |
 | `email_always` | `true` = email every run; `false` = only on alert |
