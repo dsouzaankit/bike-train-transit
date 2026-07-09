@@ -13,9 +13,16 @@
     "Liberty Light Rail",
     "Exchange Pl",
     "JC Medical Center",
-    "Arlington Ave & Bramhall Ave",
+    "Van Vorst Park",
     "Communipaw & Berry Lane",
-    "Garfield Light Rail"
+    "Arlington Ave & Bramhall Ave",
+    "Garfield Light Rail",
+    "Carteret Ave & Arlington Ave",
+    "Pacific Ave & Communipaw Ave",
+    "Lafayette Park",
+    "Dr. Lena Edwards Park",
+    "MLK Dr & Bramhall Ave",
+    "Astor Place"
   ],
   "alert_min_bikes": 2,
   "alert_min_docks": 2,

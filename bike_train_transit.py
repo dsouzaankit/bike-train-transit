@@ -57,9 +57,16 @@ STATIONS = [
     "Liberty Light Rail",
     "Exchange Pl",
     "JC Medical Center",
-    "Arlington Ave & Bramhall Ave",
+    "Van Vorst Park",
     "Communipaw & Berry Lane",
+    "Arlington Ave & Bramhall Ave",
     "Garfield Light Rail",
+    "Carteret Ave & Arlington Ave",
+    "Pacific Ave & Communipaw Ave",
+    "Lafayette Park",
+    "Dr. Lena Edwards Park",
+    "MLK Dr & Bramhall Ave",
+    "Astor Place",
 ]
 # Shorter labels for compact UI (same order as STATIONS). Use \n for a two-line name.
 STATION_LABELS = [
@@ -75,17 +82,26 @@ STATION_LABELS = [
     "Liberty\nLight Rail",
     "Exchange Pl",
     "JC\nMedical Center",
-    "Arlington\n& Bramhall",
+    "Van Vorst\nPark",
     "Communipaw\n& Berry Ln",
+    "Arlington\n& Bramhall",
     "Garfield\nLight Rail",
+    "Carteret\n& Arlington",
+    "Pacific\n& Communipaw",
+    "Lafayette\nPark",
+    "Lena Edwards\nPark",
+    "MLK Dr\n& Bramhall",
+    "Astor Place",
 ]
 # Snapshot indices (matches STATIONS order above):
 #   0 Dixon Mills  1 Montgomery  |  2 Brunswick  3 Monmouth  4 Jersey & 6th
 #   5 Newport PATH  6 Washington  |  7 City Hall  8 Grove St PATH
-#   9 Liberty Light Rail  10 Exchange Pl  |  11 JC Medical Center (own row)
-#  12 Arlington & Bramhall  13 Communipaw & Berry Ln  |  14 Garfield Light Rail (own row)
+#   9 Liberty Light Rail  10 Exchange Pl  |  11 JC Medical Center  12 Van Vorst Park
+#  13 Communipaw & Berry Ln  14 Arlington & Bramhall  |  15 Garfield  16 Carteret & Arlington
+#  17 Pacific & Communipaw (own row, blank 2nd cell)  |  18 Lafayette Park  19 Lena Edwards Park
+#  20 MLK & Bramhall  21 Astor Place
 #
-# Cbike JC tab (indices 0–11):
+# Cbike JC tab (indices 0–12):
 # Group 1 — 6th St (2x2, empty cell beside Jersey)
 # Group 2 — Newport PATH, Washington St
 # Group 3 — Dixon Mills, Montgomery St
@@ -95,12 +111,15 @@ GRID_GROUPS = [
     [(5, 6)],              # Group 2
     [(7, 8)],              # City Hall, Grove St PATH
     [(9, 10)],             # Liberty Light Rail, Exchange Pl
-    [(11, None)],          # JC Medical Center
+    [(11, 12)],            # JC Medical Center, Van Vorst Park
 ]
-# Cbike S JC tab (indices 12–14) — south JC stations
+# Cbike S JC tab (indices 13–21) — south JC stations
 CBIKE_S_GRID_GROUPS = [
-    [(12, 13)],            # Arlington & Bramhall, Communipaw & Berry Ln
-    [(14, None)],          # Garfield Light Rail
+    [(13, 14)],            # Communipaw & Berry Ln, Arlington & Bramhall
+    [(15, 16)],            # Garfield Light Rail, Carteret & Arlington
+    [(17, None)],          # Pacific & Communipaw (blank 2nd cell)
+    [(18, 19)],            # Lafayette Park, Lena Edwards Park
+    [(20, 21)],            # MLK Dr & Bramhall, Astor Place
 ]
 
 
@@ -156,7 +175,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v99"
+BUILD_TAG = "hblr-path-v100"
 
 TAB_TRANSIT_JOBS = {
     "from_jc": ("pathAll", "subway"),

@@ -7,7 +7,7 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 ## Features
 
 - **Seven tabs** — **Cbike JC**, **Cbike S JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, and **MT→JC**
-- **iPhone app** — compact 2-column Citibike grids on **Cbike JC** (12 downtown stations) and **Cbike S JC** (3 south stations)
+- **iPhone app** — compact 2-column Citibike grids on **Cbike JC** (13 downtown stations) and **Cbike S JC** (9 south stations)
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
 - **PATH + subway connections** — From JC **33rd St** subway cards only show trains reachable after the earliest paired PATH arrival + walk time; **HBLR↔PATH** has **PATH + Subway via WTC** under **HBLR → PATH** (**WTC Cortlandt** / **WTC** northbound, catchable after **LSP HBLR +11** then **Exchange PATH +8** walk at WTC)
 - **HBLR ↔ PATH tab** — timed transfers; **Transit App API** is used only on this tab (see [Transit App API usage](#transit-app-api-usage))
@@ -26,15 +26,27 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 
 ## Jersey City stations (`JC`)
 
-| | | |
-|---|---|---|
-| Dixon Mills | Montgomery St | Brunswick & 6th |
-| Monmouth & 6th | Jersey & 6th St | Newport PATH |
-| Washington St | City Hall | Grove St PATH |
-| Liberty Light Rail | Exchange Pl | |
-| JC Medical Center | | |
-| Arlington & Bramhall | Communipaw & Berry Ln | |
-| Garfield Light Rail | | |
+**Cbike JC** (13 stations, indices 0–12):
+
+| | |
+|---|---|
+| Dixon Mills | Montgomery St |
+| Brunswick & 6th | Monmouth & 6th |
+| Jersey & 6th St | |
+| Newport PATH | Washington St |
+| City Hall | Grove St PATH |
+| Liberty Light Rail | Exchange Pl |
+| JC Medical Center | Van Vorst Park |
+
+**Cbike S JC** (9 stations, indices 13–21):
+
+| | |
+|---|---|
+| Communipaw & Berry Ln | Arlington & Bramhall |
+| Garfield Light Rail | Carteret & Arlington |
+| Pacific & Communipaw | |
+| Lafayette Park | Lena Edwards Park |
+| MLK Dr & Bramhall | Astor Place |
 
 All stations are tagged `[JC]` in logs, email, and the **Cbike JC** / **Cbike S JC** tabs.
 
@@ -73,7 +85,7 @@ Five rows — **50 St (8Av)**, **50 St (7Av)**, **Lex/53 St**, plus **50 St (2)*
 | **50 St (2)** | 2 | Chris St +15m | Newport +13m |
 | **50 St (A/C)** | A/C | 9 St +15m | Newport +14m |
 
-Log markers: `build=hblr-path-v99`, `step: MT→JC rows (5)`.
+Log markers: `build=hblr-path-v100`, `step: MT→JC rows (5)`.
 
 ### Subway headsign filters (by tab)
 
@@ -109,7 +121,7 @@ On launch (after `present()`), section tabs **float** in **two vertical columns*
 
 Layout diagram: `thumb-float-layout.svg` (thumb float + docked ribbon, v99 coordinates).
 
-Log markers: `build=hblr-path-v99`, `thumb float (tap section to dock)`, `Refresh tab cbike_s (#1)`.
+Log markers: `build=hblr-path-v100`, `thumb float (tap section to dock)`, `Refresh tab cbike_s (#1)`.
 
 ## HTTP cache and refresh API calls
 
@@ -160,8 +172,8 @@ WTC/Cortlandt are fetched twice (south for **To JC**, north for **HBLR**) with d
 
 | Tab | Primary sources | Attributed calls* |
 |-----|-----------------|------------------:|
-| **Cbike JC** | GBFS (12 stations) | **2** |
-| **Cbike S JC** | GBFS (3 stations; same fetch as JC) | **2** |
+| **Cbike JC** | GBFS (13 stations) | **2** |
+| **Cbike S JC** | GBFS (9 stations; same fetch as JC) | **2** |
 | **From JC** | PANYNJ slice + From JC subway | **12** |
 | **To JC** | PANYNJ NJ slice + To JC subway | **2–3** |
 | **HBLR↔PATH** | Transit HBLR + PANYNJ PATH slice + WTC subway north + optional retries | **5–9** |
@@ -186,17 +198,17 @@ Not called on refresh: **NJT HBLR API** (unavailable), **path.api.razza.dev** (d
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **Citibike grid** | 12 downtown JC stations (indices 0–11) | GBFS bike/dock counts |
+| **Citibike grid** | 13 downtown JC stations (indices 0–12) | GBFS bike/dock counts |
 
-**Liberty Light Rail** and **Exchange Pl** share a row above **JC Medical Center** (own row). Long titles use two lines (`Liberty` / `Light Rail`, `JC` / `Medical Center`, etc.).
+**Liberty Light Rail** and **Exchange Pl** share a row; **JC Medical Center** and **Van Vorst Park** share the bottom row. Long titles use two lines (`Liberty` / `Light Rail`, `JC` / `Medical Center`, etc.).
 
 ### Cbike S JC
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **Citibike grid** | 3 south JC stations (indices 12–14) | Same GBFS fetch as **Cbike JC** |
+| **Citibike grid** | 9 south JC stations (indices 13–21) | Same GBFS fetch as **Cbike JC** |
 
-**Arlington & Bramhall** and **Communipaw & Berry Ln** share a row; **Garfield Light Rail** is on its own row. Tapping either citibike tab refreshes all 15 stations into the shared cache.
+**Communipaw & Berry Ln** and **Arlington & Bramhall** share a row; **Garfield Light Rail** and **Carteret & Arlington**; **Pacific & Communipaw** is alone on row 3 (blank 2nd cell); **Lafayette Park** and **Lena Edwards Park**; **MLK Dr & Bramhall** and **Astor Place** share the bottom row. Tapping either citibike tab refreshes all 22 stations into the shared cache.
 
 Every station card shows an **E** count under filled bikes (`num_ebikes_available` from GBFS). Total bikes still includes e-bikes.
 
@@ -500,7 +512,7 @@ Runs on the **iPhone** (not PC). Your PC reads logs over Wi‑Fi.
 | URL | Description |
 |-----|-------------|
 | `http://<phone-ip>:8765/` | HTML dashboard with live log tail |
-| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v99`) |
+| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v100`) |
 | `/bike_train_transit_progress.txt` | Last 12 log lines |
 | `/status.json` | App state (stations, transit boards, active tab, errors, **`httpCache` hits/misses**) |
 | `/refresh` | Trigger refresh on the phone from PC |
@@ -653,7 +665,7 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 | Field | Description |
 |-------|-------------|
 | `region` | Prefix tag for email reports (e.g. `JC`) |
-| `stations` | List of station names (up to 15) |
+| `stations` | List of station names (up to 22) |
 | `alert_min_bikes` | Email alert threshold |
 | `alert_min_docks` | Email alert threshold |
 | `email_always` | `true` = email every run; `false` = only on alert |
