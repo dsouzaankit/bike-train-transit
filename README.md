@@ -35,8 +35,8 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 | Jersey & 6th St | |
 | Newport PATH | Washington St |
 | City Hall | Grove St PATH |
-| Liberty Light Rail | Exchange Pl |
-| JC Medical Center | Van Vorst Park |
+| Van Vorst Park | Exchange Pl |
+| JC Medical Center | Liberty Light Rail |
 
 **Cbike S JC** (9 stations, indices 13–21):
 
@@ -85,7 +85,7 @@ Five rows — **50 St (8Av)**, **50 St (7Av)**, **Lex/53 St**, plus **50 St (2)*
 | **50 St (2)** | 2 | Chris St +15m | Newport +13m |
 | **50 St (A/C)** | A/C | 9 St +15m | Newport +14m |
 
-Log markers: `build=hblr-path-v100`, `step: MT→JC rows (5)`.
+Log markers: `build=hblr-path-v101`, `step: MT→JC rows (5)`.
 
 ### Subway headsign filters (by tab)
 
@@ -121,7 +121,7 @@ On launch (after `present()`), section tabs **float** in **two vertical columns*
 
 Layout diagram: `thumb-float-layout.svg` (thumb float + docked ribbon, v99 coordinates).
 
-Log markers: `build=hblr-path-v100`, `thumb float (tap section to dock)`, `Refresh tab cbike_s (#1)`.
+Log markers: `build=hblr-path-v101`, `thumb float (tap section to dock)`, `Refresh tab cbike_s (#1)`.
 
 ## HTTP cache and refresh API calls
 
@@ -200,7 +200,7 @@ Not called on refresh: **NJT HBLR API** (unavailable), **path.api.razza.dev** (d
 |---------|----------|------|
 | **Citibike grid** | 13 downtown JC stations (indices 0–12) | GBFS bike/dock counts |
 
-**Liberty Light Rail** and **Exchange Pl** share a row; **JC Medical Center** and **Van Vorst Park** share the bottom row. Long titles use two lines (`Liberty` / `Light Rail`, `JC` / `Medical Center`, etc.).
+**Van Vorst Park** and **Exchange Pl** share a row; **JC Medical Center** and **Liberty Light Rail** share the bottom row. Long titles use two lines (`Liberty` / `Light Rail`, `JC` / `Medical Center`, etc.).
 
 ### Cbike S JC
 
@@ -512,7 +512,7 @@ Runs on the **iPhone** (not PC). Your PC reads logs over Wi‑Fi.
 | URL | Description |
 |-----|-------------|
 | `http://<phone-ip>:8765/` | HTML dashboard with live log tail |
-| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v100`) |
+| `/bike_train_transit_latest.txt` | Full session log (`build=hblr-path-v101`) |
 | `/bike_train_transit_progress.txt` | Last 12 log lines |
 | `/status.json` | App state (stations, transit boards, active tab, errors, **`httpCache` hits/misses**) |
 | `/refresh` | Trigger refresh on the phone from PC |

@@ -54,10 +54,10 @@ STATIONS = [
     "Washington St",
     "City Hall",
     "Grove St PATH",
-    "Liberty Light Rail",
+    "Van Vorst Park",
     "Exchange Pl",
     "JC Medical Center",
-    "Van Vorst Park",
+    "Liberty Light Rail",
     "Communipaw & Berry Lane",
     "Arlington Ave & Bramhall Ave",
     "Garfield Light Rail",
@@ -79,10 +79,10 @@ STATION_LABELS = [
     "Washington St",
     "City Hall",
     "Grove St PATH",
-    "Liberty\nLight Rail",
+    "Van Vorst\nPark",
     "Exchange Pl",
     "JC\nMedical Center",
-    "Van Vorst\nPark",
+    "Liberty\nLight Rail",
     "Communipaw\n& Berry Ln",
     "Arlington\n& Bramhall",
     "Garfield\nLight Rail",
@@ -96,7 +96,7 @@ STATION_LABELS = [
 # Snapshot indices (matches STATIONS order above):
 #   0 Dixon Mills  1 Montgomery  |  2 Brunswick  3 Monmouth  4 Jersey & 6th
 #   5 Newport PATH  6 Washington  |  7 City Hall  8 Grove St PATH
-#   9 Liberty Light Rail  10 Exchange Pl  |  11 JC Medical Center  12 Van Vorst Park
+#   9 Van Vorst Park  10 Exchange Pl  |  11 JC Medical Center  12 Liberty Light Rail
 #  13 Communipaw & Berry Ln  14 Arlington & Bramhall  |  15 Garfield  16 Carteret & Arlington
 #  17 Pacific & Communipaw (own row, blank 2nd cell)  |  18 Lafayette Park  19 Lena Edwards Park
 #  20 MLK & Bramhall  21 Astor Place
@@ -110,8 +110,8 @@ GRID_GROUPS = [
     [(2, 3), (4, None)],   # Group 1
     [(5, 6)],              # Group 2
     [(7, 8)],              # City Hall, Grove St PATH
-    [(9, 10)],             # Liberty Light Rail, Exchange Pl
-    [(11, 12)],            # JC Medical Center, Van Vorst Park
+    [(9, 10)],             # Van Vorst Park, Exchange Pl
+    [(11, 12)],            # JC Medical Center, Liberty Light Rail
 ]
 # Cbike S JC tab (indices 13–21) — south JC stations
 CBIKE_S_GRID_GROUPS = [
@@ -175,7 +175,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v100"
+BUILD_TAG = "hblr-path-v101"
 
 TAB_TRANSIT_JOBS = {
     "from_jc": ("pathAll", "subway"),
