@@ -181,7 +181,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "cred-root-v106"
+BUILD_TAG = "njt-bus-v107"
 
 TAB_TRANSIT_JOBS = {
     "from_jc": ("pathAll", "subway"),

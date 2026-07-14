@@ -16,8 +16,23 @@ class NjtBusFilterTests(unittest.TestCase):
             njt_bus.departure_matches_stop("20747", "81", "Exchange Pl")
         )
         self.assertFalse(
+            njt_bus.departure_matches_stop("20747", "81", "Exchange Pl Express")
+        )
+        self.assertFalse(
+            njt_bus.departure_matches_stop("20647", "81", "81 EXPRESS to Exchange")
+        )
+        self.assertFalse(
             njt_bus.departure_matches_stop("20747", "6", "Journal Square")
         )
+
+    def test_filter_transit_trains_excludes_route_81_express(self):
+        raw = [
+            {"line": "81", "destination": "Exchange Pl", "minutes": 5, "eta": "5m"},
+            {"line": "81", "destination": "Exchange Pl Express", "minutes": 3, "eta": "3m"},
+            {"line": "6", "destination": "Journal Square", "minutes": 8, "eta": "8m"},
+        ]
+        filtered = njt_bus._filter_transit_trains("20747", raw, max_trains=3)
+        self.assertEqual([t["destination"] for t in filtered], ["Exchange Pl"])
 
     def test_transit_departure_filter_route_1(self):
         self.assertTrue(

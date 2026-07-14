@@ -86,7 +86,7 @@ def departure_matches_stop(
     line = str(route_line or "").strip()
     dest = str(headsign or "")
     if stop_id in _ROUTE_81_STOPS:
-        return line == "81"
+        return line == "81" and "express" not in dest.casefold()
     if stop_id in _ROUTE_1_EXCHANGE_NEWARK_STOPS:
         return line == "1" and ("Exchange" in dest or "Newark" in dest)
     return False
