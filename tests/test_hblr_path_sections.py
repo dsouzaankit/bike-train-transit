@@ -15,6 +15,7 @@ class HblrPathSectionLayoutTests(unittest.TestCase):
         sections = build_hblr_path_sections({})
         outbound = sections[0]
         self.assertEqual(outbound["layout"], "shared_primary")
+        self.assertEqual(outbound["primary_left"]["label"], "Garfield Avenue")
         self.assertEqual(outbound["primary"]["label"], "Liberty State Park")
         self.assertEqual(len(outbound["connections"]), 2)
         labels = [conn["board"]["label"] for conn in outbound["connections"]]

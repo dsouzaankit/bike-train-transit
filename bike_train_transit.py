@@ -181,7 +181,7 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hblr-path-v102"
+BUILD_TAG = "cred-root-v106"
 
 TAB_TRANSIT_JOBS = {
     "from_jc": ("pathAll", "subway"),
@@ -189,6 +189,7 @@ TAB_TRANSIT_JOBS = {
     "hblr_path": ("pathAll",),
     "tunnels": ("tunnels",),
     "mt_to_jc": ("pathAll",),
+    "njt_bus": (),
 }
 
 TAB_CACHE_KEYS = {
@@ -199,6 +200,7 @@ TAB_CACHE_KEYS = {
     "hblr_path": ("hblr_path_sections", "path_exchange_wtc", "subway_wtc_north"),
     "tunnels": ("tunnel_boards",),
     "mt_to_jc": ("mt_to_jc_rows",),
+    "njt_bus": ("njt_bus_boards",),
 }
 
 
@@ -981,7 +983,7 @@ def main_cli():
         for section in hblr_path_sections or []:
             print(section.get("title"))
             if section.get("layout") == "shared_primary":
-                boards = [section.get("primary")] + [
+                boards = [section.get("primary_left"), section.get("primary")] + [
                     conn.get("board") for conn in section.get("connections") or []
                 ]
             else:
@@ -1473,7 +1475,7 @@ if HAS_UI:
             self._busy = False
             self._refresh_gen = 0
             self._active_tab = "from_jc"
-            self._cache = {"snapshots": []}
+            self._cache = {"snapshots": [], "njt_bus_boards": {}}
             self._thumb_float_active = False
             self._thumb_float_startup_pending = False
 
@@ -1499,6 +1501,7 @@ if HAS_UI:
             self.tab_hblr_path_btn = SectionPill("HBLR↔PATH")
             self.tab_tunnels_btn = SectionPill("Tunnels")
             self.tab_mt_to_jc_btn = SectionPill("MT→JC")
+            self.tab_njt_bus_btn = SectionPill("NJTb")
             for btn in (
                 self.tab_cbike_btn,
                 self.tab_cbike_s_btn,
@@ -1507,6 +1510,7 @@ if HAS_UI:
                 self.tab_hblr_path_btn,
                 self.tab_tunnels_btn,
                 self.tab_mt_to_jc_btn,
+                self.tab_njt_bus_btn,
             ):
                 btn._owner = self
             self.tab_cbike_btn.action = self._tab_cbike_tapped
@@ -1516,6 +1520,7 @@ if HAS_UI:
             self.tab_hblr_path_btn.action = self._tab_hblr_path_tapped
             self.tab_tunnels_btn.action = self._tab_tunnels_tapped
             self.tab_mt_to_jc_btn.action = self._tab_mt_to_jc_tapped
+            self.tab_njt_bus_btn.action = self._tab_njt_bus_tapped
             self.tab_bar.add_subview(self.tab_cbike_btn)
             self.tab_bar.add_subview(self.tab_cbike_s_btn)
             self.tab_bar.add_subview(self.tab_from_btn)
@@ -1523,6 +1528,7 @@ if HAS_UI:
             self.tab_bar.add_subview(self.tab_hblr_path_btn)
             self.tab_bar.add_subview(self.tab_tunnels_btn)
             self.tab_bar.add_subview(self.tab_mt_to_jc_btn)
+            self.tab_bar.add_subview(self.tab_njt_bus_btn)
 
             self.scroll = ui.ScrollView()
             self.scroll.background_color = COLORS["bg"]
@@ -1545,6 +1551,7 @@ if HAS_UI:
                 self.tab_hblr_path_btn,
                 self.tab_tunnels_btn,
                 self.tab_mt_to_jc_btn,
+                self.tab_njt_bus_btn,
             )
 
         def _thumb_float_cbike_buttons(self):
@@ -1552,13 +1559,14 @@ if HAS_UI:
             return (self.tab_cbike_btn, self.tab_cbike_s_btn)
 
         def _thumb_float_transit_buttons(self):
-            """Top → bottom: From JC, …, MT→JC at thumb."""
+            """Top → bottom: From JC, …, NJTb at thumb."""
             return (
                 self.tab_from_btn,
                 self.tab_to_btn,
                 self.tab_hblr_path_btn,
                 self.tab_tunnels_btn,
                 self.tab_mt_to_jc_btn,
+                self.tab_njt_bus_btn,
             )
 
         def _rehome_button(self, btn, parent):
@@ -1767,6 +1775,7 @@ if HAS_UI:
                 ("hblr_path", self.tab_hblr_path_btn),
                 ("tunnels", self.tab_tunnels_btn),
                 ("mt_to_jc", self.tab_mt_to_jc_btn),
+                ("njt_bus", self.tab_njt_bus_btn),
             ):
                 if getattr(btn, "_pressed", False):
                     continue
@@ -1837,6 +1846,9 @@ if HAS_UI:
         def _tab_mt_to_jc_tapped(self, sender):
             self._on_section_tap("mt_to_jc")
 
+        def _tab_njt_bus_tapped(self, sender):
+            self._on_section_tap("njt_bus")
+
         def _poll_remote_control(self):
             import ui
 
@@ -1862,15 +1874,7 @@ if HAS_UI:
                 height = self.height
                 header_h = 64 + top
                 tab_top = header_h + 2
-                tab_btns = (
-                    self.tab_cbike_btn,
-                    self.tab_cbike_s_btn,
-                    self.tab_from_btn,
-                    self.tab_to_btn,
-                    self.tab_hblr_path_btn,
-                    self.tab_tunnels_btn,
-                    self.tab_mt_to_jc_btn,
-                )
+                tab_btns = self._tab_buttons_ordered()
                 tab_gap = 4
                 tab_side = 6
                 tab_bar_h, tab_w, tab_frames = compute_docked_tab_layout(
@@ -1970,7 +1974,10 @@ if HAS_UI:
             elif tab == "hblr_path":
                 for section in payload.get("hblr_path_sections") or []:
                     if section.get("layout") == "shared_primary":
-                        self._log_transit_boards("HBLRPATH", [section.get("primary")])
+                        self._log_transit_boards(
+                            "HBLRPATH",
+                            [section.get("primary_left"), section.get("primary")],
+                        )
                         for conn in section.get("connections") or []:
                             self._log_transit_boards("HBLRPATH", [conn.get("board")])
                     else:
@@ -1992,6 +1999,11 @@ if HAS_UI:
                             row.get("hblr_exchange"),
                         ],
                     )
+            elif tab == "njt_bus":
+                self._log_transit_boards(
+                    "NJTBUS",
+                    list((payload.get("njt_bus_boards") or {}).values()),
+                )
 
         def _finish_refresh(self, refresh_id):
             if refresh_id != self._refresh_gen:
@@ -2078,6 +2090,8 @@ if HAS_UI:
             reset_stats()
             if tab in ("cbike_jc", "cbike_s"):
                 ui.delay(lambda: self._refresh_step_bikes(refresh_id, tab), 0.05)
+            elif tab == "njt_bus":
+                ui.delay(lambda: self._refresh_step_njt_bus(refresh_id), 0.05)
             else:
                 ui.delay(lambda: self._refresh_step_tab_transit(refresh_id, tab), 0.05)
 
@@ -2342,7 +2356,10 @@ if HAS_UI:
                 self._log_transit_boards("TUNNEL", tunnel_boards)
                 for section in hblr_path_sections or []:
                     if section.get("layout") == "shared_primary":
-                        self._log_transit_boards("HBLRPATH", [section.get("primary")])
+                        self._log_transit_boards(
+                            "HBLRPATH",
+                            [section.get("primary_left"), section.get("primary")],
+                        )
                         for conn in section.get("connections") or []:
                             self._log_transit_boards("HBLRPATH", [conn.get("board")])
                     else:
@@ -2403,6 +2420,8 @@ if HAS_UI:
                     y = self._paint_mt_to_jc(pad, inner_w, card_width, partial=partial)
                 elif self._active_tab == "tunnels":
                     y = self._paint_tunnels(pad, inner_w, card_width, partial=partial)
+                elif self._active_tab == "njt_bus":
+                    y = self._paint_njt_bus(pad, inner_w, card_width, partial=partial)
                 else:
                     y = self._paint_from_jc(pad, inner_w, card_width, partial=partial)
                 content_h = max(y, pad)
@@ -2418,6 +2437,7 @@ if HAS_UI:
                         "hblr_path": "JC HBLR ↔ PATH",
                         "mt_to_jc": "MT to JC",
                         "tunnels": "Tunnels",
+                        "njt_bus": "NJTb",
                     }
                     self.status_label.text = "Updated %s · %s%s" % (
                         datetime.now().strftime("%I:%M:%S %p"),
@@ -2499,18 +2519,20 @@ if HAS_UI:
                 y += SECTION_HEADER_HEIGHT + CARD_GAP
 
                 if section.get("layout") == "shared_primary":
+                    primary_left = section.get("primary_left") or {}
                     primary = section.get("primary") or {}
-                    card_h = transit_card_height(primary, inner_w, wrap_text=False)
-                    card = TransitCard(
-                        primary,
+                    y = self._append_tile_row(
+                        y,
+                        pad,
                         inner_w,
-                        tag="HBLR",
-                        empty_text="No departures",
+                        card_width,
+                        [
+                            (primary_left, "HBLR", "No departures"),
+                            (primary, "HBLR", "No departures"),
+                        ],
                         wrap_text=False,
                     )
-                    card.frame = (pad, y, inner_w, card_h)
-                    self.scroll.add_subview(card)
-                    y += card_h + CARD_GAP
+                    y += CARD_GAP
 
                     tiles = []
                     for conn in section.get("connections") or []:
@@ -2647,6 +2669,90 @@ if HAS_UI:
                 card.frame = (pad, y, inner_w, card.height)
                 self.scroll.add_subview(card)
                 y += card.height + CARD_GAP
+            return y + pad
+
+        def _njt_bus_board(self, stop_id):
+            from lib.njt_bus import empty_board
+
+            return (self._cache.get("njt_bus_boards") or {}).get(
+                stop_id
+            ) or empty_board(stop_id)
+
+        def _njt_bus_stop_tapped(self, sender):
+            from lib.njt_bus import open_mybus_sms
+
+            stop_id = getattr(sender, "stop_id", None)
+            if not stop_id:
+                return
+            open_mybus_sms(stop_id)
+            log_event("NJTBUS text {} → 69287".format(stop_id))
+
+        def _refresh_step_njt_bus(self, refresh_id):
+            if refresh_id != self._refresh_gen:
+                return
+            payload = {"refresh_id": refresh_id, "tab": "njt_bus", "error": None}
+            try:
+                from lib.njt_bus import fetch_all_transit_boards
+
+                log_event("step: fetch NJTb Transit boards")
+                payload["njt_bus_boards"] = fetch_all_transit_boards()
+                log_event("step: NJTb Transit ok")
+            except Exception as exc:
+                payload["error"] = str(exc)
+                log_event("NJTb Transit fetch failed: {}".format(exc))
+                log_event(traceback.format_exc())
+            if refresh_id != self._refresh_gen:
+                self._finish_refresh(refresh_id)
+                return
+            try:
+                self._apply_tab_refresh_payload(payload)
+            finally:
+                self._finish_refresh(refresh_id)
+
+        def _paint_njt_bus(self, pad, inner_w, card_width, partial=False):
+            if partial:
+                return pad
+            from lib.njt_bus import stop_button_title, stops_by_direction
+
+            y = pad
+            btn_w = max(96, min(128, card_width - 8))
+            for title, stops in stops_by_direction():
+                header = SectionHeader(title)
+                header.frame = (pad, y, inner_w, SECTION_HEADER_HEIGHT)
+                self.scroll.add_subview(header)
+                y += SECTION_HEADER_HEIGHT + CARD_GAP
+                for spec in stops:
+                    stop_id = spec["stop_id"]
+                    board = self._njt_bus_board(stop_id)
+                    card_w = max(120, inner_w - btn_w - CARD_GAP)
+                    card_h = transit_card_height(board, card_w, wrap_text=False)
+                    row_h = max(card_h, 52)
+
+                    btn = ui.Button(title=stop_button_title(stop_id))
+                    btn.stop_id = stop_id
+                    btn.font = ("<system>", 11)
+                    try:
+                        btn.title_number_of_lines = 2
+                    except Exception:
+                        pass
+                    btn.background_color = TAB_INACTIVE_BG
+                    btn.tint_color = COLORS["text"]
+                    btn.corner_radius = 10
+                    btn.action = self._njt_bus_stop_tapped
+                    btn.frame = (pad, y + (row_h - 52) // 2, btn_w, 52)
+                    self.scroll.add_subview(btn)
+
+                    card = TransitCard(
+                        board,
+                        card_w,
+                        tag="BUS",
+                        empty_text="No matching lines",
+                        wrap_text=False,
+                    )
+                    card.frame = (pad + btn_w + CARD_GAP, y, card_w, row_h)
+                    self.scroll.add_subview(card)
+                    y += row_h + CARD_GAP
+                y += SECTION_GAP
             return y + pad
 
     def _needs_ui_handoff():

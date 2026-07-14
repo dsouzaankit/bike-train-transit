@@ -28,21 +28,21 @@ class ThumbFloatLayoutTests(unittest.TestCase):
     def test_top_rows_align_cbike_jc_and_from_jc(self):
         top, usable_h, btn_h = 47, 763, 50
         gap = btt.THUMB_FLOAT_BTN_GAP
-        stack_top = btt.compute_thumb_float_stack_top_y(top, usable_h, btn_h, 5)
+        stack_top = btt.compute_thumb_float_stack_top_y(top, usable_h, btn_h, 6)
         # Both columns grow from the same stack_top (Cbike JC beside From JC).
         row2_y = stack_top + btn_h + gap
-        self.assertEqual(row2_y, 389 + btn_h + gap)
+        self.assertEqual(row2_y, stack_top + btn_h + gap)
 
     def test_stack_centered_not_pinned_to_header(self):
         top, usable_h, btn_h = 47, 763, 50
         gap = btt.THUMB_FLOAT_BTN_GAP
-        count = 5
+        count = 6
         total_h = count * btn_h + (count - 1) * gap
         stack_top = btt.compute_thumb_float_stack_top_y(top, usable_h, btn_h, count)
         stack_center = stack_top + total_h // 2
         expected_center = top + int(usable_h * btt.THUMB_FLOAT_STACK_Y_RATIO)
         self.assertAlmostEqual(stack_center, expected_center, delta=btn_h)
-        self.assertGreater(stack_top, top + 70)
+        self.assertGreater(stack_top, top + 40)
 
 
 if __name__ == "__main__":

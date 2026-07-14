@@ -14,6 +14,12 @@ _LSP_PRIMARY = {
     "direction": "northbound",
 }
 
+_GARFIELD_PRIMARY = {
+    "mode": "hblr",
+    "station": "Garfield Avenue",
+    "direction": "northbound",
+}
+
 # Outbound from JC: one LSP primary, two PATH catchment boards.
 _HBLR_TO_PATH_CONNECTIONS = (
     {
@@ -323,6 +329,7 @@ def _hblr_board_for_spec(spec, now=None):
 
 
 def _build_hblr_to_path_section(path_bundle, fetch_json=None, now=None):
+    primary_left = _hblr_board_for_spec(_GARFIELD_PRIMARY, now=now)
     primary = _hblr_board_for_spec(_LSP_PRIMARY, now=now)
     connections = []
     for cfg in _HBLR_TO_PATH_CONNECTIONS:
@@ -347,6 +354,7 @@ def _build_hblr_to_path_section(path_bundle, fetch_json=None, now=None):
         "id": "hblr_to_path",
         "title": "HBLR → PATH",
         "layout": "shared_primary",
+        "primary_left": primary_left,
         "primary": primary,
         "connections": connections,
     }

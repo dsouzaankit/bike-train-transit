@@ -56,6 +56,10 @@ _STATION_NORTH_BRANCH_PHASE = {
     "Exchange Place": 1,
     "Newport": 0,
 }
+# Northbound upstream stations not in the PDF: derive from LSP minus run time.
+NORTH_UPSTREAM_FROM = {
+    "Garfield Avenue": ("Liberty State Park", 3),
+}
 # Southbound: merged PDF times split by service-day order (see _south_labeled_explicit).
 _STATION_SOUTH_BRANCH_PHASE: dict[str, int] = {}
 _UPSTREAM_SOUTH_STATIONS = frozenset(
@@ -588,6 +592,23 @@ def upcoming_departures(
     """Build offline train dicts from PDF timetable (+ branch headway fill)."""
     now = now or datetime.datetime.now()
     label = station["label"]
+
+    upstream = NORTH_UPSTREAM_FROM.get(label)
+    if upstream and travel_direction == "northbound":
+        base_label, run_ahead = upstream
+        base_trains = upcoming_departures(
+            {"label": base_label}, travel_direction, now, count + 10
+        )
+        trains = []
+        for train in base_trains:
+            minutes = train.get("minutes")
+            if minutes is None:
+                continue
+            adjusted = minutes - run_ahead
+            if adjusted < 0:
+                continue
+            trains.append(_train_dict(adjusted, train.get("destination") or "?"))
+        return trains[: max(1, count)]
 
     if travel_direction == "to_liberty_state_park" and label in SOUTH_BRANCH_OFFSETS:
         return _south_branch_trains(label, now, count)

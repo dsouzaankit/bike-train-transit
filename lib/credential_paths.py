@@ -7,28 +7,42 @@ import json
 import os
 
 
+def _safe_cwd() -> str | None:
+    try:
+        cwd = os.getcwd()
+    except OSError:
+        return None
+    return cwd if isinstance(cwd, str) and cwd else None
+
+
 def credential_roots() -> list[str]:
     """Project roots that may hold transit_credentials.json / njt_credentials.json."""
     roots: list[str] = []
     lib_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(lib_dir)
-    for candidate in (project_root, os.getcwd()):
-        if candidate and candidate not in roots:
-            roots.append(candidate)
+    candidates = [project_root, _safe_cwd()]
     try:
         from lib import log_paths
 
-        app_root = log_paths.app_root()
-        if app_root not in roots:
-            roots.append(app_root)
+        candidates.append(log_paths.app_root())
     except Exception:
         pass
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate and candidate not in roots:
+            roots.append(candidate)
     return roots
 
 
 def load_json_credential(filename: str) -> dict | None:
+    if not isinstance(filename, str) or not filename:
+        return None
     for root in credential_roots():
-        path = os.path.join(root, filename)
+        if not isinstance(root, str) or not root:
+            continue
+        try:
+            path = os.path.join(root, filename)
+        except TypeError:
+            continue
         try:
             with open(path, "r", encoding="utf-8") as fh:
                 data = json.load(fh)

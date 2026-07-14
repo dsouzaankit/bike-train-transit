@@ -184,6 +184,22 @@ class OfflineScheduleTrainsTests(unittest.TestCase):
                 % (station, direction, trains[0].get("minutes")),
             )
 
+    def test_garfield_northbound_is_three_minutes_before_lsp(self):
+        """Garfield → Liberty State Park official northbound runtime is 3 minutes."""
+        now = datetime.datetime(2026, 6, 29, 11, 24)
+        garfield = _offline_board(
+            "Garfield Avenue", "northbound", now=now, raw_pool=6
+        ).get("trains") or []
+        lsp = _offline_board(
+            "Liberty State Park", "northbound", now=now, raw_pool=6
+        ).get("trains") or []
+
+        self.assertGreaterEqual(len(garfield), 3)
+        self.assertGreaterEqual(len(lsp), 3)
+        for gar_train, lsp_train in zip(garfield[:3], lsp[:3]):
+            self.assertEqual(gar_train["destination"], lsp_train["destination"])
+            self.assertEqual(gar_train["minutes"] + 3, lsp_train["minutes"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

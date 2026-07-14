@@ -23,6 +23,27 @@ class CredentialPathsTests(unittest.TestCase):
                 data = credential_paths.load_json_credential("transit_credentials.json")
             self.assertEqual(data.get("api_key"), "test-key-123")
 
+    def test_credential_roots_skips_none_app_root(self):
+        with mock.patch(
+            "lib.log_paths.app_root",
+            return_value=None,
+        ):
+            roots = credential_paths.credential_roots()
+        self.assertTrue(all(isinstance(r, str) and r for r in roots))
+
+    def test_load_json_credential_ignores_none_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "transit_credentials.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump({"api_key": "ok"}, fh)
+            with mock.patch.object(
+                credential_paths,
+                "credential_roots",
+                return_value=[None, "", tmp],
+            ):
+                data = credential_paths.load_json_credential("transit_credentials.json")
+            self.assertEqual(data.get("api_key"), "ok")
+
     def test_transit_has_api_key_reads_credential_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "transit_credentials.json")
@@ -31,6 +52,15 @@ class CredentialPathsTests(unittest.TestCase):
             with mock.patch.object(credential_paths, "credential_roots", return_value=[tmp]):
                 with mock.patch.dict(os.environ, {}, clear=True):
                     self.assertTrue(transit_app.has_api_key())
+
+    def test_transit_has_api_key_false_when_roots_include_none(self):
+        with mock.patch.object(
+            credential_paths,
+            "credential_roots",
+            return_value=[None],
+        ):
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertFalse(transit_app.has_api_key())
 
 
 class LocalDeployCredentialTests(unittest.TestCase):

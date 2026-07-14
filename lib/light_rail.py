@@ -57,6 +57,12 @@ HBLR_STATIONS = {
         "phase": 0,
     },
     # Upstream stations — live boards (Transit → NJT → PDF) for HBLR↔PATH tab.
+    "Garfield Avenue": {
+        "label": "Garfield Avenue",
+        "njt_stop": "Garfield Avenue",
+        "transit_stop_id": "NJTR:3113",
+        "phase": 0,
+    },
     "Liberty State Park": {
         "label": "Liberty State Park",
         "njt_stop": "Liberty State Park",
