@@ -22,6 +22,7 @@ Disable data sources (full UI otherwise):
 import argparse
 import json
 import os
+import socket
 import sys
 import threading
 import time
@@ -44,102 +45,14 @@ except ImportError:
 # --- edit these ---
 APP_TITLE = "JC <-> NYC Transit"
 REGION = "JC"
-STATIONS = [
-    "Dixon Mills",
-    "Montgomery St",
-    "Brunswick & 6th",
-    "Monmouth & 6th",
-    "Jersey & 6th St",
-    "Newport PATH",
-    "Washington St",
-    "City Hall",
-    "Grove St PATH",
-    "Van Vorst Park",
-    "Exchange Pl",
-    "JC Medical Center",
-    "Liberty Light Rail",
-    "York St & Marin Blvd",
-    "Marin Light Rail",
-    "Communipaw & Berry Lane",
-    "Arlington Ave & Bramhall Ave",
-    "Garfield Light Rail",
-    "Carteret Ave & Arlington Ave",
-    "Pacific Ave & Communipaw Ave",
-    "Lafayette Park",
-    "Dr. Lena Edwards Park",
-    "MLK Dr & Bramhall Ave",
-    "Astor Place",
-]
-# Shorter labels for compact UI (same order as STATIONS). Use \n for a two-line name.
-STATION_LABELS = [
-    "Dixon Mills",
-    "Montgomery",
-    "Brunswick",
-    "Monmouth",
-    "Jersey & 6th",
-    "Newport PATH",
-    "Washington St",
-    "City Hall",
-    "Grove St PATH",
-    "Van Vorst\nPark",
-    "Exchange Pl",
-    "JC\nMedical Center",
-    "Liberty\nLight Rail",
-    "York St\n& Marin",
-    "Marin\nLight Rail",
-    "Communipaw\n& Berry Ln",
-    "Arlington\n& Bramhall",
-    "Garfield\nLight Rail",
-    "Carteret\n& Arlington",
-    "Pacific\n& Communipaw",
-    "Lafayette\nPark",
-    "Lena Edwards\nPark",
-    "MLK Dr\n& Bramhall",
-    "Astor Place",
-]
-# Snapshot indices (matches STATIONS order above):
-#   0 Dixon Mills  1 Montgomery  |  2 Brunswick  3 Monmouth  4 Jersey & 6th
-#   5 Newport PATH  6 Washington  |  7 City Hall  8 Grove St PATH
-#   9 Van Vorst Park  10 Exchange Pl  |  11 JC Medical Center  12 Liberty Light Rail
-#  13 York St & Marin Blvd  14 Marin Light Rail
-#  15 Communipaw & Berry Ln  16 Arlington & Bramhall  |  17 Garfield  18 Carteret & Arlington
-#  19 Pacific & Communipaw (own row, blank 2nd cell)  |  20 Lafayette Park  21 Lena Edwards Park
-#  22 MLK & Bramhall  23 Astor Place
-#
-# Cbike JC tab (indices 0–14):
-# Group 1 — 6th St (2x2, empty cell beside Jersey)
-# Group 2 — Newport PATH, Washington St
-# Group 3 — Dixon Mills, Montgomery St
-GRID_GROUPS = [
-    [(0, 1)],              # Group 3
-    [(2, 3), (4, None)],   # Group 1
-    [(5, 6)],              # Group 2
-    [(7, 8)],              # City Hall, Grove St PATH
-    [(9, 10)],             # Van Vorst Park, Exchange Pl
-    [(13, 14)],            # York St & Marin Blvd, Marin Light Rail
-    [(11, 12)],            # JC Medical Center, Liberty Light Rail
-]
-# Cbike S JC tab (indices 15–23) — south JC stations
-CBIKE_S_GRID_GROUPS = [
-    [(15, 16)],            # Communipaw & Berry Ln, Arlington & Bramhall
-    [(17, 18)],            # Garfield Light Rail, Carteret & Arlington
-    [(19, None)],          # Pacific & Communipaw (blank 2nd cell)
-    [(20, 21)],            # Lafayette Park, Lena Edwards Park
-    [(22, 23)],            # MLK Dr & Bramhall, Astor Place
-]
+# Per-tab Citibike lists / grids / separate snapshot caches — see lib/citibike_stations.py
+from lib.citibike_stations import (  # noqa: E402
+    CBIKE_TAB_CONFIG,
+    CBIKE_TAB_KEYS,
+    STATION_LABELS,
+    STATIONS,
+)
 
-
-def _build_grid_slots(groups):
-    slots = []
-    for row_pair in groups:
-        for left, right in row_pair:
-            slots.append(left)
-            slots.append(right)
-    return slots
-
-
-GRID_SLOTS = _build_grid_slots(GRID_GROUPS)
-CBIKE_S_GRID_SLOTS = _build_grid_slots(CBIKE_S_GRID_GROUPS)
 ALERT_MIN_BIKES = 2
 ALERT_MIN_DOCKS = 2
 # --- end edit ---
@@ -170,6 +83,7 @@ THUMB_FLOAT_STACK_Y_RATIO = 0.65  # stack center — lower half for thumb reach
 THUMB_FLOAT_BTN_H_BASE = 50
 THUMB_FLOAT_TAB_W_BASE = 100
 THUMB_FLOAT_SCALE_MAX = 1.12
+TAB_TAP_DEBOUNCE_SEC = 0.35  # guard Pythonista UI bridge from rapid retaps
 TAB_BUSY_BG = "#252b33"  # tab pills while refresh in progress
 TAB_INACTIVE_BG = "#2a3441"  # docked inactive + thumb-float idle
 
@@ -180,8 +94,9 @@ SHORTCUT_URL = "pythonista3://bike_train_transit/bike_train_transit.py?action=ru
 
 GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
+_debug_port_in_use = LAN_DEBUG_PORT
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "njt-bus-v107"
+BUILD_TAG = "hob-mt-v108"
 
 TAB_TRANSIT_JOBS = {
     "from_jc": ("pathAll", "subway"),
@@ -190,17 +105,21 @@ TAB_TRANSIT_JOBS = {
     "tunnels": ("tunnels",),
     "mt_to_jc": ("pathAll",),
     "njt_bus": (),
+    "hob_mt": (),
 }
 
 TAB_CACHE_KEYS = {
-    "cbike_jc": ("snapshots",),
-    "cbike_s": ("snapshots",),
+    "cbike_jc": ("snapshots_jc",),
+    "cbike_s": ("snapshots_s",),
+    "cbike_hob": ("snapshots_hob",),
+    "cbike_nyc": ("snapshots_nyc",),
     "from_jc": ("path_boards", "path_33rd_boards", "subway_boards"),
     "to_jc": ("path_nj_boards", "subway_to_jc_boards"),
     "hblr_path": ("hblr_path_sections", "path_exchange_wtc", "subway_wtc_north"),
     "tunnels": ("tunnel_boards",),
     "mt_to_jc": ("mt_to_jc_rows",),
     "njt_bus": ("njt_bus_boards",),
+    "hob_mt": ("hob_mt_sections",),
 }
 
 
@@ -355,7 +274,23 @@ def setup_debug(mode="full"):
 def _lan_debug_url(path="/"):
     from lib.net_util import format_lan_debug_url
 
-    return format_lan_debug_url(LAN_DEBUG_PORT, path, listen_host=LISTEN_HOST)
+    return format_lan_debug_url(_debug_port_in_use, path, listen_host=LISTEN_HOST)
+
+
+def _can_bind_port(host, port):
+    """Best-effort probe: True when host:port is currently bindable."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((host, int(port)))
+        return True
+    except OSError:
+        return False
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
 
 
 def debug_status():
@@ -382,18 +317,27 @@ def debug_status():
 
 
 def start_debug_server(safe_mode=False):
-    global _debug_started
+    global _debug_started, _debug_port_in_use
     if not LAN_DEBUG_ENABLED or _debug_started:
         return
     from lib.lan_debug_server import start_lan_debug_server_thread
 
+    # If default LAN port is busy (e.g., another app), try nearby fallback ports.
+    chosen = LAN_DEBUG_PORT
+    for port in [LAN_DEBUG_PORT, LAN_DEBUG_PORT + 1, LAN_DEBUG_PORT + 2, LAN_DEBUG_PORT + 3]:
+        if _can_bind_port(LISTEN_HOST, port):
+            chosen = port
+            break
+    _debug_port_in_use = chosen
     start_lan_debug_server_thread(
         LISTEN_HOST,
-        LAN_DEBUG_PORT,
+        chosen,
         safe_mode=safe_mode,
         status_fn=debug_status,
     )
     _debug_started = True
+    if chosen != LAN_DEBUG_PORT:
+        log_event("LAN debug port {} busy; using {}".format(LAN_DEBUG_PORT, chosen))
     banner = "LAN debug: " + _lan_debug_url()
     print(banner, flush=True)
     log_event(banner)
@@ -581,9 +525,9 @@ def fetch_transit_payload(url):
     raise last_error
 
 
-def _placeholder_snapshot(label="No data"):
+def _placeholder_snapshot(label="No data", region=None):
     return {
-        "region": REGION,
+        "region": region or REGION,
         "name": label,
         "label": label,
         "bikes": 0,
@@ -613,15 +557,20 @@ def resolve_id(raw, by_id, by_name):
     raise ValueError("Unknown station: %r" % raw)
 
 
-def get_snapshots():
+def get_snapshots(stations=None, labels=None, region=None):
+    """Build dock snapshots for one station list (default: all STATIONS for CLI)."""
     from lib.debug_flags import is_active
+
+    station_list = list(stations if stations is not None else STATIONS)
+    label_list = list(labels if labels is not None else STATION_LABELS)
+    region_tag = region or REGION
 
     if not is_active("citibike"):
         log_event("debug: citibike inactive — placeholder dock cards")
         out = []
-        for index, raw in enumerate(STATIONS):
-            label = STATION_LABELS[index] if index < len(STATION_LABELS) else raw
-            snap = _placeholder_snapshot(label)
+        for index, raw in enumerate(station_list):
+            label = label_list[index] if index < len(label_list) else raw
+            snap = _placeholder_snapshot(label, region=region_tag)
             snap["name"] = raw
             out.append(snap)
         return out
@@ -633,7 +582,7 @@ def get_snapshots():
     }
 
     out = []
-    for index, raw in enumerate(STATIONS):
+    for index, raw in enumerate(station_list):
         sid = resolve_id(raw, by_id, by_name)
         st = status_by_id.get(sid)
         if not st:
@@ -643,10 +592,10 @@ def get_snapshots():
         docks = int(st.get("num_docks_available", 0))
         cap = bikes + docks
         fill = None if cap == 0 else round(100.0 * bikes / cap, 1)
-        label = STATION_LABELS[index] if index < len(STATION_LABELS) else raw
+        label = label_list[index] if index < len(label_list) else raw
         out.append(
             {
-                "region": REGION,
+                "region": region_tag,
                 "name": by_id.get(sid, raw),
                 "label": label,
                 "bikes": bikes,
@@ -661,6 +610,16 @@ def get_snapshots():
             }
         )
     return out
+
+
+def get_snapshots_for_tab(tab):
+    """GBFS snapshots for one Citibike tab only (separate refresh per tab)."""
+    cfg = CBIKE_TAB_CONFIG[tab]
+    return get_snapshots(
+        stations=cfg["stations"],
+        labels=cfg["labels"],
+        region=cfg["region"],
+    )
 
 
 def tagged_name(snapshot):
@@ -1040,16 +999,19 @@ if HAS_UI:
             self.border_color = COLORS["bad"] if alert else "#2a3441"
             self.height = CARD_HEIGHT
 
-            tag = make_label(REGION, font_size=10, bold=True, color=COLORS["accent"])
-            tag.frame = (8, 6, 28, 14)
+            region_tag = str(snapshot.get("region") or REGION)
+            tag_w = max(28, 8 + 8 * len(region_tag))
+            tag = make_label(region_tag, font_size=10, bold=True, color=COLORS["accent"])
+            tag.frame = (8, 6, tag_w, 14)
 
             label_text = snapshot["label"]
+            name_x = 8 + tag_w + 2
             if "\n" in label_text:
                 name = make_label(label_text, font_size=11, bold=True)
-                name.frame = (38, 2, card_width - 46, 28)
+                name.frame = (name_x, 2, card_width - name_x - 8, 28)
             else:
                 name = make_label(label_text, font_size=13, bold=True)
-                name.frame = (38, 4, card_width - 46, 18)
+                name.frame = (name_x, 4, card_width - name_x - 8, 18)
 
             filled = make_label(str(snapshot["bikes"]), font_size=24, bold=True)
             filled.text_color = COLORS["bad"] if snapshot["low_bikes"] else COLORS["filled"]
@@ -1125,6 +1087,23 @@ if HAS_UI:
         base = TRANSIT_LINE_ROW_HEIGHT if by_line else (28 if index == 0 else 24)
         return max(base, eta_h + 2, dest_h + 4)
 
+    def _transit_card_title_height(label, card_width, wrap_text):
+        title_w = max(1, card_width - 56)
+        if wrap_text:
+            return max(18, _measure_text(label or "", title_w, 13, True) + 2)
+        return 18
+
+    def _transit_card_header_height(board, card_width, wrap_text):
+        inner_w = max(1, card_width - 16)
+        title_h = _transit_card_title_height(board.get("label"), card_width, wrap_text)
+        if board.get("note"):
+            if wrap_text:
+                note_h = _measure_text(board.get("note"), inner_w, 10) + 6
+            else:
+                note_h = 12 + 4
+            return 6 + title_h + note_h
+        return 6 + title_h + 4
+
     def transit_card_height(board, card_width=300, wrap_text=True, eta_column_width=None):
         if board.get("tunnel_card"):
             rows = len(board.get("trains") or []) or 1
@@ -1133,12 +1112,7 @@ if HAS_UI:
                 return header_h + 24
             return header_h + rows * TUNNEL_ROW_HEIGHT + 10
 
-        inner_w = max(1, card_width - 16)
-        if wrap_text and board.get("note"):
-            note_h = _measure_text(board.get("note"), inner_w, 10) + 6
-        else:
-            note_h = 12 if board.get("note") else 0
-        header_h = 28 + note_h
+        header_h = _transit_card_header_height(board, card_width, wrap_text)
         if board.get("error"):
             return max(PATH_CARD_HEIGHT, header_h + 20)
         trains = board.get("trains") or []
@@ -1213,8 +1187,14 @@ if HAS_UI:
                 board, card_width, wrap_text=self._wrap, eta_column_width=self._eta_w
             )
 
-            name = make_label(board["label"], font_size=13, bold=True, wrap=False)
-            name.frame = (8, 6, card_width - 56, 18)
+            name = make_label(board["label"], font_size=13, bold=True, wrap=self._wrap)
+            if self._wrap:
+                name.frame = (8, 6, card_width - 56, 0)
+                name.size_to_fit()
+                title_bottom = 6 + name.height
+            else:
+                name.frame = (8, 6, card_width - 56, 18)
+                title_bottom = 24
 
             tag_text = "~" if board.get("estimated") else tag
             tag_label = make_label(tag_text, font_size=10, bold=True, color=COLORS["accent"], wrap=False)
@@ -1230,13 +1210,13 @@ if HAS_UI:
             error = board.get("error")
             self.add_subview(name)
             self.add_subview(tag_label)
-            y = 28
+            y = title_bottom + 4
             if board.get("note"):
                 note = make_label(board["note"], font_size=10, color=COLORS["muted"], wrap=self._wrap)
                 if self._wrap:
-                    note.frame = (8, 24, card_width - 16, 0)
+                    note.frame = (8, title_bottom, card_width - 16, 0)
                     note.size_to_fit()
-                    y = 24 + note.height + 6
+                    y = title_bottom + note.height + 6
                 else:
                     note.frame = (8, 24, card_width - 16, 12)
                     y = 36
@@ -1474,8 +1454,17 @@ if HAS_UI:
             self.name = APP_TITLE
             self._busy = False
             self._refresh_gen = 0
+            self._tab_tap_lock_until = 0.0
+            self._pending_tab_refresh = None
             self._active_tab = "from_jc"
-            self._cache = {"snapshots": [], "njt_bus_boards": {}}
+            self._cache = {
+                "snapshots_jc": [],
+                "snapshots_s": [],
+                "snapshots_hob": [],
+                "snapshots_nyc": [],
+                "njt_bus_boards": {},
+                "hob_mt_sections": [],
+            }
             self._thumb_float_active = False
             self._thumb_float_startup_pending = False
 
@@ -1496,39 +1485,51 @@ if HAS_UI:
             self.tab_bar.background_color = COLORS["bg"]
             self.tab_cbike_btn = SectionPill("Cbike JC")
             self.tab_cbike_s_btn = SectionPill("Cbike S JC")
+            self.tab_cbike_hob_btn = SectionPill("Cbike HOB")
+            self.tab_cbike_nyc_btn = SectionPill("Cbike NYC")
             self.tab_from_btn = SectionPill("From JC")
             self.tab_to_btn = SectionPill("To JC")
             self.tab_hblr_path_btn = SectionPill("HBLR↔PATH")
             self.tab_tunnels_btn = SectionPill("Tunnels")
             self.tab_mt_to_jc_btn = SectionPill("MT→JC")
             self.tab_njt_bus_btn = SectionPill("NJTb")
+            self.tab_hob_mt_btn = SectionPill("HOB↔MT")
             for btn in (
                 self.tab_cbike_btn,
                 self.tab_cbike_s_btn,
+                self.tab_cbike_hob_btn,
+                self.tab_cbike_nyc_btn,
                 self.tab_from_btn,
                 self.tab_to_btn,
                 self.tab_hblr_path_btn,
                 self.tab_tunnels_btn,
                 self.tab_mt_to_jc_btn,
                 self.tab_njt_bus_btn,
+                self.tab_hob_mt_btn,
             ):
                 btn._owner = self
             self.tab_cbike_btn.action = self._tab_cbike_tapped
             self.tab_cbike_s_btn.action = self._tab_cbike_s_tapped
+            self.tab_cbike_hob_btn.action = self._tab_cbike_hob_tapped
+            self.tab_cbike_nyc_btn.action = self._tab_cbike_nyc_tapped
             self.tab_from_btn.action = self._tab_from_tapped
             self.tab_to_btn.action = self._tab_to_tapped
             self.tab_hblr_path_btn.action = self._tab_hblr_path_tapped
             self.tab_tunnels_btn.action = self._tab_tunnels_tapped
             self.tab_mt_to_jc_btn.action = self._tab_mt_to_jc_tapped
             self.tab_njt_bus_btn.action = self._tab_njt_bus_tapped
+            self.tab_hob_mt_btn.action = self._tab_hob_mt_tapped
             self.tab_bar.add_subview(self.tab_cbike_btn)
             self.tab_bar.add_subview(self.tab_cbike_s_btn)
+            self.tab_bar.add_subview(self.tab_cbike_hob_btn)
+            self.tab_bar.add_subview(self.tab_cbike_nyc_btn)
             self.tab_bar.add_subview(self.tab_from_btn)
             self.tab_bar.add_subview(self.tab_to_btn)
             self.tab_bar.add_subview(self.tab_hblr_path_btn)
             self.tab_bar.add_subview(self.tab_tunnels_btn)
             self.tab_bar.add_subview(self.tab_mt_to_jc_btn)
             self.tab_bar.add_subview(self.tab_njt_bus_btn)
+            self.tab_bar.add_subview(self.tab_hob_mt_btn)
 
             self.scroll = ui.ScrollView()
             self.scroll.background_color = COLORS["bg"]
@@ -1546,20 +1547,28 @@ if HAS_UI:
             return (
                 self.tab_cbike_btn,
                 self.tab_cbike_s_btn,
+                self.tab_cbike_hob_btn,
+                self.tab_cbike_nyc_btn,
                 self.tab_from_btn,
                 self.tab_to_btn,
                 self.tab_hblr_path_btn,
                 self.tab_tunnels_btn,
                 self.tab_mt_to_jc_btn,
                 self.tab_njt_bus_btn,
+                self.tab_hob_mt_btn,
             )
 
         def _thumb_float_cbike_buttons(self):
-            """Top → bottom: Cbike JC beside From JC, then Cbike S JC."""
-            return (self.tab_cbike_btn, self.tab_cbike_s_btn)
+            """Top → bottom: Cbike JC beside From JC, then S JC, HOB, NYC."""
+            return (
+                self.tab_cbike_btn,
+                self.tab_cbike_s_btn,
+                self.tab_cbike_hob_btn,
+                self.tab_cbike_nyc_btn,
+            )
 
         def _thumb_float_transit_buttons(self):
-            """Top → bottom: From JC, …, NJTb at thumb."""
+            """Top → bottom: From JC … HOB↔MT at thumb."""
             return (
                 self.tab_from_btn,
                 self.tab_to_btn,
@@ -1567,6 +1576,7 @@ if HAS_UI:
                 self.tab_tunnels_btn,
                 self.tab_mt_to_jc_btn,
                 self.tab_njt_bus_btn,
+                self.tab_hob_mt_btn,
             )
 
         def _rehome_button(self, btn, parent):
@@ -1749,12 +1759,25 @@ if HAS_UI:
 
         def _dock_and_select_tab(self, tab):
             try:
+                self._set_tab_tap_lock()
                 self._exit_thumb_float(repaint=False)
                 self._set_tab(tab, force=True)
-                self.refresh_tab(tab)
+                if tab == "hob_mt":
+                    # One-tap startup load: queue refresh via poll loop instead of running
+                    # heavy fetch work in the touch callback path.
+                    self._pending_tab_refresh = tab
+                    self.status_label.text = "HOB↔MT loading…"
+                else:
+                    self.refresh_tab(tab)
             except Exception as exc:
                 log_event("section tap dock failed: {}".format(exc))
                 log_event(traceback.format_exc())
+
+        def _set_tab_tap_lock(self, sec=TAB_TAP_DEBOUNCE_SEC):
+            self._tab_tap_lock_until = time.monotonic() + max(0.0, float(sec))
+
+        def _tab_tap_locked(self):
+            return time.monotonic() < self._tab_tap_lock_until
 
         def start_remote_poll(self):
             self._poll_remote_control()
@@ -1770,12 +1793,15 @@ if HAS_UI:
             for tab, btn in (
                 ("cbike_jc", self.tab_cbike_btn),
                 ("cbike_s", self.tab_cbike_s_btn),
+                ("cbike_hob", self.tab_cbike_hob_btn),
+                ("cbike_nyc", self.tab_cbike_nyc_btn),
                 ("from_jc", self.tab_from_btn),
                 ("to_jc", self.tab_to_btn),
                 ("hblr_path", self.tab_hblr_path_btn),
                 ("tunnels", self.tab_tunnels_btn),
                 ("mt_to_jc", self.tab_mt_to_jc_btn),
                 ("njt_bus", self.tab_njt_bus_btn),
+                ("hob_mt", self.tab_hob_mt_btn),
             ):
                 if getattr(btn, "_pressed", False):
                     continue
@@ -1818,11 +1844,16 @@ if HAS_UI:
         def _on_section_tap(self, tab):
             if self._busy:
                 return
+            if self._tab_tap_locked():
+                log_event("tab tap ignored (debounce)")
+                return
             if self._thumb_float_active:
-                ui.delay(lambda: self._dock_and_select_tab(tab), 0)
+                self._set_tab_tap_lock()
+                self._dock_and_select_tab(tab)
                 return
             if self._active_tab != tab:
                 self._set_tab(tab)
+            self._set_tab_tap_lock()
             self.refresh_tab(tab)
 
         def _tab_cbike_tapped(self, sender):
@@ -1830,6 +1861,12 @@ if HAS_UI:
 
         def _tab_cbike_s_tapped(self, sender):
             self._on_section_tap("cbike_s")
+
+        def _tab_cbike_hob_tapped(self, sender):
+            self._on_section_tap("cbike_hob")
+
+        def _tab_cbike_nyc_tapped(self, sender):
+            self._on_section_tap("cbike_nyc")
 
         def _tab_from_tapped(self, sender):
             self._on_section_tap("from_jc")
@@ -1849,12 +1886,20 @@ if HAS_UI:
         def _tab_njt_bus_tapped(self, sender):
             self._on_section_tap("njt_bus")
 
+        def _tab_hob_mt_tapped(self, sender):
+            self._on_section_tap("hob_mt")
+
         def _poll_remote_control(self):
             import ui
 
             try:
                 from lib.app_control import clear_control, is_refresh_requested
 
+                if self._pending_tab_refresh and not self._busy:
+                    tab = self._pending_tab_refresh
+                    self._pending_tab_refresh = None
+                    log_event("startup queued refresh: {}".format(tab))
+                    self.refresh_tab(tab)
                 if is_refresh_requested():
                     if self._busy:
                         log_event("LAN refresh queued (busy)")
@@ -1932,7 +1977,9 @@ if HAS_UI:
                 self._log_tab_refresh(tab, payload)
                 self._paint_active_tab()
                 app_state.update_refresh(
-                    self._cache.get("snapshots") or [],
+                    self._cache.get("snapshots_jc")
+                    or self._cache.get("snapshots")
+                    or [],
                     path_boards=self._cache.get("path_boards"),
                     subway_boards=self._cache.get("subway_boards"),
                     path_33rd_boards=self._cache.get("path_33rd_boards"),
@@ -1950,17 +1997,17 @@ if HAS_UI:
                 log_event(traceback.format_exc())
 
         def _log_tab_refresh(self, tab, payload):
-            if tab in ("cbike_jc", "cbike_s"):
-                grid_slots = CBIKE_S_GRID_SLOTS if tab == "cbike_s" else GRID_SLOTS
-                snapshots = payload.get("snapshots") or []
+            if tab in CBIKE_TAB_KEYS:
+                cfg = CBIKE_TAB_CONFIG[tab]
+                cache_key = cfg["cache_key"]
+                grid_slots = cfg["slots"]
+                snapshots = payload.get(cache_key) or []
                 for slot in grid_slots:
                     if slot is None or slot >= len(snapshots):
                         continue
                     snapshot = snapshots[slot]
                     log_event(_snapshot_log_line(snapshot))
-                log_event(
-                    "Refresh OK: {} stations".format(len(payload.get("snapshots") or []))
-                )
+                log_event("Refresh OK: {} stations".format(len(snapshots)))
                 return
             if tab == "from_jc":
                 self._log_transit_boards("PATH", payload.get("path_boards"))
@@ -2004,6 +2051,12 @@ if HAS_UI:
                     "NJTBUS",
                     list((payload.get("njt_bus_boards") or {}).values()),
                 )
+            elif tab == "hob_mt":
+                for section in payload.get("hob_mt_sections") or []:
+                    self._log_transit_boards(
+                        "HOBMT",
+                        section.get("boards") or [],
+                    )
 
         def _finish_refresh(self, refresh_id):
             if refresh_id != self._refresh_gen:
@@ -2042,22 +2095,26 @@ if HAS_UI:
                 self._finish_refresh(refresh_id)
 
         def _refresh_step_bikes(self, refresh_id, tab):
-            """Main thread only — Cbike tab GBFS fetch (shared cache for JC + S)."""
+            """Main thread only — Citibike GBFS for one tab's station set."""
             if refresh_id != self._refresh_gen:
                 return
             if not self._busy:
                 log_event("step: bikes #{} skipped (not busy)".format(refresh_id))
                 return
+            cfg = CBIKE_TAB_CONFIG[tab]
+            cache_key = cfg["cache_key"]
             payload = {
                 "refresh_id": refresh_id,
                 "tab": tab,
                 "error": None,
-                "snapshots": None,
+                cache_key: None,
             }
             try:
-                log_event("step: fetch bikes")
-                payload["snapshots"] = get_snapshots()
-                log_event("step: bikes ok ({})".format(len(payload["snapshots"] or [])))
+                log_event("step: fetch bikes ({})".format(tab))
+                payload[cache_key] = get_snapshots_for_tab(tab)
+                log_event(
+                    "step: bikes ok ({})".format(len(payload[cache_key] or []))
+                )
             except Exception as exc:
                 payload["error"] = str(exc)
                 log_event("Refresh failed: {}".format(payload["error"]))
@@ -2088,10 +2145,12 @@ if HAS_UI:
             self.status_label.text = "Updating..." + _cache_ttl_suffix()
             log_event("Refresh tab {} (#{})".format(tab, refresh_id))
             reset_stats()
-            if tab in ("cbike_jc", "cbike_s"):
+            if tab in CBIKE_TAB_KEYS:
                 ui.delay(lambda: self._refresh_step_bikes(refresh_id, tab), 0.05)
             elif tab == "njt_bus":
                 ui.delay(lambda: self._refresh_step_njt_bus(refresh_id), 0.05)
+            elif tab == "hob_mt":
+                ui.delay(lambda: self._refresh_step_hob_mt(refresh_id), 0.05)
             else:
                 ui.delay(lambda: self._refresh_step_tab_transit(refresh_id, tab), 0.05)
 
@@ -2404,13 +2463,15 @@ if HAS_UI:
             inner_w = width - pad * 2
             card_width = (inner_w - CARD_GAP * (CARD_COLUMNS - 1)) // CARD_COLUMNS
             try:
-                if self._active_tab == "cbike_jc":
+                if self._active_tab in CBIKE_TAB_KEYS:
+                    cfg = CBIKE_TAB_CONFIG[self._active_tab]
                     y = self._paint_cbike_grid(
-                        pad, inner_w, card_width, GRID_SLOTS, partial=partial
-                    )
-                elif self._active_tab == "cbike_s":
-                    y = self._paint_cbike_grid(
-                        pad, inner_w, card_width, CBIKE_S_GRID_SLOTS, partial=partial
+                        pad,
+                        inner_w,
+                        card_width,
+                        cfg["slots"],
+                        cache_key=cfg["cache_key"],
+                        partial=partial,
                     )
                 elif self._active_tab == "to_jc":
                     y = self._paint_to_jc(pad, inner_w, card_width, partial=partial)
@@ -2422,6 +2483,8 @@ if HAS_UI:
                     y = self._paint_tunnels(pad, inner_w, card_width, partial=partial)
                 elif self._active_tab == "njt_bus":
                     y = self._paint_njt_bus(pad, inner_w, card_width, partial=partial)
+                elif self._active_tab == "hob_mt":
+                    y = self._paint_hob_mt(pad, inner_w, card_width, partial=partial)
                 else:
                     y = self._paint_from_jc(pad, inner_w, card_width, partial=partial)
                 content_h = max(y, pad)
@@ -2432,12 +2495,15 @@ if HAS_UI:
                     tab_labels = {
                         "cbike_jc": "Cbike JC",
                         "cbike_s": "Cbike S JC",
+                        "cbike_hob": "Cbike HOB",
+                        "cbike_nyc": "Cbike NYC",
                         "from_jc": REGION,
                         "to_jc": "To JC",
                         "hblr_path": "JC HBLR ↔ PATH",
                         "mt_to_jc": "MT to JC",
                         "tunnels": "Tunnels",
                         "njt_bus": "NJTb",
+                        "hob_mt": "HOB↔MT",
                     }
                     self.status_label.text = "Updated %s · %s%s" % (
                         datetime.now().strftime("%I:%M:%S %p"),
@@ -2449,8 +2515,10 @@ if HAS_UI:
                 log_event(traceback.format_exc())
                 self.status_label.text = "UI error: %s" % exc
 
-        def _paint_cbike_grid(self, pad, inner_w, card_width, grid_slots, partial=False):
-            snapshots = self._cache.get("snapshots") or []
+        def _paint_cbike_grid(
+            self, pad, inner_w, card_width, grid_slots, cache_key="snapshots_jc", partial=False
+        ):
+            snapshots = self._cache.get(cache_key) or []
             rows = (len(grid_slots) + CARD_COLUMNS - 1) // CARD_COLUMNS
             for index, slot in enumerate(grid_slots):
                 col = index % CARD_COLUMNS
@@ -2752,6 +2820,64 @@ if HAS_UI:
                     card.frame = (pad + btn_w + CARD_GAP, y, card_w, row_h)
                     self.scroll.add_subview(card)
                     y += row_h + CARD_GAP
+                y += SECTION_GAP
+            return y + pad
+
+        def _refresh_step_hob_mt(self, refresh_id):
+            if refresh_id != self._refresh_gen:
+                return
+            if not self._busy:
+                return
+            payload = {
+                "refresh_id": refresh_id,
+                "tab": "hob_mt",
+                "error": None,
+                "hob_mt_sections": [],
+            }
+            try:
+                from lib.hob_mt import build_hob_mt_sections
+
+                log_event("step: HOB↔MT fetch")
+                payload["hob_mt_sections"] = build_hob_mt_sections(
+                    fetch_json,
+                    fetch_transit_json=fetch_transit_json,
+                    fetch_transit_payload=fetch_transit_payload,
+                    tunnel_boards_cached=self._cache.get("tunnel_boards") or [],
+                )
+                log_event(
+                    "step: HOB↔MT ok ({})".format(len(payload["hob_mt_sections"] or []))
+                )
+            except Exception as exc:
+                payload["error"] = str(exc)
+                log_event("HOB↔MT fetch failed: {}".format(exc))
+                log_event(traceback.format_exc())
+            if refresh_id != self._refresh_gen:
+                self._finish_refresh(refresh_id)
+                return
+            try:
+                self._apply_tab_refresh_payload(payload)
+            finally:
+                self._finish_refresh(refresh_id)
+
+        def _paint_hob_mt(self, pad, inner_w, card_width, partial=False):
+            if partial:
+                return pad
+            y = pad
+            for section in self._cache.get("hob_mt_sections") or []:
+                title = section.get("title") or "HOB↔MT"
+                header = SectionHeader(title)
+                header.frame = (pad, y, inner_w, SECTION_HEADER_HEIGHT)
+                self.scroll.add_subview(header)
+                y += SECTION_HEADER_HEIGHT + CARD_GAP
+                boards = section.get("boards") or []
+                if not boards:
+                    boards = [{"label": title, "trains": [], "note": "No data"}]
+                tiles = [
+                    (board, "MT", "None catchable", True) for board in boards
+                ]
+                y = self._append_tile_row(
+                    y, pad, inner_w, card_width, tiles, wrap_text=True
+                )
                 y += SECTION_GAP
             return y + pad
 

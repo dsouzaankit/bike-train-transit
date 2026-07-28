@@ -1,13 +1,14 @@
 # JC <-> NYC Transit
 
-Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **JC <-> NYC Transit** — tabs: **Cbike JC**, **Cbike S JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, and **NJTb**. Includes a Pythonista app, optional PC email alerts, and a LAN debug server for reading logs from your desktop.
+Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **JC <-> NYC Transit** — tabs: **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, **NJTb**, and **HOB↔MT**. Includes a Pythonista app, optional PC email alerts, and a LAN debug server for reading logs from your desktop.
 
 Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — no Citibike account login required.
 
 ## Features
 
-- **Eight tabs** — **Cbike JC**, **Cbike S JC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, and **NJTb**
-- **iPhone app** — compact 2-column Citibike grids on **Cbike JC** (15 downtown stations) and **Cbike S JC** (9 south stations)
+- **Eleven tabs** — **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, **NJTb**, and **HOB↔MT**
+- **iPhone app** — compact 2-column Citibike grids; **each Citibike tab refreshes its own GBFS station set** (JC 15 / S JC 9 / HOB 6 / NYC 5)
+- **HOB↔MT tab** — NJT bus Willow→NYC, PABT arrivals, subway catchable after Lincoln+walk offsets, NY Waterway Hoboken 14th, MTA M42/M50 (+15)
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
 - **PATH + subway connections** — From JC **33rd St** subway cards only show trains reachable after the earliest paired PATH arrival + walk time; **HBLR↔PATH** has **PATH + Subway via WTC** under **HBLR → PATH** (**WTC Cortlandt** / **WTC** northbound, catchable after **LSP HBLR +11** then **Exchange PATH +8** walk at WTC)
 - **HBLR ↔ PATH tab** — timed transfers; **Garfield Avenue** and **Liberty State Park** northbound HBLR cards side by side; **Transit App API** for HBLR live boards (see [Transit App API usage](#transit-app-api-usage))
@@ -742,7 +743,7 @@ Live bike data from:
 - `https://gbfs.citibikenyc.com/gbfs/en/station_information.json`
 - `https://gbfs.citibikenyc.com/gbfs/en/station_status.json`
 
-**Filled** = `num_bikes_available`
+**Filled** = `num_bikes_available`  
 **E-bikes** = `num_ebikes_available` (shown on every card as **E n** under filled bikes)
 **Empty** = `num_docks_available` (open docks)
 

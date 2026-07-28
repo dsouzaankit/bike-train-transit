@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""E-bike counts on all Citibike station cards."""
+"""E-bike counts on Citibike station cards (per-tab snapshot builder)."""
 
 import os
 import sys
@@ -39,6 +39,36 @@ class EbikeSnapshotTests(unittest.TestCase):
         self.assertEqual(len(snapshots), len(names))
         for index, snapshot in enumerate(snapshots):
             self.assertEqual(snapshot["ebikes"], index + 1)
+
+    def test_get_snapshots_for_tab_only_returns_that_tabs_stations(self):
+        cfg = btt.CBIKE_TAB_CONFIG["cbike_hob"]
+        names = list(cfg["stations"])
+        lookup_by_id = {str(i + 1): name for i, name in enumerate(names)}
+        lookup_by_name = {name.casefold(): str(i + 1) for i, name in enumerate(names)}
+
+        def fake_status():
+            return {
+                "data": {
+                    "stations": [
+                        {
+                            "station_id": str(i + 1),
+                            "num_bikes_available": 2,
+                            "num_ebikes_available": 1,
+                            "num_docks_available": 8,
+                            "is_renting": 1,
+                            "is_returning": 1,
+                        }
+                        for i in range(len(names))
+                    ]
+                }
+            }
+
+        with patch.object(btt, "station_lookup", return_value=(lookup_by_id, lookup_by_name)):
+            with patch.object(btt, "fetch_json", return_value=fake_status()):
+                snapshots = btt.get_snapshots_for_tab("cbike_hob")
+
+        self.assertEqual(len(snapshots), 6)
+        self.assertEqual(snapshots[0]["region"], "HOB")
 
 
 if __name__ == "__main__":
