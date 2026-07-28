@@ -43,7 +43,7 @@ except ImportError:
     HAS_UI = False
 
 # --- edit these ---
-APP_TITLE = "JC <-> NYC Transit"
+APP_TITLE = "JC/HOB <-> NYC Transit"
 REGION = "JC"
 # Per-tab Citibike lists / grids / separate snapshot caches — see lib/citibike_stations.py
 from lib.citibike_stations import (  # noqa: E402
@@ -1081,7 +1081,7 @@ if HAS_UI:
         eta_h = _measure_text(eta_text, eta_w, eta_size, eta_bold)
         line_x = 8 + eta_w - (4 if by_line else 0)
         if line_badge:
-            line_x += 22
+            line_x += _line_badge_size(train.get("line")) + 4
         dest_w = max(1, card_width - line_x - 8)
         dest_h = _measure_text(dest_text, dest_w, dest_size, dest_bold)
         base = TRANSIT_LINE_ROW_HEIGHT if by_line else (28 if index == 0 else 24)
@@ -1147,24 +1147,33 @@ if HAS_UI:
             )
         return max(PATH_CARD_HEIGHT, header_h + row_total + 8)
 
+    def _line_badge_size(line_val, size=18):
+        """Widen badges for bus lines like 126 / M42 so text isn't clipped to …."""
+        text = str(line_val or "").strip()
+        if len(text) <= 1:
+            return size
+        return max(size, 6 + 8 * len(text))
+
     def _add_line_badge(parent, line_val, x, y, size=18):
         from lib.subway_lines import subway_line_color, subway_line_text_color
 
+        width = _line_badge_size(line_val, size=size)
         badge = ui.View()
         badge.background_color = subway_line_color(line_val)
         badge.corner_radius = 4
-        badge.frame = (x, y, size, size)
+        badge.frame = (x, y, width, size)
         parent.add_subview(badge)
         label = make_label(
             str(line_val),
-            font_size=11,
+            font_size=11 if len(str(line_val or "")) <= 2 else 10,
             bold=True,
             color=subway_line_text_color(line_val),
             align=ui.ALIGN_CENTER,
+            wrap=False,
         )
-        label.frame = (0, 1, size, size - 2)
+        label.frame = (0, 1, width, size - 2)
         badge.add_subview(label)
-        return size + 4
+        return width + 4
 
     class TransitCard(ui.View):
         def __init__(
@@ -1183,6 +1192,7 @@ if HAS_UI:
             self.border_color = "#2a3441"
             self._eta_w = eta_column_width or ETA_COLUMN_WIDTH
             self._wrap = wrap_text
+            empty_text = board.get("empty_hint") or empty_text or "No trains"
             self.height = transit_card_height(
                 board, card_width, wrap_text=self._wrap, eta_column_width=self._eta_w
             )
@@ -1455,7 +1465,6 @@ if HAS_UI:
             self._busy = False
             self._refresh_gen = 0
             self._tab_tap_lock_until = 0.0
-            self._pending_tab_refresh = None
             self._active_tab = "from_jc"
             self._cache = {
                 "snapshots_jc": [],
@@ -1762,13 +1771,7 @@ if HAS_UI:
                 self._set_tab_tap_lock()
                 self._exit_thumb_float(repaint=False)
                 self._set_tab(tab, force=True)
-                if tab == "hob_mt":
-                    # One-tap startup load: queue refresh via poll loop instead of running
-                    # heavy fetch work in the touch callback path.
-                    self._pending_tab_refresh = tab
-                    self.status_label.text = "HOB↔MT loading…"
-                else:
-                    self.refresh_tab(tab)
+                self.refresh_tab(tab)
             except Exception as exc:
                 log_event("section tap dock failed: {}".format(exc))
                 log_event(traceback.format_exc())
@@ -1895,11 +1898,6 @@ if HAS_UI:
             try:
                 from lib.app_control import clear_control, is_refresh_requested
 
-                if self._pending_tab_refresh and not self._busy:
-                    tab = self._pending_tab_refresh
-                    self._pending_tab_refresh = None
-                    log_event("startup queued refresh: {}".format(tab))
-                    self.refresh_tab(tab)
                 if is_refresh_requested():
                     if self._busy:
                         log_event("LAN refresh queued (busy)")
@@ -2873,10 +2871,10 @@ if HAS_UI:
                 if not boards:
                     boards = [{"label": title, "trains": [], "note": "No data"}]
                 tiles = [
-                    (board, "MT", "None catchable", True) for board in boards
+                    (board, "MT", "None catchable", False) for board in boards
                 ]
                 y = self._append_tile_row(
-                    y, pad, inner_w, card_width, tiles, wrap_text=True
+                    y, pad, inner_w, card_width, tiles, wrap_text=False
                 )
                 y += SECTION_GAP
             return y + pad

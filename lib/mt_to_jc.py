@@ -217,10 +217,13 @@ def _gate_on_subway(subway, board, dep_label):
     """Keep PATH/HBLR empty when the row subway has no southbound departures."""
     if _subway_available(subway):
         return board
+    from lib.subway_trains import empty_hint_none_catchable
+
     out = dict(board or {"label": dep_label, "trains": []})
     out["trains"] = []
     out["note"] = "no %s yet" % subway.get("label", "subway")
     out["error"] = None
+    out["empty_hint"] = empty_hint_none_catchable(subway)
     return out
 
 
@@ -381,10 +384,13 @@ def _chain_hblr_from_path(subway, path_board, hblr_raw, offset, path_short, hblr
     if not _subway_available(subway):
         return _gate_on_subway(subway, hblr_raw, hblr_short)
     if not _earliest_minutes(path_board):
+        from lib.subway_trains import empty_hint_none_catchable
+
         out = dict(hblr_raw or {"label": hblr_short, "trains": []})
         out["trains"] = []
         out["note"] = "no %s yet" % path_short
         out["error"] = None
+        out["empty_hint"] = empty_hint_none_catchable(out)
         return out
     return resolve_transfer_board(
         path_board,

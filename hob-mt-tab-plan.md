@@ -28,13 +28,15 @@ Layout diagram: [`thumb-float-layout-hob-nyc.svg`](thumb-float-layout-hob-nyc.sv
 ## HOB↔MT tab
 
 1. NJT bus 126, 119 ETAs to NYC — Stop# 32084 (Willow Ave + 15th St)
-2. Port Authority bus terminal ETAs (bus 126, 119, 123) with gate nos.
-3. NYC Subway next catchable ETAs (`+4 + <NY-Lincoln-eta-from-tunnels-tab>` min offset):
-   - Filters: E to Queens, C northbound, 7 to Queens (**+5 min** offset)
+   + PABT **departures** (119/123/126 leaving terminal toward NJ; Transit `stop_departures`)
+   — Willow + PABT cards sit side-by-side
+2. NYC Subway next catchable ETAs (`+4 + <NY-Lincoln-eta>` == primary **LincTnl** + walk **+4**; card note `LincTnl +4`):
+   - Filters: E to Queens, 7 to Queens (**LincTnl +9** = +4 walk +5)
    - A northbound ETA at `50 St`
-   - 6 at `Grand Central-42 St` next catchable (chained, **+8 min** offset) north+south
+   - 6 at `Grand Central-42 St` next catchable (chained, **LincTnl +12** = +4 walk +8) north+south
    - 4/5 northbound ETAs at `51 St` + southbound ETAs at `33 St`
-4. NY Waterway `Hoboken 14th Street` ETAs to Midtown/W39th — ref above
-5. MTA bus next catchable ETAs (**+15 min** offset): routes **M42**, **M50** from `12 Av/W 42 St` (Plus Code QX6X+XG New York)
+3. NY Waterway `Hoboken 14th Street` ETAs to Midtown/W39th — ref above
+4. MTA bus next catchable ETAs (**+15 min** offset): routes **M42**, **M50** from `12 Av/W 42 St` (Plus Code QX6X+XG New York)
+   (NY Waterway + MTA bus cards sit side-by-side)
 
 Default to current ETAs if previous in chain returns null.

@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""HOB↔MT tab — NJT bus, PABT, subway catchable after Lincoln, NY Waterway, MTA bus.
+"""HOB↔MT tab — NJT bus, subway catchable after Lincoln, NY Waterway, MTA bus.
 
 Offset model (subway catchable):
-  base = HOB_MT_WALK_OFFSET (4) + Lincoln→NYC minutes (0 if unknown)
-  Filter primary is synthetic "now" (0 min); threshold = primary + offset.
-  E/C/A/4/5 use base; 7 uses base+5; 6 uses base+8.
+  Primary = LincTnl → NYC (minutes from Tunnels tab; 0 if unknown).
+  Plan notation ``+4+<NY-Lincoln-eta>`` means chain from LincTnl with walk +4
+  (card note: ``LincTnl +4``), not a synthetic now-offset of 4+lincoln.
+  E/A/4/5 use +4; 7 uses +4+5; 6 uses +4+8.
   MTA bus M42/M50 is chained from NY Waterway +15.
-  fallback_current=True when Lincoln minutes are unknown (and generally on miss).
+  fallback_current=True when catchable filter misses.
 """
 
 from __future__ import annotations
@@ -24,7 +25,6 @@ from lib.subway_trains import (
     SUBWAY_FETCH_LIMIT,
     SUBWAY_FIFTY_FIRST,
     SUBWAY_FIFTY_ST,
-    _is_uptown_subway_headsign,
     _load_express_local_board,
     _load_line_board,
     _trains_per_line,
@@ -43,16 +43,18 @@ TRANSIT_RAW_POOL = 12
 
 # --- Section titles (order) ---
 SECTION_NJT_BUS = "NJT bus → NYC"
-SECTION_PABT = "PABT arrivals"
+SECTION_PABT = "PABT departures"
+# Willow + PABT share one section so they paint side-by-side.
+SECTION_NJT_PABT = "NJT bus · PABT dep"
 SECTION_SUBWAY = "Subway catchable"
 SECTION_NYWATERWAY = "NY Waterway"
 SECTION_MTA_BUS = "MTA bus catchable"
+# Last ferry + bus boards share one section so they paint side-by-side.
+SECTION_FERRY_BUS = "NY Waterway · MTA bus"
 HOB_MT_SECTION_TITLES = (
-    SECTION_NJT_BUS,
-    SECTION_PABT,
+    SECTION_NJT_PABT,
     SECTION_SUBWAY,
-    SECTION_NYWATERWAY,
-    SECTION_MTA_BUS,
+    SECTION_FERRY_BUS,
 )
 
 # --- NJT Willow Ave + 15th (stop #32084), routes 126/119 toward NYC ---
@@ -68,13 +70,11 @@ NJT_WILLOW_TRANSIT_FALLBACK_STOP_IDS = (
 )
 NJT_WILLOW_ROUTES = frozenset({"126", "119"})
 
-# --- PABT (Port Authority) NJT arrivals with gates ---
+# --- PABT departures (buses leaving Port Authority toward NJ) ---
 PABT_ROUTES = frozenset({"126", "119", "123"})
-# NJ Transit GTFS stop for Port Authority Bus Terminal (Transitland / feed).
-PABT_NJT_STOP_ID = "3511"
-# Transit nearby-stops probe: NJTB:162326 consistently serves 119/123/126.
+# Transit nearby-stops probe: NJTB:162326 serves 119/123/126 leaving PABT.
 PABT_TRANSIT_STOP_ID = "NJTB:162326"
-PABT_DISPLAY = "Port Authority"
+PABT_DISPLAY = "PABT dep"
 
 # --- Subway stations (subwayinfo.nyc / GTFS ids) ---
 SUBWAY_PABT_ACE = {
@@ -82,9 +82,8 @@ SUBWAY_PABT_ACE = {
     "label": "42 St-PABT",
     "direction": SUBWAY_DIRECTION_NORTH,
 }
-PABT_ACE_LINE_SPECS = (
+PABT_E_LINE_SPECS = (
     ("E", SUBWAY_DIRECTION_NORTH),
-    ("C", SUBWAY_DIRECTION_NORTH),
 )
 
 SUBWAY_TIMES_SQ_7 = {
@@ -141,10 +140,9 @@ MTA_BUS_TRANSIT_FALLBACK_STOP_IDS = (
 )
 
 
-def subway_base_offset(lincoln_nyc_minutes: int | None) -> int:
-    """Walk 4 + Lincoln→NYC minutes (0 when Lincoln unknown)."""
-    lincoln = 0 if lincoln_nyc_minutes is None else int(lincoln_nyc_minutes)
-    return HOB_MT_WALK_OFFSET + lincoln
+def subway_base_offset(lincoln_nyc_minutes: int | None = None) -> int:
+    """Walk after LincTnl (Lincoln ETA lives on the primary board, not here)."""
+    return HOB_MT_WALK_OFFSET
 
 
 def seven_transfer_offset(base_offset: int) -> int:
@@ -226,16 +224,21 @@ def _is_queens_bound_headsign(headsign) -> bool:
     return any(hint in text for hint in queens_hints)
 
 
-def _is_pabt_e_or_c_headsign(headsign) -> bool:
-    """E toward Queens or C northbound/uptown."""
-    if _is_queens_bound_headsign(headsign):
-        return True
-    return _is_uptown_subway_headsign(headsign)
+def _is_pabt_e_headsign(headsign) -> bool:
+    """E toward Queens."""
+    return _is_queens_bound_headsign(headsign)
 
 
 def _is_nyc_bus_headsign(headsign) -> bool:
     text = str(headsign or "").casefold()
     return ("new york" in text) or ("nyc" in text) or ("port authority" in text)
+
+
+def _is_pabt_departure_headsign(headsign) -> bool:
+    """Buses leaving PABT toward NJ — exclude NYC-bound (into-terminal) signs."""
+    if _is_nyc_bus_headsign(headsign):
+        return False
+    return bool(str(headsign or "").strip())
 
 
 def _route_in_set(line, routes: frozenset[str]) -> bool:
@@ -262,22 +265,6 @@ def _filter_route_trains(trains, routes: frozenset[str], *, max_trains: int) -> 
         if _route_in_set(train.get("line"), routes)
     ]
     return filtered[:max_trains]
-
-
-def _now_primary_board() -> dict:
-    return {
-        "label": "now",
-        "trains": [
-            {
-                "minutes": 0,
-                "eta": "Due",
-                "destination": "now",
-                "status": "ON_TIME",
-            }
-        ],
-        "error": None,
-        "source": "synthetic",
-    }
 
 
 def make_lincoln_primary_board(lincoln_nyc_minutes: int | None) -> dict:
@@ -354,15 +341,12 @@ def fetch_njt_willow_board(*, fetch_transit_json=None) -> dict:
 
 
 def fetch_pabt_board(*, fetch_transit_json=None) -> dict:
-    """PABT 126/119/123 with gate numbers when Transit provides them. Best-effort."""
+    """PABT 126/119/123 *departures* leaving the terminal (Transit stop_departures)."""
     from . import transit_app
 
     label = PABT_DISPLAY
     if not transit_app.has_api_key():
-        board = _empty_board(
-            label,
-            note="gate data TBD · no Transit key",
-        )
+        board = _empty_board(label, note="no Transit key")
         board["source"] = "transit"
         return board
     try:
@@ -372,20 +356,16 @@ def fetch_pabt_board(*, fetch_transit_json=None) -> dict:
         )
         raw = transit_app.parse_route_departures(
             payload,
-            lambda _headsign: True,
+            _is_pabt_departure_headsign,
             max_trains=max(HOB_MT_MAX_TRAINS, TRANSIT_RAW_POOL),
         )
     except Exception as exc:
-        board = _empty_board(label, note="gate data TBD", error=str(exc))
+        board = _empty_board(label, error=str(exc))
         board["source"] = "transit"
         return board
     trains = _filter_route_trains(raw, PABT_ROUTES, max_trains=HOB_MT_MAX_TRAINS)
-    # Gate numbers often appear in destination / headsign text — leave as-is.
     if not trains:
-        board = _empty_board(
-            label,
-            note="no 126/119/123",
-        )
+        board = _empty_board(label, note="no 126/119/123 dep")
         board["source"] = "transit"
         return board
     return {
@@ -443,7 +423,7 @@ def _load_grand_central_6_board(fetch_json) -> dict:
 
 
 def _filter_catchable(
-    now_primary,
+    lincoln_primary,
     secondary,
     offset,
     secondary_short,
@@ -451,7 +431,7 @@ def _filter_catchable(
     fallback_current: bool,
 ):
     return resolve_transfer_board(
-        now_primary,
+        lincoln_primary,
         secondary,
         offset,
         "LincTnl",
@@ -462,27 +442,27 @@ def _filter_catchable(
 
 
 def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None) -> list[dict]:
-    """Lincoln primary + catchable subway boards after base / base+5 / base+8."""
-    base = subway_base_offset(lincoln_nyc_minutes)
+    """LincTnl primary + catchable subway boards after +4 / +4+5 / +4+8."""
+    base = subway_base_offset()
     fallback_current = True
-    now_primary = _now_primary_board()
-    boards = [make_lincoln_primary_board(lincoln_nyc_minutes)]
+    lincoln_primary = make_lincoln_primary_board(lincoln_nyc_minutes)
+    boards = [lincoln_primary]
 
     try:
-        e_c_raw = _load_line_board(
+        e_raw = _load_line_board(
             SUBWAY_PABT_ACE,
             fetch_json,
-            line_specs=PABT_ACE_LINE_SPECS,
-            headsign_filter=_is_pabt_e_or_c_headsign,
+            line_specs=PABT_E_LINE_SPECS,
+            headsign_filter=_is_pabt_e_headsign,
             fetch_limit=SUBWAY_FETCH_LIMIT,
             per_line=1,
         )
         boards.append(
             _filter_catchable(
-                now_primary,
-                e_c_raw,
+                lincoln_primary,
+                e_raw,
                 base,
-                e_c_raw.get("label") or "42 St-PABT",
+                e_raw.get("label") or "42 St-PABT",
                 fallback_current=fallback_current,
             )
         )
@@ -500,7 +480,7 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
         )
         boards.append(
             _filter_catchable(
-                now_primary,
+                lincoln_primary,
                 seven_raw,
                 seven_transfer_offset(base),
                 seven_raw.get("label") or "7",
@@ -520,7 +500,7 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
         # Prefer uptown/north A only (station already direction N).
         boards.append(
             _filter_catchable(
-                now_primary,
+                lincoln_primary,
                 a_raw,
                 base,
                 a_raw.get("label") or "50 St",
@@ -534,7 +514,7 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
         six_raw = _load_grand_central_6_board(fetch_json)
         boards.append(
             _filter_catchable(
-                now_primary,
+                lincoln_primary,
                 six_raw,
                 six_transfer_offset(base),
                 six_raw.get("label") or "Grand Central",
@@ -553,7 +533,7 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
         )
         boards.append(
             _filter_catchable(
-                now_primary,
+                lincoln_primary,
                 lex51,
                 base,
                 lex51.get("label") or "51 St",
@@ -573,7 +553,7 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
         )
         boards.append(
             _filter_catchable(
-                now_primary,
+                lincoln_primary,
                 lex33,
                 base,
                 lex33.get("label") or "33 St",
@@ -793,21 +773,20 @@ def build_hob_mt_sections(
     """
     sections: list[dict] = []
 
-    # 1. NJT bus → NYC
+    # 1. NJT Willow → NYC + PABT departures (side-by-side)
     try:
         njt_board = fetch_njt_willow_board(fetch_transit_json=fetch_transit_json)
     except Exception as exc:
         njt_board = _empty_board(NJT_WILLOW_STOP_ID, error=str(exc))
-    sections.append({"title": SECTION_NJT_BUS, "boards": [njt_board]})
-
-    # 2. PABT arrivals
     try:
         pabt_board = fetch_pabt_board(fetch_transit_json=fetch_transit_json)
     except Exception as exc:
-        pabt_board = _empty_board(PABT_DISPLAY, note="gate data TBD", error=str(exc))
-    sections.append({"title": SECTION_PABT, "boards": [pabt_board]})
+        pabt_board = _empty_board(PABT_DISPLAY, error=str(exc))
+    sections.append(
+        {"title": SECTION_NJT_PABT, "boards": [njt_board, pabt_board]}
+    )
 
-    # 3. Subway catchable
+    # 2. Subway catchable
     # Prefer already-rendered Tunnels-tab data to keep HOB↔MT consistent with UI.
     # crossingtimesapi.json is a JSON array — must use fetch_transit_payload, not fetch_json.
     lincoln = resolve_lincoln_nyc_minutes(
@@ -825,7 +804,7 @@ def build_hob_mt_sections(
         ]
     sections.append({"title": SECTION_SUBWAY, "boards": subway_boards})
 
-    # 4. NY Waterway
+    # 3. NY Waterway + MTA bus catchable (+15) — side-by-side in one section
     try:
         nyw_board = fetch_nywaterway_board(fetch_json)
     except Exception as exc:
@@ -834,9 +813,6 @@ def build_hob_mt_sections(
             note="ETA source unavailable",
             error=str(exc),
         )
-    sections.append({"title": SECTION_NYWATERWAY, "boards": [nyw_board]})
-
-    # 5. MTA bus catchable (+15 chained from NY Waterway)
     try:
         mta_raw = fetch_mta_bus_board(fetch_transit_json=fetch_transit_json)
         if _has_minutes(nyw_board):
@@ -855,6 +831,8 @@ def build_hob_mt_sections(
             mta_board["note"] = "NYW unavailable · current bus"
     except Exception as exc:
         mta_board = _empty_board(MTA_BUS_STOP_DISPLAY, error=str(exc))
-    sections.append({"title": SECTION_MTA_BUS, "boards": [mta_board]})
+    sections.append(
+        {"title": SECTION_FERRY_BUS, "boards": [nyw_board, mta_board]}
+    )
 
     return sections

@@ -148,6 +148,7 @@ def apply_transfer_filter(
         new_board["trains"] = catchable[:HBLR_PATH_MAX_TRAINS]
         new_board["note"] = note
         new_board["error"] = None
+        new_board.pop("empty_hint", None)
     elif fallback_current and source and _is_live_realtime_board(secondary_board):
         current = sorted(
             [train for train in source if train.get("minutes") is not None],
@@ -156,9 +157,13 @@ def apply_transfer_filter(
         new_board["trains"] = current
         new_board["note"] = note + " · current %s" % fallback_suffix
         new_board["error"] = None
+        new_board.pop("empty_hint", None)
     else:
+        from lib.subway_trains import empty_hint_none_catchable
+
         new_board["trains"] = []
         new_board["note"] = note
+        new_board["empty_hint"] = empty_hint_none_catchable(secondary_board, trains=source)
     return new_board
 
 

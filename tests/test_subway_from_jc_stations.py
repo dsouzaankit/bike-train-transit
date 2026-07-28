@@ -61,7 +61,7 @@ class ExpressLocalBoardTests(unittest.TestCase):
         )
         self.assertEqual(board["trains"], [])
         self.assertEqual(board["note"], "Express skip · local C/E")
-        self.assertEqual(board["empty_hint"], "Express not stopping")
+        self.assertEqual(board["empty_hint"], "Express not stopping · A")
 
     def test_bleecker_shows_4_5_when_express_stops(self):
         raw = [
@@ -92,7 +92,7 @@ class ExpressLocalBoardTests(unittest.TestCase):
         )
         self.assertEqual(board["trains"], [])
         self.assertEqual(board["note"], "Express skip · local 6")
-        self.assertEqual(board["empty_hint"], "Express not stopping")
+        self.assertEqual(board["empty_hint"], "Express not stopping · 4/5")
 
 
     def test_fifty_first_notes_local_when_express_skips(self):
@@ -107,7 +107,7 @@ class ExpressLocalBoardTests(unittest.TestCase):
         )
         self.assertEqual(board["trains"], [])
         self.assertEqual(board["note"], "Express skip · local 6")
-        self.assertEqual(board["empty_hint"], "Express not stopping")
+        self.assertEqual(board["empty_hint"], "Express not stopping · 4/5")
 
 
 if __name__ == "__main__":

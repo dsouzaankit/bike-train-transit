@@ -419,6 +419,39 @@ def _express_lines_from_specs(line_specs):
     return {normalize_line(line) for line, _direction in (line_specs or ())}
 
 
+def lines_label_from_board(board, trains=None):
+    """Compact line list for empty-state hints (e.g. ``E/A`` or ``4/5``)."""
+    seen = set()
+    lines = []
+    specs = (board or {}).get("_line_specs")
+    if specs:
+        for line, _direction in specs:
+            name = normalize_line(line)
+            if name and name != "?" and name not in seen:
+                seen.add(name)
+                lines.append(name)
+    else:
+        pool = trains
+        if pool is None:
+            pool = (board or {}).get("_raw_trains") or (board or {}).get("trains") or []
+        for train in pool:
+            name = normalize_line(train.get("line"))
+            if name and name != "?" and name not in seen:
+                seen.add(name)
+                lines.append(name)
+    if not lines:
+        return None
+    lines.sort(key=line_sort_key)
+    return "/".join(lines)
+
+
+def empty_hint_none_catchable(board, trains=None):
+    label = lines_label_from_board(board, trains=trains)
+    if label:
+        return "None catchable · %s" % label
+    return "None catchable"
+
+
 def _annotate_express_local_board(board, line_specs):
     """Note when express trains stop at a station that is normally local-only."""
     express = _express_lines_from_specs(line_specs)
@@ -430,18 +463,32 @@ def _annotate_express_local_board(board, line_specs):
             for train in raw
             if normalize_line(train.get("line")) not in express
             and normalize_line(train.get("line")) != "?"
-        }
+        },
+        key=line_sort_key,
     )
+    express_label = "/".join(sorted(
+        (line for line in express if line and line != "?"),
+        key=line_sort_key,
+    ))
 
     board["express_local"] = True
     if express_trains:
         board["note"] = "Express local stop"
+        board.pop("empty_hint", None)
     elif local_lines:
         board["note"] = "Express skip · local %s" % "/".join(local_lines)
-        board["empty_hint"] = "Express not stopping"
+        board["empty_hint"] = (
+            "Express not stopping · %s" % express_label
+            if express_label
+            else "Express not stopping"
+        )
     else:
-        board["note"] = "Express not stopping"
-        board["empty_hint"] = "Express not stopping"
+        board["note"] = (
+            "Express not stopping · %s" % express_label
+            if express_label
+            else "Express not stopping"
+        )
+        board["empty_hint"] = board["note"]
     return board
 
 
@@ -661,6 +708,11 @@ def apply_path_subway_connections(subway_boards, path_33rd_boards):
         new_board["trains"] = catchable
         if catchable:
             new_board["error"] = None
+            new_board.pop("empty_hint", None)
+        else:
+            from lib.subway_trains import empty_hint_none_catchable
+
+            new_board["empty_hint"] = empty_hint_none_catchable(board, trains=source)
         connected.append(new_board)
     return connected
 
