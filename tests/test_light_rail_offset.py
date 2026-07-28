@@ -49,7 +49,7 @@ class TransferFilterTests(unittest.TestCase):
 
     def test_newport_33rd_offset(self):
         primary = _board("Liberty State Park", [0])
-        secondary = _board("Newport PATH", [15, 18, 25], raw=[15, 18, 25])
+        secondary = _board("Newport", [15, 18, 25], raw=[15, 18, 25])
         out = apply_transfer_filter(primary, secondary, 21, "LSP HBLR", "Newport")
         self.assertEqual(_mins(out), [25])
 
@@ -96,7 +96,7 @@ class TransferFilterTests(unittest.TestCase):
 
     def test_hblr_to_path_fallback_shows_current_path_etas(self):
         primary = _board("Liberty State Park", [5])
-        secondary = _board("Newport PATH", [6, 11], raw=[6, 11])
+        secondary = _board("Newport", [6, 11], raw=[6, 11])
         out = apply_transfer_filter(
             primary,
             secondary,
@@ -110,7 +110,7 @@ class TransferFilterTests(unittest.TestCase):
 
     def test_hblr_to_path_no_fallback_when_path_is_scheduled(self):
         primary = _board("Liberty State Park", [5])
-        secondary = _board("Newport PATH", [6, 11], raw=[6, 11], estimated=True)
+        secondary = _board("Newport", [6, 11], raw=[6, 11], estimated=True)
         out = apply_transfer_filter(
             primary,
             secondary,
@@ -126,8 +126,8 @@ class TransferFilterTests(unittest.TestCase):
 class PathCatchableAfterLspTests(unittest.TestCase):
     def test_newport_catchable_after_lsp_plus_transit(self):
         lsp = _board("Liberty State Park", [4])
-        path = _board("Newport PATH", [6, 11], raw=[6, 11, 18, 25, 30], source="panynj")
-        transit = _board("Newport PATH", [18, 25, 30], raw=[18, 25, 30], source="transit")
+        path = _board("Newport", [6, 11], raw=[6, 11, 18, 25, 30], source="panynj")
+        transit = _board("Newport", [18, 25, 30], raw=[18, 25, 30], source="transit")
         with mock.patch("lib.path_trains.get_path_transit_board", return_value=transit):
             out = path_catchable_after_lsp(
                 lsp,
@@ -142,7 +142,7 @@ class PathCatchableAfterLspTests(unittest.TestCase):
     @mock.patch("lib.path_trains.get_path_transit_board", return_value=None)
     def test_newport_empty_when_too_early_from_lsp(self, _transit_mock):
         lsp = _board("Liberty State Park", [5])
-        path = _board("Newport PATH", [10], raw=[10], source="panynj")
+        path = _board("Newport", [10], raw=[10], source="panynj")
         out = path_catchable_after_lsp(
             lsp,
             path,
@@ -179,7 +179,7 @@ class ResolveTransferBoardTests(unittest.TestCase):
 
     def test_path_fallback_when_transit_unavailable(self):
         primary = _board("Liberty State Park", [5])
-        secondary = _board("Newport PATH", [6, 11], raw=[6, 11], source="panynj")
+        secondary = _board("Newport", [6, 11], raw=[6, 11], source="panynj")
         with mock.patch("lib.path_trains.get_path_transit_board", return_value=None):
             out = resolve_transfer_board(
                 primary,

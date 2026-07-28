@@ -24,8 +24,9 @@ _EVERBRIDGE_CACHE = {"fetched_at": 0.0, "incidents": None}
 
 # slug = path.api.razza.dev name; panynj = ridepath.json consideredStation code
 PATH_STATIONS = [
-    {"slug": "grove_street", "panynj": "GRV", "label": "Grove St PATH"},
-    {"slug": "newport", "panynj": "NEW", "label": "Newport PATH", "transit_stop_id": "PATH:520"},
+    {"slug": "grove_street", "panynj": "GRV", "label": "Grove St"},
+    {"slug": "newport", "panynj": "NEW", "label": "Newport", "transit_stop_id": "PATH:520"},
+    {"slug": "hoboken", "panynj": "HOB", "label": "Hoboken"},
 ]
 
 PATH_EXCHANGE_STATION = {
@@ -674,7 +675,7 @@ for _entry in (
     + PATH_NJ_STATIONS
 ):
     _PATH_STATION_LOOKUP[_entry["label"]] = _entry
-_PATH_STATION_LOOKUP["Newport"] = _PATH_STATION_LOOKUP["Newport PATH"]
+_PATH_STATION_LOOKUP["Newport PATH"] = _PATH_STATION_LOOKUP["Newport"]
 
 
 def _dest_filter_fn(name):

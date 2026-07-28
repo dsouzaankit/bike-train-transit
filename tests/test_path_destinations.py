@@ -96,6 +96,18 @@ class PathDestinationShortTests(unittest.TestCase):
         self.assertTrue(_is_jsq_destination("Journal Square via Hoboken"))
         self.assertFalse(_is_jsq_destination("Newark"))
 
+    def test_path_nyc_stations_include_hoboken(self):
+        from lib.path_trains import PATH_STATIONS
+
+        labels = [s["label"] for s in PATH_STATIONS]
+        self.assertEqual(
+            labels,
+            ["Grove St", "Newport", "Hoboken"],
+        )
+        hoboken = PATH_STATIONS[2]
+        self.assertEqual(hoboken["panynj"], "HOB")
+        self.assertEqual(hoboken["slug"], "hoboken")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

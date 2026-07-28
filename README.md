@@ -70,7 +70,7 @@ Hoboken ↔ Midtown transfers. Sections paint in order:
 
 Empty catchable cards show **`None catchable · <lines>`** when line specs are known. Plan notes: `hob-mt-tab-plan.md`.
 
-Log markers: `build=hob-mt-v108`, `step: HOB↔MT ok`.
+Log markers: `build=hob-mt-v109`, `step: HOB↔MT ok`.
 
 ### NJTb tab
 
@@ -154,7 +154,7 @@ On launch (after `present()`), section tabs **float** in **two vertical columns*
 
 Layout diagram: `thumb-float-layout-hob-nyc.svg` (eleven tabs). Coordinates checked by `test_thumb_float_layout.py` / `test_docked_tab_layout.py`.
 
-Log markers: `build=hob-mt-v108`, `thumb float (tap section to dock)`, `Refresh tab …`.
+Log markers: `build=hob-mt-v109`, `thumb float (tap section to dock)`, `Refresh tab …`.
 
 ## HTTP cache and refresh API calls
 
@@ -250,7 +250,7 @@ Every station card shows an **E** count under filled bikes (`num_ebikes_availabl
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **PATH → NYC** | Grove St PATH, Newport PATH | Next NYC-bound PATH trains (Hoboken-terminating excluded; via-Hoboken kept) |
+| **PATH → NYC** | Grove St, Newport, Hoboken (3 across) | Next NYC-bound PATH trains (Hoboken-terminating excluded; via-Hoboken kept) |
 | **PATH + Subway · 33rd St** | Grouped tiles (see table below) | 33rd PATH + northbound subway, paired by corridor |
 
 **PATH 14 St:** direct 33rd-bound arrivals at **14 St PATH** when available; otherwise estimated from **9th St** departure **+1 min** (`~`, note on card).
@@ -269,7 +269,7 @@ From JC subway cards use **single-line** rows; long headsigns truncate with `…
 
 **51 St**, **50 St**, and **Bleecker St** only list **express** trains when they make a **local stop** (4/5 at 51 St and Bleecker; A at 50 St). When express is skipping, the empty card shows **`Express not stopping · 4/5`** (or **`· A`**) and the note lists locals still running (e.g. `Express skip · local 6` or `Express skip · local C/E`). When express is stopping, the note is **Express local stop**.
 
-Layout on **From JC**: **PATH → NYC**, then **PATH + Subway · 33rd St** tile groups (two columns per row).
+Layout on **From JC**: **PATH → NYC** (three narrow cards in one row), then **PATH + Subway · 33rd St** tile groups (two columns per row).
 
 Transit-only tab (no bike grid) to keep scrolling short. **To JC** subway cards show **up to 2 ETAs per line** when available.
 
@@ -330,7 +330,7 @@ Requires `TRANSIT_API_KEY` or gitignored `transit_credentials.json`. Tabs that d
 | **NJTb** | **20747**, **30492**, **20764**, **20647** | **Primary** live source (Transit `NJTB:…`); per-stop route filter (**81** local only — no **Express**; **1** + Exchange/Newark). Left button opens Messages to **MyBus (69287)** — user taps **Send** |
 | **HBLR → PATH** | **Garfield Avenue** HBLR | **Primary** live source (Transit `NJTR:3113` → PDF; PDF fallback = LSP − **3 min**) |
 | **HBLR → PATH** | **Liberty State Park** HBLR | **Primary** live source (Transit `NJTR:3072` → PDF); anchors PATH transfer timing |
-| **HBLR → PATH** | **Exchange Place** PATH · **Newport PATH** | **Transfer retry** only — PANYNJ first; if offset filter finds nothing in the shallow pool, fetch up to **8** departures from Transit (`PATH:554` Exchange, `PATH:520` Newport), then filter **LSP +11 / +21**. Empty if still nothing catchable (no `· current PATH`) |
+| **HBLR → PATH** | **Exchange Place** PATH · **Newport** | **Transfer retry** only — PANYNJ first; if offset filter finds nothing in the shallow pool, fetch up to **8** departures from Transit (`PATH:554` Exchange, `PATH:520` Newport), then filter **LSP +11 / +21**. Empty if still nothing catchable (no `· current PATH`) |
 | **PATH + Subway via WTC** | **Exchange Place** PATH → WTC | **Primary** PANYNJ realtime (no offset); up to **3** ETAs |
 | **PATH + Subway via WTC** | Exchange PATH timing (LSP chain) | **Transfer retry** — LSP **+11** chain, then Transit `PATH:554` if needed |
 | **PATH + Subway via WTC** | **WTC Cortlandt** ↑ · **WTC** ↑ | **Transfer retry** — subway API first; Transit `MTAS:19443` / `MTAS:19012` if pool too shallow for **Exchange +8** filter (pool **8**). May show `· current subway` when PATH is catchable but subway pool is thin |

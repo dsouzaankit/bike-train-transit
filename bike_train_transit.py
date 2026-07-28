@@ -96,7 +96,7 @@ GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 _debug_port_in_use = LAN_DEBUG_PORT
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "hob-mt-v108"
+BUILD_TAG = "hob-mt-v109"
 
 TAB_TRANSIT_JOBS = {
     "from_jc": ("pathAll", "subway"),
@@ -2189,14 +2189,18 @@ if HAS_UI:
                         )
                     )
 
-        def _append_transit_section(self, y, pad, inner_w, card_width, title, boards, tag, empty_text):
+        def _append_transit_section(
+            self, y, pad, inner_w, card_width, title, boards, tag, empty_text, cols=None, wrap_text=True
+        ):
             if boards is None:
                 return y
             header = SectionHeader(title)
             header.frame = (pad, y, inner_w, SECTION_HEADER_HEIGHT)
             self.scroll.add_subview(header)
             y += SECTION_HEADER_HEIGHT + CARD_GAP
-            cols = CARD_COLUMNS
+            cols = cols or CARD_COLUMNS
+            if cols > 1:
+                card_width = max((inner_w - CARD_GAP * (cols - 1)) // cols, 96)
             if not boards:
                 return y + pad
             row_heights = []
@@ -2204,10 +2208,10 @@ if HAS_UI:
             for index, board in enumerate(boards):
                 col = index % cols
                 if col == 0:
-                    row_heights.append(transit_card_height(board, card_width))
+                    row_heights.append(transit_card_height(board, card_width, wrap_text=wrap_text))
                     row_boards.append([])
                 else:
-                    row_heights[-1] = max(row_heights[-1], transit_card_height(board, card_width))
+                    row_heights[-1] = max(row_heights[-1], transit_card_height(board, card_width, wrap_text=wrap_text))
                 row_boards[-1].append((index, board))
 
             row_y = y
@@ -2216,7 +2220,7 @@ if HAS_UI:
                 for index, board in group:
                     col = index % cols
                     x = pad + col * (card_width + CARD_GAP)
-                    card = TransitCard(board, card_width, tag=tag, empty_text=empty_text)
+                    card = TransitCard(board, card_width, tag=tag, empty_text=empty_text, wrap_text=wrap_text)
                     card.frame = (x, row_y, card_width, row_h)
                     self.scroll.add_subview(card)
                 row_y += row_h + CARD_GAP
@@ -2333,6 +2337,8 @@ if HAS_UI:
                 self._cache.get("path_boards"),
                 tag="NYC",
                 empty_text="No NYC trains",
+                cols=3,
+                wrap_text=False,
             )
             y += SECTION_GAP
 

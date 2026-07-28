@@ -38,7 +38,7 @@ _HBLR_TO_PATH_CONNECTIONS = (
         "path_label": "33rd St",
         "secondary": {
             "mode": "path",
-            "station": "Newport PATH",
+            "station": "Newport",
             "direction": "nyc_33rd",
             "dest_filter": "33rd",
             "offset": HBLR_LSP_NEWPORT_OFFSET,
