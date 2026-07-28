@@ -65,7 +65,7 @@ Hoboken ↔ Midtown transfers. Sections paint in order:
 | Section | Cards | Source / offsets |
 |---------|-------|------------------|
 | **NJT bus · PABT dep** | **32084** Willow→NYC (119/126) · **PABT dep** (119/123/126 leaving terminal toward NJ) | Transit App (`NJTB:…`); side-by-side |
-| **Subway catchable** | **LincTnl → NYC** + catchable subway | Lincoln minutes from Tunnels cache / PANYNJ `crossingtimesapi.json` (JSON **array** via `fetch_transit_payload`). Note **`LincTnl +4`** (walk); **7** = +9; **6** = +12. **E** Queens at 42 St-PABT (no C); **A** @ 50 St; **6** @ Grand Central; **4/5** @ 51 St / 33 St |
+| **Subway catchable** | **LincTnl → NYC** + catchable subway | Lincoln minutes from Tunnels cache / PANYNJ `crossingtimesapi.json` (JSON **array** via `fetch_transit_payload`). Note **`LincTnl +4`** (walk); **7** = +9; **6** = +12. **E** Queens + **C** north at 42 St-PABT; **A** @ 50 St; **6** @ Grand Central; **4/5** @ 51 St / 33 St |
 | **NY Waterway · MTA bus** | Hoboken 14th St · 12 Av / W 42 St M42/M50 | Transit `NYW:596` (Connexionz fallback); MTA `MTAMNT:…` chained **NYW +15** |
 
 Empty catchable cards show **`None catchable · <lines>`** when line specs are known. Plan notes: `hob-mt-tab-plan.md`.

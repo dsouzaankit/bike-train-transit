@@ -31,7 +31,7 @@ Layout diagram: [`thumb-float-layout-hob-nyc.svg`](thumb-float-layout-hob-nyc.sv
    + PABT **departures** (119/123/126 leaving terminal toward NJ; Transit `stop_departures`)
    — Willow + PABT cards sit side-by-side
 2. NYC Subway next catchable ETAs (`+4 + <NY-Lincoln-eta>` == primary **LincTnl** + walk **+4**; card note `LincTnl +4`):
-   - Filters: E to Queens, 7 to Queens (**LincTnl +9** = +4 walk +5)
+   - Filters: E to Queens, C northbound, 7 to Queens (**LincTnl +9** = +4 walk +5)
    - A northbound ETA at `50 St`
    - 6 at `Grand Central-42 St` next catchable (chained, **LincTnl +12** = +4 walk +8) north+south
    - 4/5 northbound ETAs at `51 St` + southbound ETAs at `33 St`

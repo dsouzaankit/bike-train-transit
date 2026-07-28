@@ -5,7 +5,7 @@ Offset model (subway catchable):
   Primary = LincTnl → NYC (minutes from Tunnels tab; 0 if unknown).
   Plan notation ``+4+<NY-Lincoln-eta>`` means chain from LincTnl with walk +4
   (card note: ``LincTnl +4``), not a synthetic now-offset of 4+lincoln.
-  E/A/4/5 use +4; 7 uses +4+5; 6 uses +4+8.
+  E/C/A/4/5 use +4; 7 uses +4+5; 6 uses +4+8.
   MTA bus M42/M50 is chained from NY Waterway +15.
   fallback_current=True when catchable filter misses.
 """
@@ -25,6 +25,7 @@ from lib.subway_trains import (
     SUBWAY_FETCH_LIMIT,
     SUBWAY_FIFTY_FIRST,
     SUBWAY_FIFTY_ST,
+    _is_uptown_subway_headsign,
     _load_express_local_board,
     _load_line_board,
     _trains_per_line,
@@ -82,8 +83,9 @@ SUBWAY_PABT_ACE = {
     "label": "42 St-PABT",
     "direction": SUBWAY_DIRECTION_NORTH,
 }
-PABT_E_LINE_SPECS = (
+PABT_EC_LINE_SPECS = (
     ("E", SUBWAY_DIRECTION_NORTH),
+    ("C", SUBWAY_DIRECTION_NORTH),
 )
 
 SUBWAY_TIMES_SQ_7 = {
@@ -224,9 +226,11 @@ def _is_queens_bound_headsign(headsign) -> bool:
     return any(hint in text for hint in queens_hints)
 
 
-def _is_pabt_e_headsign(headsign) -> bool:
-    """E toward Queens."""
-    return _is_queens_bound_headsign(headsign)
+def _is_pabt_e_or_c_headsign(headsign) -> bool:
+    """E toward Queens or C northbound/uptown."""
+    if _is_queens_bound_headsign(headsign):
+        return True
+    return _is_uptown_subway_headsign(headsign)
 
 
 def _is_nyc_bus_headsign(headsign) -> bool:
@@ -449,20 +453,20 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
     boards = [lincoln_primary]
 
     try:
-        e_raw = _load_line_board(
+        e_c_raw = _load_line_board(
             SUBWAY_PABT_ACE,
             fetch_json,
-            line_specs=PABT_E_LINE_SPECS,
-            headsign_filter=_is_pabt_e_headsign,
+            line_specs=PABT_EC_LINE_SPECS,
+            headsign_filter=_is_pabt_e_or_c_headsign,
             fetch_limit=SUBWAY_FETCH_LIMIT,
             per_line=1,
         )
         boards.append(
             _filter_catchable(
                 lincoln_primary,
-                e_raw,
+                e_c_raw,
                 base,
-                e_raw.get("label") or "42 St-PABT",
+                e_c_raw.get("label") or "42 St-PABT",
                 fallback_current=fallback_current,
             )
         )
