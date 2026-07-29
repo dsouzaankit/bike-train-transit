@@ -25,8 +25,9 @@ _EVERBRIDGE_CACHE = {"fetched_at": 0.0, "incidents": None}
 # slug = path.api.razza.dev name; panynj = ridepath.json consideredStation code
 PATH_STATIONS = [
     {"slug": "grove_street", "panynj": "GRV", "label": "Grove St"},
-    {"slug": "newport", "panynj": "NEW", "label": "Newport", "transit_stop_id": "PATH:520"},
-    {"slug": "hoboken", "panynj": "HOB", "label": "Hoboken"},
+    # From JC Newport/Hoboken cards: 33rd-bound only (WTC covered by Grove St).
+    {"slug": "newport", "panynj": "NEW", "label": "Newport", "transit_stop_id": "PATH:520", "dest_filter": "not_wtc"},
+    {"slug": "hoboken", "panynj": "HOB", "label": "Hoboken", "dest_filter": "not_wtc"},
 ]
 
 PATH_EXCHANGE_STATION = {
@@ -133,6 +134,10 @@ def _is_33rd_destination(name):
 def _is_wtc_destination(name):
     text = _headsign_text(name).casefold()
     return "world trade" in text or text.strip() == "wtc"
+
+
+def _is_non_wtc_destination(name):
+    return not _is_wtc_destination(name)
 
 
 def _is_nwk_jsq_destination(name):
@@ -391,6 +396,21 @@ def _parse_panynj_station(code, payload, direction_filter, dest_filter=None, all
     return []
 
 
+def _resolve_dest_filter(station, dest_filter=None):
+    """Prefer per-station dest_filter (e.g. Hoboken not_wtc) over a call-site filter."""
+    if station is not None and "dest_filter" in station:
+        raw = station["dest_filter"]
+    else:
+        raw = dest_filter
+    if raw is None:
+        return None
+    if callable(raw):
+        return raw
+    if isinstance(raw, str):
+        return _dest_filter_fn(raw)
+    return None
+
+
 def _board_from_payload(
     station,
     payload,
@@ -408,7 +428,7 @@ def _board_from_payload(
         station["panynj"],
         payload,
         direction_filter,
-        dest_filter=dest_filter,
+        dest_filter=_resolve_dest_filter(station, dest_filter),
         allow_hoboken=bool(station.get("allow_hoboken")),
     )
     return {
@@ -474,7 +494,7 @@ def _load_boards_from_payload(
                 station,
                 fetch_json,
                 direction,
-                dest_filter=dest_filter,
+                dest_filter=_resolve_dest_filter(station, dest_filter),
                 max_trains=max_trains,
             )
         boards.append(board)
@@ -529,7 +549,7 @@ def _load_boards(
             station,
             fetch_json,
             direction,
-            dest_filter=dest_filter,
+            dest_filter=_resolve_dest_filter(station, dest_filter),
             max_trains=max_trains,
         )
         boards.append(board)
@@ -683,6 +703,8 @@ def _dest_filter_fn(name):
         return _is_33rd_destination
     if name == "wtc":
         return _is_wtc_destination
+    if name == "not_wtc":
+        return _is_non_wtc_destination
     return None
 
 
@@ -711,6 +733,8 @@ def _transit_dest_ok(direction, dest_filter):
         return _is_wtc_destination
     if dest_filter == "33rd":
         return _is_33rd_destination
+    if dest_filter == "not_wtc":
+        return _is_non_wtc_destination
     return lambda headsign: _is_wtc_destination(headsign) or _is_33rd_destination(headsign)
 
 
@@ -783,7 +807,7 @@ def get_path_station_board(
         if closed:
             return _ninth_street_closed_board(station, note)
 
-    dest_fn = _dest_filter_fn(dest_filter) if isinstance(dest_filter, str) else dest_filter
+    dest_fn = _resolve_dest_filter(station, dest_filter)
     pool = raw_pool or max(max_trains, PATH_MAX_TRAINS)
     hoboken_ok = (
         bool(allow_hoboken)
@@ -881,7 +905,7 @@ def get_all_path_boards(
                 station,
                 razza_fetch,
                 direction,
-                dest_filter=dest_filter,
+                dest_filter=_resolve_dest_filter(station, dest_filter),
                 max_trains=limit,
             )
             boards.append(board)

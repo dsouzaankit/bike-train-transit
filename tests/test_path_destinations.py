@@ -107,6 +107,68 @@ class PathDestinationShortTests(unittest.TestCase):
         hoboken = PATH_STATIONS[2]
         self.assertEqual(hoboken["panynj"], "HOB")
         self.assertEqual(hoboken["slug"], "hoboken")
+        self.assertEqual(hoboken["dest_filter"], "not_wtc")
+        newport = PATH_STATIONS[1]
+        self.assertEqual(newport["dest_filter"], "not_wtc")
+
+    def test_hoboken_nyc_excludes_wtc(self):
+        from lib.path_trains import (
+            PATH_STATIONS,
+            _is_nyc_direction,
+            _load_boards_from_payload,
+        )
+
+        payload = {
+            "results": [
+                {
+                    "consideredStation": "HOB",
+                    "destinations": [
+                        {
+                            "label": "ToNY",
+                            "messages": [
+                                {
+                                    "headSign": "World Trade Center",
+                                    "arrivalTimeMessage": "3 min",
+                                },
+                                {
+                                    "headSign": "33rd Street",
+                                    "arrivalTimeMessage": "8 min",
+                                },
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "consideredStation": "NEW",
+                    "destinations": [
+                        {
+                            "label": "ToNY",
+                            "messages": [
+                                {
+                                    "headSign": "World Trade Center",
+                                    "arrivalTimeMessage": "2 min",
+                                },
+                                {
+                                    "headSign": "33rd Street",
+                                    "arrivalTimeMessage": "11 min",
+                                },
+                            ],
+                        }
+                    ],
+                },
+            ]
+        }
+        boards = _load_boards_from_payload(
+            PATH_STATIONS,
+            payload,
+            None,
+            direction_filter=_is_nyc_direction,
+        )
+        by_label = {b["label"]: b for b in boards}
+        for label in ("Hoboken", "Newport"):
+            dests = [t["destination"] for t in by_label[label]["trains"]]
+            self.assertEqual(dests, ["33rd St"], msg=label)
+            self.assertNotIn("WTC", dests)
 
 
 if __name__ == "__main__":

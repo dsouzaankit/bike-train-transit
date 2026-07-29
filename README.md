@@ -250,7 +250,7 @@ Every station card shows an **E** count under filled bikes (`num_ebikes_availabl
 
 | Section | Stations | Data |
 |---------|----------|------|
-| **PATH → NYC** | Grove St, Newport, Hoboken (3 across) | Next NYC-bound PATH trains (Hoboken-terminating excluded; via-Hoboken kept) |
+| **PATH → NYC** | Grove St, Newport, Hoboken (3 across) | Next NYC-bound PATH trains (Hoboken-terminating excluded; via-Hoboken kept). **Newport** and **Hoboken** cards exclude **WTC** (33rd-bound only; WTC covered by Grove St) |
 | **PATH + Subway · 33rd St** | Grouped tiles (see table below) | 33rd PATH + northbound subway, paired by corridor |
 
 **PATH 14 St:** direct 33rd-bound arrivals at **14 St PATH** when available; otherwise estimated from **9th St** departure **+1 min** (`~`, note on card).
