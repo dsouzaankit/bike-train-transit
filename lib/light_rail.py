@@ -81,6 +81,13 @@ HBLR_STATIONS = {
         "transit_stop_id": "NJTR:3079",
         "phase": 0,
     },
+    # Hoboken Terminal HBLR — used by HOB↔MT (northbound → Tonnelle). No PDF column.
+    "Hoboken": {
+        "label": "Hoboken HBLR",
+        "njt_stop": "Hoboken",
+        "transit_stop_id": "NJTR:3080",
+        "phase": 0,
+    },
 }
 
 HBLR_DIRECTIONS = {

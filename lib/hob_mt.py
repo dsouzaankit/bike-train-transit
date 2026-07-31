@@ -45,6 +45,8 @@ TRANSIT_RAW_POOL = 12
 # --- Section titles (order) ---
 SECTION_NJT_BUS = "NJT bus → NYC"
 SECTION_PABT = "PABT departures"
+# Hoboken Terminal 126 + HBLR share one section so they paint side-by-side.
+SECTION_HOB_TERMINAL = "Hoboken Terminal · HBLR"
 # Willow + PABT share one section so they paint side-by-side.
 SECTION_NJT_PABT = "NJT bus · PABT dep"
 SECTION_SUBWAY = "Subway catchable"
@@ -53,10 +55,21 @@ SECTION_MTA_BUS = "MTA bus catchable"
 # Last ferry + bus boards share one section so they paint side-by-side.
 SECTION_FERRY_BUS = "NY Waterway · MTA bus"
 HOB_MT_SECTION_TITLES = (
+    SECTION_HOB_TERMINAL,
     SECTION_NJT_PABT,
     SECTION_SUBWAY,
     SECTION_FERRY_BUS,
 )
+
+# --- Hoboken Bus Terminal (stop #20496), route 126 toward NYC ---
+HOB_BUS_STOP_ID = "20496"
+HOB_BUS_DISPLAY = "Hoboken Terminal"
+HOB_BUS_TRANSIT_STOP_ID = "NJTB:148699"
+HOB_BUS_ROUTES = frozenset({"126"})
+
+# --- Hoboken HBLR → Tonnelle Av (Transit NJTR:3080 / stop_code 30829) ---
+HOB_HBLR_STATION = "Hoboken"
+HOB_HBLR_DISPLAY = "Hoboken HBLR"
 
 # --- NJT Willow Ave + 15th (stop #32084), routes 126/119 toward NYC ---
 NJT_WILLOW_STOP_ID = "32084"
@@ -295,11 +308,88 @@ def make_lincoln_primary_board(lincoln_nyc_minutes: int | None) -> dict:
     }
 
 
+def fetch_hoboken_126_board(*, fetch_transit_json=None) -> dict:
+    """NJT 126 at Hoboken Bus Terminal toward NYC via Transit App. Never raises."""
+    from . import transit_app
+
+    label = HOB_BUS_DISPLAY
+    if not transit_app.has_api_key():
+        return _empty_board(label, note="no Transit key")
+    try:
+        payload = transit_app.fetch_stop_departures(
+            HOB_BUS_TRANSIT_STOP_ID,
+            max_departures=max(HOB_MT_MAX_TRAINS, TRANSIT_RAW_POOL),
+        )
+        raw = transit_app.parse_route_departures(
+            payload,
+            lambda _headsign: True,
+            max_trains=max(HOB_MT_MAX_TRAINS, TRANSIT_RAW_POOL),
+        )
+    except Exception as exc:
+        board = _empty_board(label, error=str(exc))
+        board["source"] = "transit"
+        return board
+    filtered = _filter_route_trains(
+        raw, HOB_BUS_ROUTES, max_trains=max(HOB_MT_MAX_TRAINS, TRANSIT_RAW_POOL)
+    )
+    trains = [
+        train
+        for train in filtered
+        if _is_nyc_bus_headsign(train.get("destination"))
+    ][:HOB_MT_MAX_TRAINS]
+    if not trains:
+        board = _empty_board(label, note="no 126 to NYC")
+        board["source"] = "transit"
+        return board
+    return {
+        "label": label,
+        "trains": trains,
+        "error": None,
+        "by_line": True,
+        "source": "transit",
+        "note": None,
+    }
+
+
+def fetch_hoboken_hblr_tonnelle_board() -> dict:
+    """HBLR at Hoboken Terminal toward Tonnelle Av. Never raises."""
+    from lib.light_rail import get_hblr_board
+
+    board = get_hblr_board(
+        HOB_HBLR_STATION,
+        "northbound",
+        max_trains=max(HOB_MT_MAX_TRAINS, TRANSIT_RAW_POOL),
+        raw_pool=TRANSIT_RAW_POOL,
+    )
+    raw = list(board.get("_raw_trains") or board.get("trains") or [])
+    trains = [
+        train
+        for train in raw
+        if "tonnelle" in str(train.get("destination") or "").casefold()
+    ][:HOB_MT_MAX_TRAINS]
+    out = {
+        "label": HOB_HBLR_DISPLAY,
+        "trains": trains,
+        "error": board.get("error"),
+        "by_line": True,
+        "source": board.get("source"),
+        "note": board.get("note"),
+    }
+    if board.get("estimated"):
+        out["estimated"] = True
+    if not trains:
+        if out.get("error"):
+            return out
+        out["note"] = out.get("note") or "no HBLR to Tonnelle"
+        out["trains"] = []
+    return out
+
+
 def fetch_njt_willow_board(*, fetch_transit_json=None) -> dict:
     """NJT 126/119 at Willow Ave + 15th via Transit App. Never raises."""
     from . import transit_app
 
-    label = NJT_WILLOW_STOP_ID
+    label = NJT_WILLOW_DISPLAY
     if not transit_app.has_api_key():
         return _empty_board(label, note="no Transit key")
     stop_ids = (NJT_WILLOW_TRANSIT_STOP_ID,) + NJT_WILLOW_TRANSIT_FALLBACK_STOP_IDS
@@ -777,11 +867,24 @@ def build_hob_mt_sections(
     """
     sections: list[dict] = []
 
-    # 1. NJT Willow → NYC + PABT departures (side-by-side)
+    # 1. Hoboken Terminal 126 → NYC + HBLR → Tonnelle (side-by-side)
+    try:
+        hob_bus_board = fetch_hoboken_126_board(fetch_transit_json=fetch_transit_json)
+    except Exception as exc:
+        hob_bus_board = _empty_board(HOB_BUS_DISPLAY, error=str(exc))
+    try:
+        hob_hblr_board = fetch_hoboken_hblr_tonnelle_board()
+    except Exception as exc:
+        hob_hblr_board = _empty_board(HOB_HBLR_DISPLAY, error=str(exc))
+    sections.append(
+        {"title": SECTION_HOB_TERMINAL, "boards": [hob_bus_board, hob_hblr_board]}
+    )
+
+    # 2. NJT Willow → NYC + PABT departures (side-by-side)
     try:
         njt_board = fetch_njt_willow_board(fetch_transit_json=fetch_transit_json)
     except Exception as exc:
-        njt_board = _empty_board(NJT_WILLOW_STOP_ID, error=str(exc))
+        njt_board = _empty_board(NJT_WILLOW_DISPLAY, error=str(exc))
     try:
         pabt_board = fetch_pabt_board(fetch_transit_json=fetch_transit_json)
     except Exception as exc:
@@ -790,7 +893,7 @@ def build_hob_mt_sections(
         {"title": SECTION_NJT_PABT, "boards": [njt_board, pabt_board]}
     )
 
-    # 2. Subway catchable
+    # 3. Subway catchable
     # Prefer already-rendered Tunnels-tab data to keep HOB↔MT consistent with UI.
     # crossingtimesapi.json is a JSON array — must use fetch_transit_payload, not fetch_json.
     lincoln = resolve_lincoln_nyc_minutes(
@@ -808,7 +911,7 @@ def build_hob_mt_sections(
         ]
     sections.append({"title": SECTION_SUBWAY, "boards": subway_boards})
 
-    # 3. NY Waterway + MTA bus catchable (+15) — side-by-side in one section
+    # 4. NY Waterway + MTA bus catchable (+15) — side-by-side in one section
     try:
         nyw_board = fetch_nywaterway_board(fetch_json)
     except Exception as exc:

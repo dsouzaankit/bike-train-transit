@@ -16,8 +16,10 @@ from lib.hob_mt import (  # noqa: E402
     HOB_MT_SEVEN_EXTRA,
     HOB_MT_WALK_OFFSET,
     SECTION_FERRY_BUS,
+    SECTION_HOB_TERMINAL,
     SECTION_NJT_PABT,
     SECTION_SUBWAY,
+    _is_nyc_bus_headsign,
     _is_pabt_departure_headsign,
     build_hob_mt_sections,
     extract_lincoln_nyc_minutes,
@@ -190,6 +192,7 @@ class SectionOrderTests(unittest.TestCase):
         self.assertEqual(
             list(HOB_MT_SECTION_TITLES),
             [
+                SECTION_HOB_TERMINAL,
                 SECTION_NJT_PABT,
                 SECTION_SUBWAY,
                 SECTION_FERRY_BUS,
@@ -202,13 +205,49 @@ class SectionOrderTests(unittest.TestCase):
         self.assertFalse(_is_pabt_departure_headsign("New York"))
         self.assertFalse(_is_pabt_departure_headsign("New York via Clinton"))
 
+    def test_hoboken_126_keeps_nyc_bound(self):
+        self.assertTrue(_is_nyc_bus_headsign("New York"))
+        self.assertTrue(_is_nyc_bus_headsign("New York via Clinton"))
+        self.assertFalse(_is_nyc_bus_headsign("Journal Square"))
+
+    def test_hoboken_hblr_keeps_tonnelle_only(self):
+        from lib.hob_mt import fetch_hoboken_hblr_tonnelle_board
+
+        with mock.patch(
+            "lib.light_rail.get_hblr_board",
+            return_value={
+                "label": "Hoboken HBLR",
+                "trains": [
+                    {"destination": "Tonnelle Av", "minutes": 3, "eta": "3m"},
+                    {"destination": "8th St", "minutes": 5, "eta": "5m"},
+                ],
+                "_raw_trains": [
+                    {"destination": "Tonnelle Av", "minutes": 3, "eta": "3m"},
+                    {"destination": "8th St", "minutes": 5, "eta": "5m"},
+                    {"destination": "Tonnelle Avenue", "minutes": 12, "eta": "12m"},
+                ],
+                "error": None,
+                "source": "transit",
+            },
+        ):
+            board = fetch_hoboken_hblr_tonnelle_board()
+        dests = [t["destination"] for t in board["trains"]]
+        self.assertEqual(dests, ["Tonnelle Av", "Tonnelle Avenue"])
+        self.assertEqual(board["label"], "Hoboken HBLR")
+
     def test_build_sections_title_order(self):
         def fetch_json(_url):
             raise RuntimeError("network disabled")
 
         with mock.patch("lib.hob_mt.get_tunnel_boards", return_value=[]), mock.patch(
+            "lib.hob_mt.fetch_hoboken_126_board",
+            return_value={"label": "Hoboken Terminal", "trains": [], "error": None},
+        ), mock.patch(
+            "lib.hob_mt.fetch_hoboken_hblr_tonnelle_board",
+            return_value={"label": "Hoboken HBLR", "trains": [], "error": None},
+        ), mock.patch(
             "lib.hob_mt.fetch_njt_willow_board",
-            return_value={"label": "32084", "trains": [], "error": None},
+            return_value={"label": "Willow Ave + 15th St", "trains": [], "error": None},
         ), mock.patch(
             "lib.hob_mt.fetch_pabt_board",
             return_value={"label": "PABT dep", "trains": [], "error": None},
@@ -232,7 +271,9 @@ class SectionOrderTests(unittest.TestCase):
 
         titles = [s["title"] for s in sections]
         self.assertEqual(titles, list(HOB_MT_SECTION_TITLES))
+        self.assertEqual(sections[0]["title"], SECTION_HOB_TERMINAL)
         self.assertEqual(len(sections[0]["boards"]), 2)
+        self.assertEqual(len(sections[1]["boards"]), 2)
         self.assertEqual(len(sections[-1]["boards"]), 2)
         for section in sections:
             self.assertIn("boards", section)
