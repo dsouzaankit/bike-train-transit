@@ -171,7 +171,7 @@ class PabtGatesTests(unittest.TestCase):
                     "routes": pabt_gates.builtin_schedule_payload()["routes"],
                 },
             )[0]["title"],
-            "Gates now · 4:12 AM",
+            "Gates now · 4:30 AM",
         )
 
 

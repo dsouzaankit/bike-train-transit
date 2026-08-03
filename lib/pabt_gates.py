@@ -620,10 +620,14 @@ def build_pabt_gates_sections(
         else:
             current = [_empty_board("gates", error=scrape_error)]
 
-    updated = format_schedule_updated_at(data.get("updated_at"), now=now)
+    # Stamp when gates were resolved for display (not JSON scrape age — that only
+    # changes on Refresh and was stuck at the shipped snapshot time).
+    stamp = format_schedule_updated_at(
+        now.isoformat(timespec="seconds"), now=now
+    )
     return [
         {
-            "title": SECTION_CURRENT + ((" · %s" % updated) if updated else ""),
+            "title": SECTION_CURRENT + ((" · %s" % stamp) if stamp else ""),
             "boards": current,
         }
     ]

@@ -79,7 +79,7 @@ Port Authority Bus Terminal gate assignments for routes **119**, **123**, and **
 
 | Section | Cards | Source |
 |---------|-------|--------|
-| **Gates now** | One card per route — **title = bus #** only (no line badge on the row); row shows **Gate N** + active window (+ door / L-trip note when relevant); section title stamps schedule age as **Gates now · 4:12 AM** (or **Aug 2, 10:05 PM** if not today) | Hardcoded `lib/pabt_gates_data.json` (from [portauthoritygate.com](https://portauthoritygate.com/)) |
+| **Gates now** | One card per route — **title = bus #** only (no line badge on the row); row shows **Gate N** + active window (+ door / L-trip note when relevant); section title stamps resolve time as **Gates now · 4:56 AM** (updates on each tab tap / Refresh) | Hardcoded `lib/pabt_gates_data.json` (from [portauthoritygate.com](https://portauthoritygate.com/)); scrape age is only in the JSON `updated_at` field |
 
 | Window | 119 | 123 | 126 |
 |--------|-----|-----|-----|
