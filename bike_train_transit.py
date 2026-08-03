@@ -65,6 +65,7 @@ TRANSIT_LINE_ROW_HEIGHT = 22
 TUNNEL_ROW_HEIGHT = 40
 ETA_COLUMN_WIDTH = 68
 HBLR_PATH_ETA_WIDTH = 52
+PABT_GATE_ETA_WIDTH = 78
 SECTION_HEADER_HEIGHT = 26
 SECTION_GAP = 10
 TAB_BAR_HEIGHT = 34
@@ -96,7 +97,7 @@ GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 _debug_port_in_use = LAN_DEBUG_PORT
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "from-jc-hob-new-no-wtc-v111"
+BUILD_TAG = "pabt-gates-tab-v112"
 
 TAB_TRANSIT_JOBS = {
     "from_jc": ("pathAll", "subway"),
@@ -106,6 +107,7 @@ TAB_TRANSIT_JOBS = {
     "mt_to_jc": ("pathAll",),
     "njt_bus": (),
     "hob_mt": (),
+    "pabt_gates": (),
 }
 
 TAB_CACHE_KEYS = {
@@ -120,6 +122,7 @@ TAB_CACHE_KEYS = {
     "mt_to_jc": ("mt_to_jc_rows",),
     "njt_bus": ("njt_bus_boards",),
     "hob_mt": ("hob_mt_sections",),
+    "pabt_gates": ("pabt_gates_sections",),
 }
 
 
@@ -1473,7 +1476,9 @@ if HAS_UI:
                 "snapshots_nyc": [],
                 "njt_bus_boards": {},
                 "hob_mt_sections": [],
+                "pabt_gates_sections": [],
             }
+            self._pabt_gates_scrape_on_refresh = False
             self._thumb_float_active = False
             self._thumb_float_startup_pending = False
 
@@ -1503,6 +1508,7 @@ if HAS_UI:
             self.tab_mt_to_jc_btn = SectionPill("MT→JC")
             self.tab_njt_bus_btn = SectionPill("NJTb")
             self.tab_hob_mt_btn = SectionPill("HOB↔MT")
+            self.tab_pabt_gates_btn = SectionPill("PABT")
             for btn in (
                 self.tab_cbike_btn,
                 self.tab_cbike_s_btn,
@@ -1515,6 +1521,7 @@ if HAS_UI:
                 self.tab_mt_to_jc_btn,
                 self.tab_njt_bus_btn,
                 self.tab_hob_mt_btn,
+                self.tab_pabt_gates_btn,
             ):
                 btn._owner = self
             self.tab_cbike_btn.action = self._tab_cbike_tapped
@@ -1528,6 +1535,7 @@ if HAS_UI:
             self.tab_mt_to_jc_btn.action = self._tab_mt_to_jc_tapped
             self.tab_njt_bus_btn.action = self._tab_njt_bus_tapped
             self.tab_hob_mt_btn.action = self._tab_hob_mt_tapped
+            self.tab_pabt_gates_btn.action = self._tab_pabt_gates_tapped
             self.tab_bar.add_subview(self.tab_cbike_btn)
             self.tab_bar.add_subview(self.tab_cbike_s_btn)
             self.tab_bar.add_subview(self.tab_cbike_hob_btn)
@@ -1539,6 +1547,7 @@ if HAS_UI:
             self.tab_bar.add_subview(self.tab_mt_to_jc_btn)
             self.tab_bar.add_subview(self.tab_njt_bus_btn)
             self.tab_bar.add_subview(self.tab_hob_mt_btn)
+            self.tab_bar.add_subview(self.tab_pabt_gates_btn)
 
             self.scroll = ui.ScrollView()
             self.scroll.background_color = COLORS["bg"]
@@ -1565,6 +1574,7 @@ if HAS_UI:
                 self.tab_mt_to_jc_btn,
                 self.tab_njt_bus_btn,
                 self.tab_hob_mt_btn,
+                self.tab_pabt_gates_btn,
             )
 
         def _thumb_float_cbike_buttons(self):
@@ -1577,7 +1587,7 @@ if HAS_UI:
             )
 
         def _thumb_float_transit_buttons(self):
-            """Top → bottom: From JC … HOB↔MT at thumb."""
+            """Top → bottom: From JC … PABT at thumb."""
             return (
                 self.tab_from_btn,
                 self.tab_to_btn,
@@ -1586,6 +1596,7 @@ if HAS_UI:
                 self.tab_mt_to_jc_btn,
                 self.tab_njt_bus_btn,
                 self.tab_hob_mt_btn,
+                self.tab_pabt_gates_btn,
             )
 
         def _rehome_button(self, btn, parent):
@@ -1805,6 +1816,7 @@ if HAS_UI:
                 ("mt_to_jc", self.tab_mt_to_jc_btn),
                 ("njt_bus", self.tab_njt_bus_btn),
                 ("hob_mt", self.tab_hob_mt_btn),
+                ("pabt_gates", self.tab_pabt_gates_btn),
             ):
                 if getattr(btn, "_pressed", False):
                     continue
@@ -1891,6 +1903,9 @@ if HAS_UI:
 
         def _tab_hob_mt_tapped(self, sender):
             self._on_section_tap("hob_mt")
+
+        def _tab_pabt_gates_tapped(self, sender):
+            self._on_section_tap("pabt_gates")
 
         def _poll_remote_control(self):
             import ui
@@ -2149,6 +2164,8 @@ if HAS_UI:
                 ui.delay(lambda: self._refresh_step_njt_bus(refresh_id), 0.05)
             elif tab == "hob_mt":
                 ui.delay(lambda: self._refresh_step_hob_mt(refresh_id), 0.05)
+            elif tab == "pabt_gates":
+                ui.delay(lambda: self._refresh_step_pabt_gates(refresh_id), 0.05)
             else:
                 ui.delay(lambda: self._refresh_step_tab_transit(refresh_id, tab), 0.05)
 
@@ -2248,11 +2265,11 @@ if HAS_UI:
                 col = index % cols
                 tile_wrap = tile[3] if len(tile) > 3 else wrap_text
                 board_wrap = tile_wrap
-                eta_w = (
-                    HBLR_PATH_ETA_WIDTH
-                    if (not board_wrap and tag in ("PATH", "↑"))
-                    else None
-                )
+                eta_w = None
+                if not board_wrap and tag in ("PATH", "↑"):
+                    eta_w = HBLR_PATH_ETA_WIDTH
+                elif not board_wrap and tag == "GATE":
+                    eta_w = PABT_GATE_ETA_WIDTH
                 if col == 0:
                     row_groups.append([])
                     row_heights.append(
@@ -2489,6 +2506,8 @@ if HAS_UI:
                     y = self._paint_njt_bus(pad, inner_w, card_width, partial=partial)
                 elif self._active_tab == "hob_mt":
                     y = self._paint_hob_mt(pad, inner_w, card_width, partial=partial)
+                elif self._active_tab == "pabt_gates":
+                    y = self._paint_pabt_gates(pad, inner_w, card_width, partial=partial)
                 else:
                     y = self._paint_from_jc(pad, inner_w, card_width, partial=partial)
                 content_h = max(y, pad)
@@ -2508,6 +2527,7 @@ if HAS_UI:
                         "tunnels": "Tunnels",
                         "njt_bus": "NJTb",
                         "hob_mt": "HOB↔MT",
+                        "pabt_gates": "PABT",
                     }
                     self.status_label.text = "Updated %s · %s%s" % (
                         datetime.now().strftime("%I:%M:%S %p"),
@@ -2878,6 +2898,93 @@ if HAS_UI:
                     boards = [{"label": title, "trains": [], "note": "No data"}]
                 tiles = [
                     (board, "MT", "None catchable", False) for board in boards
+                ]
+                y = self._append_tile_row(
+                    y, pad, inner_w, card_width, tiles, wrap_text=False
+                )
+                y += SECTION_GAP
+            return y + pad
+
+        def _pabt_gates_refresh_tapped(self, sender):
+            if self._busy:
+                return
+            _haptic_pill_press()
+            self._pabt_gates_scrape_on_refresh = True
+            log_event("PABT Gates: scrape refresh requested")
+            self.refresh_tab("pabt_gates")
+
+        def _refresh_step_pabt_gates(self, refresh_id):
+            if refresh_id != self._refresh_gen:
+                return
+            scrape = bool(self._pabt_gates_scrape_on_refresh)
+            self._pabt_gates_scrape_on_refresh = False
+            payload = {
+                "refresh_id": refresh_id,
+                "tab": "pabt_gates",
+                "error": None,
+                "pabt_gates_sections": [],
+            }
+            try:
+                from lib.pabt_gates import build_pabt_gates_sections
+
+                log_event(
+                    "step: PABT Gates fetch{}".format(
+                        " + scrape" if scrape else ""
+                    )
+                )
+                payload["pabt_gates_sections"] = build_pabt_gates_sections(
+                    scrape=scrape
+                )
+                log_event(
+                    "step: PABT Gates ok ({})".format(
+                        len(payload["pabt_gates_sections"] or [])
+                    )
+                )
+            except Exception as exc:
+                payload["error"] = str(exc)
+                log_event("PABT Gates fetch failed: {}".format(exc))
+                log_event(traceback.format_exc())
+            if refresh_id != self._refresh_gen:
+                self._finish_refresh(refresh_id)
+                return
+            try:
+                self._apply_tab_refresh_payload(payload)
+            finally:
+                self._finish_refresh(refresh_id)
+
+        def _paint_pabt_gates(self, pad, inner_w, card_width, partial=False):
+            if partial:
+                return pad
+            y = pad
+            btn = ui.Button(title="Refresh")
+            btn.font = ("<system-bold>", 13)
+            btn.background_color = COLORS["accent"]
+            btn.tint_color = COLORS["text"]
+            btn.corner_radius = 10
+            btn.action = self._pabt_gates_refresh_tapped
+            btn.frame = (pad, y, min(120, inner_w), 40)
+            self.scroll.add_subview(btn)
+            hint = make_label(
+                "Ref: portauthoritygate.com",
+                font_size=11,
+                color=COLORS["muted"],
+                wrap=False,
+            )
+            hint.frame = (pad + min(120, inner_w) + 8, y + 10, max(80, inner_w - 128), 20)
+            self.scroll.add_subview(hint)
+            y += 40 + CARD_GAP + 4
+
+            for section in self._cache.get("pabt_gates_sections") or []:
+                title = section.get("title") or "PABT Gates"
+                header = SectionHeader(title)
+                header.frame = (pad, y, inner_w, SECTION_HEADER_HEIGHT)
+                self.scroll.add_subview(header)
+                y += SECTION_HEADER_HEIGHT + CARD_GAP
+                boards = section.get("boards") or []
+                if not boards:
+                    boards = [{"label": title, "trains": [], "note": "No data"}]
+                tiles = [
+                    (board, "GATE", "No gates", False) for board in boards
                 ]
                 y = self._append_tile_row(
                     y, pad, inner_w, card_width, tiles, wrap_text=False

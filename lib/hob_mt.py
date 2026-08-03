@@ -889,6 +889,12 @@ def build_hob_mt_sections(
         pabt_board = fetch_pabt_board(fetch_transit_json=fetch_transit_json)
     except Exception as exc:
         pabt_board = _empty_board(PABT_DISPLAY, error=str(exc))
+    try:
+        from lib.pabt_gates import annotate_pabt_board_with_gates
+
+        pabt_board = annotate_pabt_board_with_gates(pabt_board)
+    except Exception:
+        pass
     sections.append(
         {"title": SECTION_NJT_PABT, "boards": [njt_board, pabt_board]}
     )

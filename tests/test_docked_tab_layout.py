@@ -11,14 +11,15 @@ import bike_train_transit as btt  # noqa: E402
 
 
 class DockedTabLayoutTests(unittest.TestCase):
-    def test_eleven_tabs_use_three_rows(self):
-        bar_h, tab_w, frames = btt.compute_docked_tab_layout(390, 11)
-        self.assertEqual(len(frames), 11)
+    def test_twelve_tabs_use_three_rows(self):
+        bar_h, tab_w, frames = btt.compute_docked_tab_layout(390, 12)
+        self.assertEqual(len(frames), 12)
         self.assertEqual(frames[0][1], 0)
         self.assertEqual(frames[3][1], 0)
         self.assertGreater(frames[4][1], 0)
         self.assertEqual(frames[4][1], frames[7][1])
         self.assertGreater(frames[8][1], frames[4][1])
+        self.assertEqual(frames[8][1], frames[11][1])
         row0_ys = {frame[1] for frame in frames[:4]}
         row1_ys = {frame[1] for frame in frames[4:8]}
         row2_ys = {frame[1] for frame in frames[8:]}

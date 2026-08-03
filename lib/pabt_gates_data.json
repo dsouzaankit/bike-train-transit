@@ -1,0 +1,103 @@
+{
+  "errors": {},
+  "routes": {
+    "119": [
+      {
+        "door": "1",
+        "end": "10:00 PM",
+        "end_min": 1320,
+        "gate": "210",
+        "note": null,
+        "start": "6:00 AM",
+        "start_min": 360
+      },
+      {
+        "door": null,
+        "end": "1:00 AM",
+        "end_min": 60,
+        "gate": "322",
+        "note": null,
+        "start": "10:01 PM",
+        "start_min": 1321
+      },
+      {
+        "door": null,
+        "end": "5:59 AM",
+        "end_min": 359,
+        "gate": "80",
+        "note": null,
+        "start": "1:01 AM",
+        "start_min": 61
+      }
+    ],
+    "123": [
+      {
+        "door": "1",
+        "end": "10:00 PM",
+        "end_min": 1320,
+        "gate": "211",
+        "note": null,
+        "start": "6:00 AM",
+        "start_min": 360
+      },
+      {
+        "door": null,
+        "end": "1:00 AM",
+        "end_min": 60,
+        "gate": "303",
+        "note": null,
+        "start": "10:01 PM",
+        "start_min": 1321
+      },
+      {
+        "door": null,
+        "end": "5:59 AM",
+        "end_min": 359,
+        "gate": "79",
+        "note": null,
+        "start": "1:01 AM",
+        "start_min": 61
+      }
+    ],
+    "126": [
+      {
+        "door": null,
+        "end": "10:00 PM",
+        "end_min": 1320,
+        "gate": "213",
+        "note": "except_l",
+        "start": "6:00 AM",
+        "start_min": 360
+      },
+      {
+        "door": null,
+        "end": "10:00 PM",
+        "end_min": 1320,
+        "gate": "214",
+        "note": "l_only",
+        "start": "6:00 AM",
+        "start_min": 360
+      },
+      {
+        "door": null,
+        "end": "1:00 AM",
+        "end_min": 60,
+        "gate": "323",
+        "note": "all",
+        "start": "10:01 PM",
+        "start_min": 1321
+      },
+      {
+        "door": null,
+        "end": "5:59 AM",
+        "end_min": 359,
+        "gate": "79",
+        "note": "all",
+        "start": "1:01 AM",
+        "start_min": 61
+      }
+    ]
+  },
+  "source": "https://portauthoritygate.com",
+  "updated_at": "2026-08-03T04:12:00"
+}

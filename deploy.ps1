@@ -4,7 +4,12 @@
 #   1. Force quit Pythonista on the iPhone
 #   2. Files app: delete the old project folder (Downloads + Pythonista)
 #   3. Run:  .\deploy.ps1
-#   4. On iPhone: Downloads -> unzip -> copy into Pythonista -> run bike_train_transit.py
+#   4. On iPhone: Downloads -> unzip the timestamped zip -> copy into Pythonista
+#      -> run bike_train_transit.py
+#
+# Zip naming matches web_auto_parking\deploy.ps1:
+#   bike_train_transit-{yyyyMMdd-HHmmss}.zip
+# Older bike_train_transit*.zip files in iCloud Downloads are removed first.
 #
 # Usage:  powershell -ExecutionPolicy Bypass -File .\deploy.ps1
 # Non-interactive — runs straight through (no Read-Host prompts).
@@ -13,7 +18,8 @@ $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectName = Split-Path -Leaf $ProjectRoot
-$ZipName = "$ProjectName.zip"
+$Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$ZipName = "$ProjectName-$Timestamp.zip"
 $ICloudDownloads = Join-Path $env:USERPROFILE "iCloudDrive\Downloads"
 
 $configModule = Join-Path $ProjectRoot "windows\BikeTrainTransit-Windows.ps1"
@@ -52,18 +58,23 @@ Write-Host "  [YOU] 1. Force quit Pythonista on the iPhone (app switcher -> swip
 Write-Host "  [YOU] 2. Files app: delete the old $ProjectName folder everywhere it exists:"
 Write-Host "           - iCloud Drive -> Downloads -> $ProjectName (if present)"
 Write-Host "           - Pythonista folder (iCloud or On My iPhone) -> $ProjectName"
-Write-Host "  [PC]  3. This script (zip + copy to iCloud Downloads)"
-Write-Host "  [YOU] 4. iPhone Files -> Downloads -> unzip -> copy into Pythonista"
+Write-Host "  [PC]  3. This script (zip + copy timestamped zip to iCloud Downloads)"
+Write-Host "  [YOU] 4. iPhone Files -> Downloads -> unzip $ZipName -> copy $ProjectName into Pythonista"
 Write-Host "           Run bike_train_transit.py once (installs RunBikeTrainTransit.py launcher)"
 Write-Host ""
 
-Write-Step "Removing old deploy artifacts from $ICloudDownloads"
-foreach ($Name in @($ZipName, $ProjectName)) {
-    $OldPath = Join-Path $ICloudDownloads $Name
-    if (Test-Path -LiteralPath $OldPath) {
-        Write-Host "    removing $OldPath"
-        Remove-Item -LiteralPath $OldPath -Recurse -Force
+Write-Step "Removing older $ProjectName zip/folder artifacts from $ICloudDownloads"
+$OldZips = Get-ChildItem -LiteralPath $ICloudDownloads -Filter "$ProjectName*.zip" -File -ErrorAction SilentlyContinue
+foreach ($old in $OldZips) {
+    if ($old.Name -ne $ZipName) {
+        Write-Host "    removing $($old.FullName)"
+        Remove-Item -LiteralPath $old.FullName -Force -ErrorAction SilentlyContinue
     }
+}
+$OldFolder = Join-Path $ICloudDownloads $ProjectName
+if (Test-Path -LiteralPath $OldFolder) {
+    Write-Host "    removing $OldFolder"
+    Remove-Item -LiteralPath $OldFolder -Recurse -Force
 }
 
 Write-Step "Staging project (excluding build/editor junk and PC-only files)"
@@ -115,6 +126,7 @@ Write-Host ""
 Write-Host "Done. $DestZip ($SizeMb MB)"
 Write-Host ""
 Write-Host "Deployed from: $ProjectRoot"
+Write-Host "Zip: $ZipName"
 if ($BuildTag) {
     Write-Host "BUILD_TAG: $BuildTag  (LAN log should show build=$BuildTag after you run on iPhone)"
 }
