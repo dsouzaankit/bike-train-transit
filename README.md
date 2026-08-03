@@ -9,7 +9,7 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **Twelve tabs** — **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, **NJTb**, **HOB↔MT**, and **PABT**
 - **iPhone app** — compact 2-column Citibike grids; **each Citibike tab refreshes its own GBFS station set** (JC 15 / S JC 9 / HOB 6 / NYC 5)
 - **HOB↔MT tab** — NJT Willow→NYC + PABT **departures** (side-by-side; destinations annotated with current gate), subway catchable after **LincTnl +4** (+5 for 7, +8 for 6), NY Waterway + MTA M42/M50 (+15) side-by-side; Transit App for bus/ferry
-- **PABT tab** — gate windows for **119 / 123 / 126** at the current time (from [portauthoritygate.com](https://portauthoritygate.com/)); in-tab **Refresh** pill (**Ref: portauthoritygate.com**) scrapes and updates `pabt_gates_data.json`
+- **PABT tab** — gate windows for **119 / 123 / 126** at the current time (from [portauthoritygate.com](https://portauthoritygate.com/)); **Gates now · \<resolve time\>**; status **Updated \<scrape time\> · PABT** (no HTTP cache suffix); in-tab **Refresh** pill (**Ref: portauthoritygate.com**) scrapes and updates `pabt_gates_data.json`
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
 - **Empty-state line hints** — **None catchable · E/A** (MT→JC / HOB↔MT / From JC transfer cards) and **Express not stopping · 4/5** (From JC express-local) name the missing lines
 - **PATH + subway connections** — From JC **33rd St** subway cards only show trains reachable after the earliest paired PATH arrival + walk time; **HBLR↔PATH** has **PATH + Subway via WTC** under **HBLR → PATH** (**WTC Cortlandt** / **WTC** northbound, catchable after **LSP HBLR +11** then **Exchange PATH +8** walk at WTC)
@@ -79,7 +79,7 @@ Port Authority Bus Terminal gate assignments for routes **119**, **123**, and **
 
 | Section | Cards | Source |
 |---------|-------|--------|
-| **Gates now** | One card per route — **title = bus #** only (no line badge on the row); row shows **Gate N** + active window (+ door / L-trip note when relevant); section title stamps resolve time as **Gates now · 4:56 AM** (updates on each tab tap / Refresh) | Hardcoded `lib/pabt_gates_data.json` (from [portauthoritygate.com](https://portauthoritygate.com/)); scrape age is only in the JSON `updated_at` field |
+| **Gates now** | One card per route — **title = bus #** only (no line badge on the row); row shows **Gate N** + active window (+ door / L-trip note when relevant); section title stamps resolve time as **Gates now · 4:56 AM** | Hardcoded `lib/pabt_gates_data.json` (from [portauthoritygate.com](https://portauthoritygate.com/)) |
 
 | Window | 119 | 123 | 126 |
 |--------|-----|-----|-----|
@@ -87,7 +87,7 @@ Port Authority Bus Terminal gate assignments for routes **119**, **123**, and **
 | **10:01 PM – 1:00 AM** | Gate **322** | Gate **303** | Gate **323** |
 | **1:01 AM – 5:59 AM** | Gate **80** | Gate **79** | Gate **79** |
 
-Live **PABT dep** ETAs stay on **HOB↔MT** (destinations annotated with the current gate). Tab tap reloads gates from the saved schedule. In-tab **Refresh** pill (hint **Ref: portauthoritygate.com**, same medium-impact haptic as tab pills) scrapes `portauthoritygate.com/{119,123,126}` and rewrites `pabt_gates_data.json`.
+Live **PABT dep** ETAs stay on **HOB↔MT** (destinations annotated with the current gate). Tab tap reloads gates from the saved schedule. In-tab **Refresh** pill (hint **Ref: portauthoritygate.com**, same medium-impact haptic as tab pills) scrapes `portauthoritygate.com/{119,123,126}` and rewrites `pabt_gates_data.json`. Status line shows **Updated \<scrape time\> · PABT** (JSON `updated_at`, no HTTP **cache \<n\>s** suffix).
 
 Log markers: `build=pabt-gates-tab-v112`, `step: PABT Gates ok`, `PABT Gates: scrape refresh requested`.
 
@@ -177,7 +177,8 @@ Log markers: `build=pabt-gates-tab-v112`, `thumb float (tap section to dock)`, `
 
 ## HTTP cache and refresh API calls
 
-Data loads when you **tap a section tab** (thumb float or docked tab bar) and via **LAN debug** refresh (active tab only). There is no global header Refresh button and no startup auto-fetch. The **PABT** tab has an in-content **Refresh** pill (**Ref: portauthoritygate.com**, haptic on tap) that scrapes gate schedules.
+Data loads when you **tap a section tab** (thumb float or docked tab bar) and via **LAN debug** refresh (active tab only). There is no global header Refresh button and no startup auto-fetch. The **PABT** tab has an in-content **Refresh** pill (**Ref: portauthoritygate.com**, haptic on tap) that scrapes gate schedules; status shows last scrape time (**Updated \<scrape\> · PABT**) and omits the HTTP **cache \<n\>s** suffix.
+
 
 ### 2-minute persistent cache
 

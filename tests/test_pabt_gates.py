@@ -173,6 +173,16 @@ class PabtGatesTests(unittest.TestCase):
             )[0]["title"],
             "Gates now · 4:30 AM",
         )
+        self.assertEqual(
+            pabt_gates.build_pabt_gates_sections(
+                now=now,
+                data={
+                    "updated_at": "2026-08-03T05:31:00",
+                    "routes": pabt_gates.builtin_schedule_payload()["routes"],
+                },
+            )[0]["updated_at"],
+            "2026-08-03T05:31:00",
+        )
 
 
 if __name__ == "__main__":

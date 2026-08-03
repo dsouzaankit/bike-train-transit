@@ -2155,7 +2155,9 @@ if HAS_UI:
             self._busy = True
             app_state.set_busy(True)
             self._style_tabs()
-            self.status_label.text = "Updating..." + _cache_ttl_suffix()
+            self.status_label.text = "Updating..." + (
+                "" if tab == "pabt_gates" else _cache_ttl_suffix()
+            )
             log_event("Refresh tab {} (#{})".format(tab, refresh_id))
             reset_stats()
             if tab in CBIKE_TAB_KEYS:
@@ -2529,11 +2531,25 @@ if HAS_UI:
                         "hob_mt": "HOB↔MT",
                         "pabt_gates": "PABT",
                     }
-                    self.status_label.text = "Updated %s · %s%s" % (
-                        datetime.now().strftime("%I:%M:%S %p"),
-                        tab_labels.get(self._active_tab, REGION),
-                        _cache_ttl_suffix(),
-                    )
+                    if self._active_tab == "pabt_gates":
+                        from lib.pabt_gates import format_schedule_updated_at
+
+                        sections = self._cache.get("pabt_gates_sections") or []
+                        scrape_stamp = format_schedule_updated_at(
+                            (sections[0] or {}).get("updated_at") if sections else None
+                        )
+                        self.status_label.text = "Updated %s · %s" % (
+                            scrape_stamp
+                            or datetime.now().strftime("%I:%M:%S %p").lstrip("0"),
+                            tab_labels.get(self._active_tab, REGION),
+                        )
+                    else:
+                        self.status_label.text = "Updated %s · %s%s" % (
+                            datetime.now().strftime("%I:%M:%S %p"),
+                            tab_labels.get(self._active_tab, REGION),
+                            _cache_ttl_suffix(),
+                        )
+
             except Exception as exc:
                 log_event("Paint failed: {}".format(exc))
                 log_event(traceback.format_exc())
