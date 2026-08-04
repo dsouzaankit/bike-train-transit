@@ -1,6 +1,6 @@
 # JC/HOB <-> NYC Transit
 
-Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **JC/HOB <-> NYC Transit** — tabs: **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, **JC NJTb**, **HOB↔MT**, **Whkn**, and **PABT**. Includes a Pythonista app, optional PC email alerts, and a LAN debug server for reading logs from your desktop.
+Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **JC/HOB <-> NYC Transit** — tabs: **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, **JC NJTb**, **HOB↔MT**, **Whkn**, and **PABT**. Includes a Pythonista app and a LAN debug server for reading logs from your desktop.
 
 Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — no Citibike account login required.
 
@@ -23,7 +23,6 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **Low-count alerts** — cards highlight red when bikes or docks ≤ threshold
 - **LAN debug server** — browse logs and status from a PC on the same Wi‑Fi (`:8765`)
 - **PC deploy script** — `deploy.ps1` zips to iCloud Downloads as `bike_train_transit-yyyyMMdd-HHmmss.zip` (timestamped like `web_auto_parking`)
-- **PC email script** — optional Yahoo SMTP status/alert emails
 - **iOS Shortcut** — one-tap launch from Home Screen; separate **`debug_server.py`** shortcut for safe mode (LAN logs only)
 - **Fullscreen UI** — Pythonista script title bar hidden; layout uses **safe area insets** on iPhone 12+ (notch / Dynamic Island / home indicator)
 - **Startup thumb float** — on open, section tabs stack in **two vertical columns** (LHD default: primary left of center-line secondary; **LHD/RHD** toggle persists), centered at **65%** usable height, until you **tap a section** (no auto-dock timer)
@@ -54,7 +53,7 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 | Lafayette Park | Lena Edwards Park |
 | MLK Dr & Bramhall | Astor Place |
 
-All stations are tagged `[JC]` in logs, email, and the **Cbike JC** / **Cbike S JC** tabs.
+All stations are tagged `[JC]` in logs and the **Cbike JC** / **Cbike S JC** tabs.
 
 ## App tabs
 
@@ -70,7 +69,7 @@ Hoboken ↔ Midtown transfers. Sections paint in order:
 | **Subway catchable** | **LincTnl → NYC** + catchable subway | Lincoln minutes from Tunnels cache / PANYNJ `crossingtimesapi.json` (JSON **array** via `fetch_transit_payload`). Note **`LincTnl +4`** (walk); **7** = +9; **6** = +12. **E** Queens + **C** north at 42 St-PABT; **A** @ 50 St; **6** @ Grand Central; **4/5** @ 51 St / 33 St |
 | **NY Waterway · MTA bus** | Hoboken 14th St · 12 Av / W 42 St M42/M50 | Transit `NYW:596` (Connexionz fallback); MTA `MTAMNT:…` chained **NYW +15** |
 
-Empty catchable cards show **`None catchable · <lines>`** when line specs are known. Plan notes: `hob-mt-tab-plan.md`.
+Empty catchable cards show **`None catchable · <lines>`** when line specs are known. Plan notes: `ai/hob-mt-tab-plan.md` (local; `ai/` is gitignored).
 
 Log markers: `build=hob-mt-v109`, `step: HOB↔MT ok`.
 
@@ -389,9 +388,7 @@ Requires `TRANSIT_API_KEY` or gitignored `transit_credentials.json`. Tabs that d
 ```
 bike_train_transit/
   bike_train_transit.py           # iPhone UI (Pythonista); --safe, --inactive, --cli
-  bike_train_transit_alert.py     # PC email script
   deploy.ps1                      # Timestamped zip → iCloud Downloads (PC → iPhone; web_auto_parking pattern)
-  config.json                     # PC stations + thresholds
   debug_server.py                 # One-tap safe mode (LAN logs only; Pythonista shortcut)
   archive/debug_shims/            # Old inactive shims (not deployed)
   lib/
@@ -422,12 +419,11 @@ bike_train_transit/
     debug_flags.py                # BIKE_TRAIN_TRANSIT_INACTIVE / --inactive
     lan_debug_server.py           # LAN debug HTTP server
   tests/                          # Unit tests (HBLR, PATH transfers, MT→JC, HOB↔MT, PABT gates, weekend sync, From JC express-local)
-  hob-mt-tab-plan.md              # HOB/NYC Citibike + HOB↔MT design notes
+  ai/hob-mt-tab-plan.md           # HOB/NYC Citibike + HOB↔MT design notes (gitignored)
   tools/
     build_hblr_schedule.py        # PC-only: parse NJT HBLR PDF → hblr_schedule_data.json (pymupdf; 12-hour band cycles)
     capture_transit_hblr_fixtures.py  # PC-only: snapshot 3 Transit API boards → tests/fixtures/transit_hblr/
   windows/                        # PC helpers for LAN debug URLs, deploy config
-  .env.example                    # Yahoo SMTP template
 ```
 
 ## Requirements
@@ -468,7 +464,7 @@ cd "P:\all_scripts\iOS apps\bike_train_transit"
 The script:
 
 1. Removes older `bike_train_transit*.zip` and `bike_train_transit\` from iCloud Downloads
-2. Stages the project (excludes logs, `windows/`, `ai/`, PC-only email files, editor junk). If present locally, **`transit_credentials.json`** and **`njt_credentials.json`** are included in the zip.
+2. Stages the project (excludes logs, `windows/`, `ai/`, editor junk). If present locally, **`transit_credentials.json`** and **`njt_credentials.json`** are included in the zip.
 3. Creates a timestamped zip (`bike_train_transit-yyyyMMdd-HHmmss.zip`, same pattern as `web_auto_parking`) and copies it to `%USERPROFILE%\iCloudDrive\Downloads`
 
 Optional: set `iCloudDownloads` in `windows\bike-train-transit-windows.json` if your iCloud path differs.
@@ -654,30 +650,9 @@ Log files on PC (when testing locally): `bike_train_transit/logs/`
 
 ---
 
-## PC email script
+## PC testing
 
-Optional. Sends email via Yahoo SMTP when thresholds are hit (or every run if configured).
-
-### Setup
-
-```powershell
-cd "P:\all_scripts\iOS apps\bike_train_transit"
-copy .env.example .env
-# Edit .env — Yahoo address + app password (not your normal login password)
-```
-
-Edit `config.json` for stations and thresholds.
-
-### Run
-
-```powershell
-python bike_train_transit_alert.py --dry-run    # preview, no email
-python bike_train_transit_alert.py              # send email
-
-python bike_train_transit_alert.py --list-stations   # browse API station names
-```
-
-### Test Pythonista logic on PC
+### CLI transit boards
 
 ```powershell
 python bike_train_transit.py --cli
@@ -745,16 +720,6 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 
 **Pythonista:** the Home Screen shortcut runs from `On My iPhone → Documents → bike_train_transit/`, not the folder you edit in the Pythonista file browser. Put `transit_credentials.json` next to `bike_train_transit.py` in your edit folder, then **run the script once** so `local_deploy` copies it to Documents. You can also create the file directly under `Documents/bike_train_transit/`. Live HBLR cards show **no `~` prefix**; `~` means PDF fallback.
 
-### PC email (`config.json`)
-
-| Field | Description |
-|-------|-------------|
-| `region` | Prefix tag for email reports (e.g. `JC`) |
-| `stations` | List of station names (up to 24) |
-| `alert_min_bikes` | Email alert threshold |
-| `alert_min_docks` | Email alert threshold |
-| `email_always` | `true` = email every run; `false` = only on alert |
-
 ### PC Windows helpers (`windows\bike-train-transit-windows.json`)
 
 | Field | Description |
@@ -786,7 +751,6 @@ Copy `transit_credentials.json.example` → `transit_credentials.json` (gitignor
 | Wrong IP in log (`10.115.x.x`) | That’s a VPN tunnel IP; use Wi‑Fi IP from Settings for PC access |
 | `ModuleNotFoundError: lib` | Copy the whole folder including `lib/` |
 | PC can’t reach debug URL | Same Wi‑Fi; check iPhone IP; app must be running (or safe mode after crash) |
-| Email fails | Use Yahoo **app password** in `.env`, not account password |
 | `deploy.ps1`: iCloud folder not found | Enable iCloud Drive on Windows or set `iCloudDownloads` in windows config |
 | WTC subway shows `~` prefix | Estimated from Canal St +2 min — direct WTC E-line data was unavailable |
 | PATH missing Hoboken | Hoboken-terminating trains are filtered out on most cards; "via Hoboken" routings are kept. **WTC** shows Hoboken-bound trains because the **Hoboken line** serves **Exchange Place** and **Newport** in JC |

@@ -39,9 +39,7 @@ $ExcludeDirs = @(
 )
 $ExcludeFiles = @(
     "*.pyc", "deploy.ps1",
-    "bike-train-transit-windows.json",
-    "bike_train_transit_alert.py", "config.json",
-    ".env", ".env.example"
+    "bike-train-transit-windows.json"
 )
 
 function Write-Step($Message) {
