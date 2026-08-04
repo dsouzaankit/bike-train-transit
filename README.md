@@ -1,20 +1,21 @@
 # JC/HOB <-> NYC Transit
 
-Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **JC/HOB <-> NYC Transit** — tabs: **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, **NJTb**, **HOB↔MT**, and **PABT**. Includes a Pythonista app, optional PC email alerts, and a LAN debug server for reading logs from your desktop.
+Monitor Citibike dock counts, PATH trains, NYC subway departures, and Lincoln/Holland tunnel travel times for Jersey City (`JC`). The iPhone UI header shows **JC/HOB <-> NYC Transit** — tabs: **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, **JC NJTb**, **HOB↔MT**, **Whkn**, and **PABT**. Includes a Pythonista app, optional PC email alerts, and a LAN debug server for reading logs from your desktop.
 
 Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — no Citibike account login required.
 
 ## Features
 
-- **Twelve tabs** — **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, **NJTb**, **HOB↔MT**, and **PABT**
+- **Thirteen tabs** — **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, **JC NJTb**, **HOB↔MT**, **Whkn**, and **PABT**
 - **iPhone app** — compact 2-column Citibike grids; **each Citibike tab refreshes its own GBFS station set** (JC 15 / S JC 9 / HOB 6 / NYC 5)
 - **HOB↔MT tab** — NJT Willow→NYC + PABT **departures** (side-by-side; destinations annotated with current gate), subway catchable after **LincTnl +4** (+5 for 7, +8 for 6), NY Waterway + MTA M42/M50 (+15) side-by-side; Transit App for bus/ferry
-- **PABT tab** — gate windows for **119 / 123 / 126** at the current time (from [portauthoritygate.com](https://portauthoritygate.com/)); **Gates now · \<resolve time\>**; status **Updated \<scrape time\> · PABT** (no HTTP cache suffix); in-tab **Refresh** pill (**Ref: portauthoritygate.com**) scrapes and updates `pabt_gates_data.json`
+- **Whkn tab** — Lincoln Harbor **21831** buses **156 / 158 / 159** → NYC + **PABT → Fort Lee** (same routes; gate annotated) side-by-side via Transit App
+- **PABT tab** — gate windows for **119 / 123 / 126 / 156 / 158 / 159** at the current time (from [portauthoritygate.com](https://portauthoritygate.com/)); **Gates now · \<resolve time\>**; status **Updated \<scrape time\> · PABT** (no HTTP cache suffix); in-tab **Refresh** pill (**Ref: portauthoritygate.com**) scrapes and updates `pabt_gates_data.json`
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
 - **Empty-state line hints** — **None catchable · E/A** (MT→JC / HOB↔MT / From JC transfer cards) and **Express not stopping · 4/5** (From JC express-local) name the missing lines
 - **PATH + subway connections** — From JC **33rd St** subway cards only show trains reachable after the earliest paired PATH arrival + walk time; **HBLR↔PATH** has **PATH + Subway via WTC** under **HBLR → PATH** (**WTC Cortlandt** / **WTC** northbound, catchable after **LSP HBLR +11** then **Exchange PATH +8** walk at WTC)
 - **HBLR ↔ PATH tab** — timed transfers; **Garfield Avenue** and **Liberty State Park** northbound HBLR cards side by side; **Transit App API** for HBLR live boards (see [Transit App API usage](#transit-app-api-usage))
-- **NJTb tab** — four NJ Transit bus stops with **Transit App** ETAs; per-stop route filters (route **81** excludes **Express** headsigns); left button shows **street address** and opens **Messages** pre-filled to **MyBus (69287)** — you tap **Send** (iOS does not allow auto-send)
+- **JC NJTb tab** — four NJ Transit bus stops with **Transit App** ETAs; per-stop route filters (route **81** excludes **Express** headsigns); left button shows **street address** and opens **Messages** pre-filled to **MyBus (69287)** — you tap **Send** (iOS does not allow auto-send)
 - **PATH schedules** — trains terminating at **Hoboken** are excluded on most cards, but **"via Hoboken"** routings (overnight 33rd↔JSQ) are kept; **World Trade Center** shows **Hoboken-bound** PATH (**Hoboken line** serves **Exchange Place** and **Newport** in JC — alight there even when the headsign is Hoboken); for **Liberty State Park**, **change at Exchange Place** (HBLR ↔ PATH) — see [HBLR↔PATH](#jc-hblr--path)
 - **PATH & subway** — real-time departures in grouped sections (see [App tabs](#app-tabs) below); PATH uses one PANYNJ fetch for all boards
 - **Compact ETAs** — `5m`, `Due`, `Delay` / `~5m`; southbound **6** (Union Sq) and **4/5** (Bleecker St express local) trains show **↓** (e.g. `14m↓`); card notes and destinations **wrap** within narrow columns (taller cards when needed)
@@ -25,8 +26,8 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **PC email script** — optional Yahoo SMTP status/alert emails
 - **iOS Shortcut** — one-tap launch from Home Screen; separate **`debug_server.py`** shortcut for safe mode (LAN logs only)
 - **Fullscreen UI** — Pythonista script title bar hidden; layout uses **safe area insets** on iPhone 12+ (notch / Dynamic Island / home indicator)
-- **Startup thumb float** — on open, section tabs stack in **two vertical columns** (citibike left, transit on center line), centered at **65%** usable height, until you **tap a section** (no auto-dock timer)
-- **Docked tab bar** — **twelve** section pills wrap at **four per row** (three rows) after you tap a floating pill
+- **Startup thumb float** — on open, section tabs stack in **two vertical columns** (LHD default: primary left of center-line secondary; **LHD/RHD** toggle persists), centered at **65%** usable height, until you **tap a section** (no auto-dock timer)
+- **Docked tab bar** — **thirteen** section pills wrap at **four per row** (four rows) after you tap a floating pill
 
 ## Jersey City stations (`JC`)
 
@@ -57,7 +58,7 @@ All stations are tagged `[JC]` in logs, email, and the **Cbike JC** / **Cbike S 
 
 ## App tabs
 
-Tap **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, **NJTb**, **HOB↔MT**, or **PABT** in the tab bar. Data loads when you **tap a tab** (or LAN `/refresh` for the active tab only); switching tabs without a new tap uses in-memory cache. See [HTTP cache and refresh API calls](#http-cache-and-refresh-api-calls).
+Tap **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, **JC NJTb**, **HOB↔MT**, **Whkn**, or **PABT** in the tab bar. Data loads when you **tap a tab** (or LAN `/refresh` for the active tab only); switching tabs without a new tap uses in-memory cache. See [HTTP cache and refresh API calls](#http-cache-and-refresh-api-calls).
 
 ### HOB↔MT tab
 
@@ -73,9 +74,20 @@ Empty catchable cards show **`None catchable · <lines>`** when line specs are k
 
 Log markers: `build=hob-mt-v109`, `step: HOB↔MT ok`.
 
+### Whkn tab
+
+Weehawken Lincoln Harbor ↔ PABT for routes **156 / 158 / 159**.
+
+| Card | Data |
+|------|------|
+| **Lincoln Harbor** | NYC-bound ETAs at stop **21831** (Transit `NJTB:148700`) |
+| **PABT → Fort Lee** | Fort Lee / Englewood corridor departures from PABT (Transit `NJTB:162326`); destinations annotated with current gate |
+
+Log markers: `build=whkn-tab-v113`, `step: Whkn ok`.
+
 ### PABT tab
 
-Port Authority Bus Terminal gate assignments for routes **119**, **123**, and **126** (same set as HOB↔MT **PABT dep**).
+Port Authority Bus Terminal gate assignments for routes **119**, **123**, **126**, **156**, **158**, and **159** (**119/123/126** also annotate HOB↔MT **PABT dep**; **156/158/159** annotate Whkn **PABT → Fort Lee**).
 
 | Section | Cards | Source |
 |---------|-------|--------|
@@ -89,9 +101,9 @@ Port Authority Bus Terminal gate assignments for routes **119**, **123**, and **
 
 Live **PABT dep** ETAs stay on **HOB↔MT** (destinations annotated with the current gate). Tab tap reloads gates from the saved schedule. In-tab **Refresh** pill (hint **Ref: portauthoritygate.com**, same medium-impact haptic as tab pills) scrapes `portauthoritygate.com/{119,123,126}` and rewrites `pabt_gates_data.json`. Status line shows **Updated \<scrape time\> · PABT** (JSON `updated_at`, no HTTP **cache \<n\>s** suffix).
 
-Log markers: `build=pabt-gates-tab-v112`, `step: PABT Gates ok`, `PABT Gates: scrape refresh requested`.
+Log markers: `build=whkn-tab-v113`, `step: PABT Gates ok`, `PABT Gates: scrape refresh requested`.
 
-### NJTb tab
+### JC NJTb tab
 
 Four NJ Transit bus stops in **Eastbound** / **Westbound** sections. Each row: **stop button** (left) + **Transit ETA card** (right).
 
@@ -156,24 +168,25 @@ Most **From JC** subway cards use API `direction` + line specs only — **no hea
 
 ### Startup thumb float (~6" screens)
 
-On launch (after `present()`), section tabs **float** in **two vertical columns** (left-hand thumb on ~6" phones):
+On launch (after `present()`), section tabs **float** in **two vertical columns** for thumb reach on ~6" phones:
 
 | Behavior | Detail |
 |----------|--------|
 | **Trigger** | App startup only (no auto-fetch until you tap a tab) |
-| **Citibike column** | **Cbike JC** (top) … **Cbike NYC**, left of transit — top row beside **From JC** |
-| **Transit column** | **From JC** (top) … **PABT** at bottom on center line (~50% width); stack centered at **65%** usable height |
+| **Primary column** | **From JC**, **To JC**, **HBLR↔PATH**, then **Cbike JC** … **Cbike NYC** |
+| **Secondary column** | **Tunnels** … **PABT** on the vertical center line; shorter column **bottom-aligned** with the taller |
+| **LHD / RHD** | Toggle (top-trailing, thumb-float only). **LHD** (default): primary left of center. **RHD**: horizontal mirror. Persists in `ui_prefs.json` |
 | **Duration** | Stays floating until you **tap a section tab** (no 5s timeout) |
 | **Section tabs (idle)** | Same dark gray on every pill while floating (no pre-selected blue) |
 | **Press feedback** | **Red** flash + haptic on every pill (same as docked tabs) |
 | **Section tab tap** | Docks to top bar (active tab turns blue), fetches that tab only |
 | **While fetching** | All tabs grayed until the fetch finishes |
 
-**Docked ribbon** (after tap): row 1 — **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**; row 2 — **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**; row 3 — **MT→JC**, **NJTb**, **HOB↔MT**, **PABT**.
+**Docked ribbon** (after tap): row 1 — **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**; row 2 — **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**; row 3 — **MT→JC**, **JC NJTb**, **HOB↔MT**, **Whkn**; row 4 — **PABT** (+ spacers).
 
-Layout diagram: `thumb-float-layout-hob-nyc.svg` (twelve tabs). Coordinates checked by `test_thumb_float_layout.py` / `test_docked_tab_layout.py`.
+Layout diagram: `thumb-float-layout-hob-nyc.svg` (thirteen tabs). Coordinates checked by `test_thumb_float_layout.py` / `test_docked_tab_layout.py` / `test_ui_prefs.py`.
 
-Log markers: `build=pabt-gates-tab-v112`, `thumb float (tap section to dock)`, `Refresh tab …`.
+Log markers: `build=whkn-tab-v114`, `thumb float (tap section to dock)`, `thumb float handedness -> …`, `Refresh tab …`.
 
 ## HTTP cache and refresh API calls
 
@@ -206,7 +219,7 @@ Counts are **network requests** on a full refresh when the 2-minute cache is emp
 | **PANYNJ PATH** | **1** | `ridepath.json` — all PATH cards (NYC, 33rd, NJ, HBLR PATH, Exchange WTC) |
 | **PANYNJ tunnels** | **1** | `crossingtimesapi.json` |
 | **subwayinfo.nyc** | **15–16** | See breakdown below |
-| **Transit App** | **4–8** | HBLR live — Garfield Avenue, LSP, Exchange Place, Newport (`NJTR:…`); **NJTb** — four bus stops (`NJTB:…`); **0** extra if no API key (HBLR PDF fallback; NJTb empty) |
+| **Transit App** | **4–8** | HBLR live — Garfield Avenue, LSP, Exchange Place, Newport (`NJTR:…`); **JC NJTb** — four bus stops (`NJTB:…`); **0** extra if no API key (HBLR PDF fallback; NJTb empty) |
 | **Transit retries** | **0–4** | HBLR tab only — deeper PATH/subway pool when transfer filter is shallow |
 
 **Typical cold refresh total: ~22–23 HTTP calls.**
@@ -230,7 +243,7 @@ WTC/Cortlandt are fetched twice (south for **To JC**, north for **HBLR**) with d
 | **From JC** | PANYNJ slice + From JC subway | **12** |
 | **To JC** | PANYNJ NJ slice + To JC subway | **2–3** |
 | **HBLR↔PATH** | Transit HBLR (Garfield, LSP, Exchange, Newport) + PANYNJ PATH slice + WTC subway north + optional retries | **6–10** |
-| **NJTb** | Transit bus — four stops (`NJTB:…`) | **4** |
+| **JC NJTb** | Transit bus — four stops (`NJTB:…`) | **4** |
 | **HOB↔MT** | Transit Willow/PABT/NYW/MTA + tunnels/subway as needed | **varies** |
 | **PABT** | Gate windows from local JSON (no HTTP unless **Refresh** scrapes 3 HTML pages) | **0** (+**3** HTML on scrape) |
 | **Tunnels** | PANYNJ crossing times | **1** |
@@ -349,8 +362,9 @@ Requires `TRANSIT_API_KEY` or gitignored `transit_credentials.json`. Tabs that d
 | Tab / section | Card | Role |
 |---------------|------|------|
 | **HOB↔MT** | Willow **32084**, **PABT dep**, Hoboken 14th, M42/M50 | **Primary** Transit (`NJTB:…`, `NYW:596`, `MTAMNT:…`); NY Waterway falls back to Connexionz if Transit empty |
-| **PABT** | Gate windows (119/123/126) | Local `pabt_gates_data.json`; **Refresh** scrapes portauthoritygate.com (no Transit) |
-| **NJTb** | **20747**, **30492**, **20764**, **20647** | **Primary** live source (Transit `NJTB:…`); per-stop route filter (**81** local only — no **Express**; **1** + Exchange/Newark). Left button opens Messages to **MyBus (69287)** — user taps **Send** |
+| **Whkn** | **Lincoln Harbor** NYC + **PABT → Fort Lee** (156/158/159) | **Primary** Transit (`NJTB:148700`, `NJTB:162326`); Fort Lee card gate-annotated |
+| **PABT** | Gate windows (119/123/126/156/158/159) | Local `pabt_gates_data.json`; **Refresh** scrapes portauthoritygate.com (no Transit) |
+| **JC NJTb** | **20747**, **30492**, **20764**, **20647** | **Primary** live source (Transit `NJTB:…`); per-stop route filter (**81** local only — no **Express**; **1** + Exchange/Newark). Left button opens Messages to **MyBus (69287)** — user taps **Send** |
 | **HBLR → PATH** | **Garfield Avenue** HBLR | **Primary** live source (Transit `NJTR:3113` → PDF; PDF fallback = LSP − **3 min**) |
 | **HBLR → PATH** | **Liberty State Park** HBLR | **Primary** live source (Transit `NJTR:3072` → PDF); anchors PATH transfer timing |
 | **HBLR → PATH** | **Exchange Place** PATH · **Newport** | **Transfer retry** only — PANYNJ first; if offset filter finds nothing in the shallow pool, fetch up to **8** departures from Transit (`PATH:554` Exchange, `PATH:520` Newport), then filter **LSP +11 / +21**. Empty if still nothing catchable (no `· current PATH`) |
@@ -385,7 +399,8 @@ bike_train_transit/
     hblr_path.py                  # HBLR↔PATH tab: Garfield/LSP primary row + four transfer pairs + offset filter
     mt_to_jc.py                   # MT→JC tab: subway → PATH (Nwk/JSQ/Hoboken) → HBLR southbound chains
     hob_mt.py                     # HOB↔MT: Willow/PABT Transit, LincTnl+subway offsets, NYW/MTA chain
-    pabt_gates.py                 # PABT tab: gate windows + scrape portauthoritygate.com; annotate PABT dep
+    whkn_bus.py                   # Whkn tab: Lincoln Harbor 21831 NYC + PABT Fort Lee (156/158/159)
+    pabt_gates.py                 # PABT tab: gate windows + scrape portauthoritygate.com; annotate PABT dep / Whkn
     pabt_gates_data.json          # Hardcoded 119/123/126 gate schedule snapshot
     citibike_stations.py          # Per-tab Citibike station lists / grids (JC, S JC, HOB, NYC)
     njt_bus.py                    # NJTb tab: four bus stops, Transit ETAs, route 81 local-only filter, MyBus SMS

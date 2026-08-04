@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""PABT gate schedules from portauthoritygate.com (119 / 123 / 126).
+"""PABT gate schedules from portauthoritygate.com (119 / 123 / 126 / 156 / 158 / 159).
 
 Hardcoded windows ship in ``pabt_gates_data.json``. A user Refresh scrapes
 https://portauthoritygate.com/{route} and rewrites that snapshot.
@@ -16,7 +16,7 @@ from html import unescape
 from typing import Callable
 
 # Same routes as HOB↔MT PABT dep board.
-PABT_GATE_ROUTES = ("119", "123", "126")
+PABT_GATE_ROUTES = ("119", "123", "126", "156", "158", "159")
 PABT_GATES_BASE_URL = "https://portauthoritygate.com"
 SECTION_CURRENT = "Gates now"
 PABT_GATES_SECTION_TITLES = (SECTION_CURRENT,)
@@ -91,6 +91,15 @@ def _normalize_note(note: str | None) -> str | None:
         return "l_only"
     if _NOTE_ALL.search(text):
         return "all"
+    low = text.casefold()
+    if "local service" in low or low == "local":
+        return "local"
+    if "(r)" in low or "r) express" in low or low.endswith("r express"):
+        return "r_express"
+    if "(x)" in low or "60th" in low:
+        return "x_express"
+    if "express" in low:
+        return "express"
     return text
 
 
@@ -101,6 +110,15 @@ def is_126_l_trip(destination: str | None) -> bool:
         return True
     low = text.casefold()
     return "limited" in low or '"l"' in low or " l " in " %s " % low
+
+
+def is_express_bus_trip(destination: str | None) -> bool:
+    """Heuristic: 156/159 (R)/(X) Express headsigns."""
+    text = str(destination or "")
+    low = text.casefold()
+    if "express" in low or "(r)" in low or "(x)" in low:
+        return True
+    return bool(re.search(r"\b(?:156|159)\s*r\b", low))
 
 
 # ---------------------------------------------------------------------------
@@ -168,13 +186,34 @@ def parse_route_html(html: str, route: str) -> list[dict]:
         if not line:
             continue
         note_norm = _normalize_note(line)
-        if note_norm in ("except_l", "l_only", "all") or (
+        if note_norm in (
+            "except_l",
+            "l_only",
+            "all",
+            "local",
+            "r_express",
+            "x_express",
+            "express",
+        ) or (
             note_norm and note_norm == line.strip() and "trip" in line.casefold()
         ):
             # New note starts a new window after previous gate.
             if pending_gate:
                 flush()
-            pending_note = note_norm if note_norm in ("except_l", "l_only", "all") else line
+            pending_note = (
+                note_norm
+                if note_norm
+                in (
+                    "except_l",
+                    "l_only",
+                    "all",
+                    "local",
+                    "r_express",
+                    "x_express",
+                    "express",
+                )
+                else line
+            )
             continue
         time_match = _TIME_RE.fullmatch(line)
         if time_match:
@@ -244,100 +283,241 @@ def scrape_all_schedules(
 _BUILTIN_ROUTES: dict[str, list[dict]] = {
     "119": [
         {
-            "start_min": 6 * 60,
-            "end_min": 22 * 60,
-            "start": "6:00 AM",
-            "end": "10:00 PM",
-            "gate": "210",
             "door": "1",
+            "end": "10:00 PM",
+            "end_min": 1320,
+            "gate": "210",
             "note": None,
+            "start": "6:00 AM",
+            "start_min": 360
         },
         {
-            "start_min": 22 * 60 + 1,
-            "end_min": 1 * 60,
-            "start": "10:01 PM",
+            "door": None,
             "end": "1:00 AM",
+            "end_min": 60,
             "gate": "322",
-            "door": None,
             "note": None,
+            "start": "10:01 PM",
+            "start_min": 1321
         },
         {
-            "start_min": 1 * 60 + 1,
-            "end_min": 5 * 60 + 59,
-            "start": "1:01 AM",
-            "end": "5:59 AM",
-            "gate": "80",
             "door": None,
+            "end": "5:59 AM",
+            "end_min": 359,
+            "gate": "80",
             "note": None,
-        },
+            "start": "1:01 AM",
+            "start_min": 61
+        }
     ],
     "123": [
         {
-            "start_min": 6 * 60,
-            "end_min": 22 * 60,
-            "start": "6:00 AM",
-            "end": "10:00 PM",
-            "gate": "211",
             "door": "1",
+            "end": "10:00 PM",
+            "end_min": 1320,
+            "gate": "211",
             "note": None,
+            "start": "6:00 AM",
+            "start_min": 360
         },
         {
-            "start_min": 22 * 60 + 1,
-            "end_min": 1 * 60,
-            "start": "10:01 PM",
+            "door": None,
             "end": "1:00 AM",
+            "end_min": 60,
             "gate": "303",
-            "door": None,
             "note": None,
+            "start": "10:01 PM",
+            "start_min": 1321
         },
         {
-            "start_min": 1 * 60 + 1,
-            "end_min": 5 * 60 + 59,
-            "start": "1:01 AM",
-            "end": "5:59 AM",
-            "gate": "79",
             "door": None,
+            "end": "5:59 AM",
+            "end_min": 359,
+            "gate": "79",
             "note": None,
-        },
+            "start": "1:01 AM",
+            "start_min": 61
+        }
     ],
     "126": [
         {
-            "start_min": 6 * 60,
-            "end_min": 22 * 60,
-            "start": "6:00 AM",
+            "door": None,
             "end": "10:00 PM",
+            "end_min": 1320,
             "gate": "213",
-            "door": None,
             "note": "except_l",
-        },
-        {
-            "start_min": 6 * 60,
-            "end_min": 22 * 60,
             "start": "6:00 AM",
+            "start_min": 360
+        },
+        {
+            "door": None,
             "end": "10:00 PM",
+            "end_min": 1320,
             "gate": "214",
-            "door": None,
             "note": "l_only",
+            "start": "6:00 AM",
+            "start_min": 360
         },
         {
-            "start_min": 22 * 60 + 1,
-            "end_min": 1 * 60,
-            "start": "10:01 PM",
+            "door": None,
             "end": "1:00 AM",
+            "end_min": 60,
             "gate": "323",
-            "door": None,
             "note": "all",
+            "start": "10:01 PM",
+            "start_min": 1321
         },
         {
-            "start_min": 1 * 60 + 1,
-            "end_min": 5 * 60 + 59,
-            "start": "1:01 AM",
-            "end": "5:59 AM",
-            "gate": "79",
             "door": None,
+            "end": "5:59 AM",
+            "end_min": 359,
+            "gate": "79",
             "note": "all",
-        },
+            "start": "1:01 AM",
+            "start_min": 61
+        }
     ],
+    "156": [
+        {
+            "door": "2",
+            "end": "10:00 PM",
+            "end_min": 1320,
+            "gate": "200",
+            "note": "local",
+            "start": "6:00 AM",
+            "start_min": 360
+        },
+        {
+            "door": None,
+            "end": "1:00 AM",
+            "end_min": 60,
+            "gate": "305",
+            "note": "local",
+            "start": "10:01 PM",
+            "start_min": 1321
+        },
+        {
+            "door": None,
+            "end": "5:59 AM",
+            "end_min": 359,
+            "gate": "76",
+            "note": "local",
+            "start": "1:01 AM",
+            "start_min": 61
+        },
+        {
+            "door": "1",
+            "end": "10:00 PM",
+            "end_min": 1320,
+            "gate": "201",
+            "note": "express",
+            "start": "6:00 AM",
+            "start_min": 360
+        },
+        {
+            "door": None,
+            "end": "1:00 AM",
+            "end_min": 60,
+            "gate": "304",
+            "note": "express",
+            "start": "10:01 PM",
+            "start_min": 1321
+        }
+    ],
+    "158": [
+        {
+            "door": "1",
+            "end": "10:00 PM",
+            "end_min": 1320,
+            "gate": "202",
+            "note": None,
+            "start": "6:00 AM",
+            "start_min": 360
+        },
+        {
+            "door": None,
+            "end": "1:00 AM",
+            "end_min": 60,
+            "gate": "301",
+            "note": None,
+            "start": "10:01 PM",
+            "start_min": 1321
+        },
+        {
+            "door": None,
+            "end": "5:59 AM",
+            "end_min": 359,
+            "gate": "76",
+            "note": None,
+            "start": "1:01 AM",
+            "start_min": 61
+        }
+    ],
+    "159": [
+        {
+            "door": "1",
+            "end": "4:29 PM",
+            "end_min": 989,
+            "gate": "200",
+            "note": "local",
+            "start": "6:00 AM",
+            "start_min": 360
+        },
+        {
+            "door": "3",
+            "end": "7:20 PM",
+            "end_min": 1160,
+            "gate": "200",
+            "note": "local",
+            "start": "4:30 PM",
+            "start_min": 990
+        },
+        {
+            "door": "1",
+            "end": "10:00 PM",
+            "end_min": 1320,
+            "gate": "200",
+            "note": "local",
+            "start": "7:21 PM",
+            "start_min": 1161
+        },
+        {
+            "door": None,
+            "end": "1:00 AM",
+            "end_min": 60,
+            "gate": "305",
+            "note": "local",
+            "start": "10:01 PM",
+            "start_min": 1321
+        },
+        {
+            "door": None,
+            "end": "5:59 AM",
+            "end_min": 359,
+            "gate": "76",
+            "note": "local",
+            "start": "1:01 AM",
+            "start_min": 61
+        },
+        {
+            "door": "3",
+            "end": "10:00 PM",
+            "end_min": 1320,
+            "gate": "201",
+            "note": "express",
+            "start": "6:00 AM",
+            "start_min": 360
+        },
+        {
+            "door": None,
+            "end": "1:00 AM",
+            "end_min": 60,
+            "gate": "304",
+            "note": "express",
+            "start": "10:01 PM",
+            "start_min": 1321
+        }
+    ]
 }
 
 
@@ -428,6 +608,14 @@ def gate_label(window: dict) -> str:
         parts.append('except "L"')
     elif note == "l_only":
         parts.append('"L" only')
+    elif note == "local":
+        parts.append("Local")
+    elif note == "r_express":
+        parts.append("(R) Express")
+    elif note == "x_express":
+        parts.append("(X) Express")
+    elif note == "express":
+        parts.append("Express")
     elif note and note != "all":
         parts.append(str(note))
     return " · ".join(parts)
@@ -472,21 +660,36 @@ def resolve_gate_for_departure(
     now: datetime.datetime | None = None,
     data: dict | None = None,
 ) -> dict | None:
-    """Pick the gate window matching route (+ 126 L vs non-L when relevant)."""
+    """Pick the gate window matching route (+ L / express variants when relevant)."""
     active = active_windows(route, now=now, data=data)
     if not active:
         return None
-    if str(route) != "126" or len(active) == 1:
+    if len(active) == 1:
         return active[0]
-    want_l = is_126_l_trip(destination)
-    for window in active:
-        note = window.get("note")
-        if want_l and note == "l_only":
-            return window
-        if not want_l and note == "except_l":
-            return window
-        if note == "all":
-            return window
+    route = str(route)
+    if route == "126":
+        want_l = is_126_l_trip(destination)
+        for window in active:
+            note = window.get("note")
+            if want_l and note == "l_only":
+                return window
+            if not want_l and note == "except_l":
+                return window
+            if note == "all":
+                return window
+        return active[0]
+    if route in ("156", "159"):
+        want_express = is_express_bus_trip(destination)
+        for window in active:
+            note = window.get("note")
+            if want_express and note in ("r_express", "x_express", "express"):
+                return window
+            if not want_express and note in (None, "local", "all"):
+                return window
+        # Prefer local over express when headsign is ambiguous.
+        for window in active:
+            if window.get("note") in (None, "local", "all"):
+                return window
     return active[0]
 
 
@@ -535,7 +738,23 @@ def build_current_gate_boards(
                         else (
                             ' · "L" only'
                             if window.get("note") == "l_only"
-                            else ""
+                            else (
+                                " · Local"
+                                if window.get("note") == "local"
+                                else (
+                                    " · (R) Express"
+                                    if window.get("note") == "r_express"
+                                    else (
+                                        " · (X) Express"
+                                        if window.get("note") == "x_express"
+                                        else (
+                                            " · Express"
+                                            if window.get("note") == "express"
+                                            else ""
+                                        )
+                                    )
+                                )
+                            )
                         )
                     ),
                     "status": "ON_TIME",

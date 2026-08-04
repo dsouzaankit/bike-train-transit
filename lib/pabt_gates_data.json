@@ -96,8 +96,149 @@
         "start": "1:01 AM",
         "start_min": 61
       }
+    ],
+    "156": [
+      {
+        "door": "2",
+        "end": "10:00 PM",
+        "end_min": 1320,
+        "gate": "200",
+        "note": "local",
+        "start": "6:00 AM",
+        "start_min": 360
+      },
+      {
+        "door": null,
+        "end": "1:00 AM",
+        "end_min": 60,
+        "gate": "305",
+        "note": "local",
+        "start": "10:01 PM",
+        "start_min": 1321
+      },
+      {
+        "door": null,
+        "end": "5:59 AM",
+        "end_min": 359,
+        "gate": "76",
+        "note": "local",
+        "start": "1:01 AM",
+        "start_min": 61
+      },
+      {
+        "door": "1",
+        "end": "10:00 PM",
+        "end_min": 1320,
+        "gate": "201",
+        "note": "express",
+        "start": "6:00 AM",
+        "start_min": 360
+      },
+      {
+        "door": null,
+        "end": "1:00 AM",
+        "end_min": 60,
+        "gate": "304",
+        "note": "express",
+        "start": "10:01 PM",
+        "start_min": 1321
+      }
+    ],
+    "158": [
+      {
+        "door": "1",
+        "end": "10:00 PM",
+        "end_min": 1320,
+        "gate": "202",
+        "note": null,
+        "start": "6:00 AM",
+        "start_min": 360
+      },
+      {
+        "door": null,
+        "end": "1:00 AM",
+        "end_min": 60,
+        "gate": "301",
+        "note": null,
+        "start": "10:01 PM",
+        "start_min": 1321
+      },
+      {
+        "door": null,
+        "end": "5:59 AM",
+        "end_min": 359,
+        "gate": "76",
+        "note": null,
+        "start": "1:01 AM",
+        "start_min": 61
+      }
+    ],
+    "159": [
+      {
+        "door": "1",
+        "end": "4:29 PM",
+        "end_min": 989,
+        "gate": "200",
+        "note": "local",
+        "start": "6:00 AM",
+        "start_min": 360
+      },
+      {
+        "door": "3",
+        "end": "7:20 PM",
+        "end_min": 1160,
+        "gate": "200",
+        "note": "local",
+        "start": "4:30 PM",
+        "start_min": 990
+      },
+      {
+        "door": "1",
+        "end": "10:00 PM",
+        "end_min": 1320,
+        "gate": "200",
+        "note": "local",
+        "start": "7:21 PM",
+        "start_min": 1161
+      },
+      {
+        "door": null,
+        "end": "1:00 AM",
+        "end_min": 60,
+        "gate": "305",
+        "note": "local",
+        "start": "10:01 PM",
+        "start_min": 1321
+      },
+      {
+        "door": null,
+        "end": "5:59 AM",
+        "end_min": 359,
+        "gate": "76",
+        "note": "local",
+        "start": "1:01 AM",
+        "start_min": 61
+      },
+      {
+        "door": "3",
+        "end": "10:00 PM",
+        "end_min": 1320,
+        "gate": "201",
+        "note": "express",
+        "start": "6:00 AM",
+        "start_min": 360
+      },
+      {
+        "door": null,
+        "end": "1:00 AM",
+        "end_min": 60,
+        "gate": "304",
+        "note": "express",
+        "start": "10:01 PM",
+        "start_min": 1321
+      }
     ]
   },
   "source": "https://portauthoritygate.com",
-  "updated_at": "2026-08-03T04:12:00"
+  "updated_at": "2026-08-04T12:24:00"
 }

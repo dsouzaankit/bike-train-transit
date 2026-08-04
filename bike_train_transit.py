@@ -97,7 +97,7 @@ GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 _debug_port_in_use = LAN_DEBUG_PORT
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "pabt-gates-tab-v112"
+BUILD_TAG = "whkn-tab-v114"
 
 TAB_TRANSIT_JOBS = {
     "from_jc": ("pathAll", "subway"),
@@ -107,6 +107,7 @@ TAB_TRANSIT_JOBS = {
     "mt_to_jc": ("pathAll",),
     "njt_bus": (),
     "hob_mt": (),
+    "whkn": (),
     "pabt_gates": (),
 }
 
@@ -122,6 +123,7 @@ TAB_CACHE_KEYS = {
     "mt_to_jc": ("mt_to_jc_rows",),
     "njt_bus": ("njt_bus_boards",),
     "hob_mt": ("hob_mt_sections",),
+    "whkn": ("whkn_sections",),
     "pabt_gates": ("pabt_gates_sections",),
 }
 
@@ -135,22 +137,38 @@ def _cache_ttl_suffix() -> str:
     return " · cache %ds" % sec
 
 
-def compute_thumb_float_column_centers(width, tab_w, left=0, right=0):
-    """Place citibike column left of transit with a fixed edge gap (no overlap)."""
+def compute_thumb_float_column_centers(
+    width, tab_w, left=0, right=0, *, handedness="lhd"
+):
+    """Return (primary_center_x, secondary_center_x).
+
+    LHD (default): primary left of secondary; secondary on the center line.
+    RHD: mirrored — primary right of secondary; secondary on the center line.
+    """
+    from lib.ui_prefs import HANDEDNESS_RHD, normalize_handedness
+
     usable_w = width - left - right
     edge = THUMB_FLOAT_MARGIN_EDGE
     half = tab_w // 2
     lo = left + edge + half
     hi = width - right - edge - half
-    transit_center = left + int(usable_w * THUMB_FLOAT_STACK_X_RATIO)
-    transit_center = max(lo, min(transit_center, hi))
-    cbike_center = transit_center - tab_w - THUMB_FLOAT_COLUMN_GAP
-    if cbike_center < lo:
-        shift = lo - cbike_center
-        transit_center = min(hi, transit_center + shift)
-        cbike_center = transit_center - tab_w - THUMB_FLOAT_COLUMN_GAP
-        cbike_center = max(lo, cbike_center)
-    return cbike_center, transit_center
+    secondary = left + int(usable_w * THUMB_FLOAT_STACK_X_RATIO)
+    secondary = max(lo, min(secondary, hi))
+    if normalize_handedness(handedness) == HANDEDNESS_RHD:
+        primary = secondary + tab_w + THUMB_FLOAT_COLUMN_GAP
+        if primary > hi:
+            shift = primary - hi
+            secondary = max(lo, secondary - shift)
+            primary = secondary + tab_w + THUMB_FLOAT_COLUMN_GAP
+            primary = min(hi, primary)
+    else:
+        primary = secondary - tab_w - THUMB_FLOAT_COLUMN_GAP
+        if primary < lo:
+            shift = lo - primary
+            secondary = min(hi, secondary + shift)
+            primary = secondary - tab_w - THUMB_FLOAT_COLUMN_GAP
+            primary = max(lo, primary)
+    return primary, secondary
 
 
 def compute_thumb_float_stack_top_y(
@@ -162,12 +180,13 @@ def compute_thumb_float_stack_top_y(
     stack_y_ratio=THUMB_FLOAT_STACK_Y_RATIO,
     margin_bottom=THUMB_FLOAT_MARGIN_BOTTOM,
     gap=THUMB_FLOAT_BTN_GAP,
+    min_top_pad=8,
 ):
     """Top Y for a vertically centered pill stack (anchor on taller transit column)."""
     total_h = button_count * btn_h + max(0, button_count - 1) * gap
     stack_center_y = top + int(usable_h * stack_y_ratio)
     start_y = stack_center_y - total_h // 2
-    min_y = top + 8
+    min_y = top + max(8, int(min_top_pad))
     max_y = top + usable_h - margin_bottom - total_h
     return max(min_y, min(start_y, max_y))
 
@@ -1476,11 +1495,15 @@ if HAS_UI:
                 "snapshots_nyc": [],
                 "njt_bus_boards": {},
                 "hob_mt_sections": [],
+                "whkn_sections": [],
                 "pabt_gates_sections": [],
             }
             self._pabt_gates_scrape_on_refresh = False
             self._thumb_float_active = False
             self._thumb_float_startup_pending = False
+            from lib.ui_prefs import get_thumb_float_handedness
+
+            self._thumb_float_handedness = get_thumb_float_handedness()
 
             self._float_layer = ui.View()
             self._float_layer.background_color = (0, 0, 0, 0)
@@ -1495,6 +1518,14 @@ if HAS_UI:
 
             self.status_label = make_label("", font_size=12, color=COLORS["muted"])
 
+            self.handedness_btn = ui.Button(title="LHD")
+            self.handedness_btn.font = ("<system-bold>", 12)
+            self.handedness_btn.background_color = COLORS["accent"]
+            self.handedness_btn.tint_color = COLORS["text"]
+            self.handedness_btn.corner_radius = 10
+            self.handedness_btn.action = self._handedness_tapped
+            self.handedness_btn.hidden = True
+
             self.tab_bar = ui.View()
             self.tab_bar.background_color = COLORS["bg"]
             self.tab_cbike_btn = SectionPill("Cbike JC")
@@ -1506,8 +1537,9 @@ if HAS_UI:
             self.tab_hblr_path_btn = SectionPill("HBLR↔PATH")
             self.tab_tunnels_btn = SectionPill("Tunnels")
             self.tab_mt_to_jc_btn = SectionPill("MT→JC")
-            self.tab_njt_bus_btn = SectionPill("NJTb")
+            self.tab_njt_bus_btn = SectionPill("JC NJTb")
             self.tab_hob_mt_btn = SectionPill("HOB↔MT")
+            self.tab_whkn_btn = SectionPill("Whkn")
             self.tab_pabt_gates_btn = SectionPill("PABT")
             for btn in (
                 self.tab_cbike_btn,
@@ -1521,6 +1553,7 @@ if HAS_UI:
                 self.tab_mt_to_jc_btn,
                 self.tab_njt_bus_btn,
                 self.tab_hob_mt_btn,
+                self.tab_whkn_btn,
                 self.tab_pabt_gates_btn,
             ):
                 btn._owner = self
@@ -1535,6 +1568,7 @@ if HAS_UI:
             self.tab_mt_to_jc_btn.action = self._tab_mt_to_jc_tapped
             self.tab_njt_bus_btn.action = self._tab_njt_bus_tapped
             self.tab_hob_mt_btn.action = self._tab_hob_mt_tapped
+            self.tab_whkn_btn.action = self._tab_whkn_tapped
             self.tab_pabt_gates_btn.action = self._tab_pabt_gates_tapped
             self.tab_bar.add_subview(self.tab_cbike_btn)
             self.tab_bar.add_subview(self.tab_cbike_s_btn)
@@ -1547,6 +1581,7 @@ if HAS_UI:
             self.tab_bar.add_subview(self.tab_mt_to_jc_btn)
             self.tab_bar.add_subview(self.tab_njt_bus_btn)
             self.tab_bar.add_subview(self.tab_hob_mt_btn)
+            self.tab_bar.add_subview(self.tab_whkn_btn)
             self.tab_bar.add_subview(self.tab_pabt_gates_btn)
 
             self.scroll = ui.ScrollView()
@@ -1559,6 +1594,7 @@ if HAS_UI:
             self.add_subview(self.status_label)
             self.add_subview(self.scroll)
             self.add_subview(self._float_layer)
+            self.add_subview(self.handedness_btn)
             self._style_tabs()
 
         def _tab_buttons_ordered(self):
@@ -1574,30 +1610,11 @@ if HAS_UI:
                 self.tab_mt_to_jc_btn,
                 self.tab_njt_bus_btn,
                 self.tab_hob_mt_btn,
+                self.tab_whkn_btn,
                 self.tab_pabt_gates_btn,
             )
 
-        def _thumb_float_cbike_buttons(self):
-            """Top → bottom: Cbike JC beside From JC, then S JC, HOB, NYC."""
-            return (
-                self.tab_cbike_btn,
-                self.tab_cbike_s_btn,
-                self.tab_cbike_hob_btn,
-                self.tab_cbike_nyc_btn,
-            )
 
-        def _thumb_float_transit_buttons(self):
-            """Top → bottom: From JC … PABT at thumb."""
-            return (
-                self.tab_from_btn,
-                self.tab_to_btn,
-                self.tab_hblr_path_btn,
-                self.tab_tunnels_btn,
-                self.tab_mt_to_jc_btn,
-                self.tab_njt_bus_btn,
-                self.tab_hob_mt_btn,
-                self.tab_pabt_gates_btn,
-            )
 
         def _rehome_button(self, btn, parent):
             if btn.superview is parent:
@@ -1628,6 +1645,29 @@ if HAS_UI:
             w_scale = usable_w / float(PHONE6_REF_W)
             h_scale = usable_h / float(PHONE6_REF_USABLE_H)
             return min(THUMB_FLOAT_SCALE_MAX, max(0.96, min(w_scale, h_scale)))
+
+        def _thumb_float_left_buttons(self):
+            """Top → bottom: From/To/HBLR, then Citibike pills."""
+            return (
+                self.tab_from_btn,
+                self.tab_to_btn,
+                self.tab_hblr_path_btn,
+                self.tab_cbike_btn,
+                self.tab_cbike_s_btn,
+                self.tab_cbike_hob_btn,
+                self.tab_cbike_nyc_btn,
+            )
+
+        def _thumb_float_right_buttons(self):
+            """Top → bottom: Tunnels … PABT (center-line column)."""
+            return (
+                self.tab_tunnels_btn,
+                self.tab_mt_to_jc_btn,
+                self.tab_njt_bus_btn,
+                self.tab_hob_mt_btn,
+                self.tab_whkn_btn,
+                self.tab_pabt_gates_btn,
+            )
 
         def _thumb_float_sizes(self, width, height):
             scale = self._thumb_float_scale(width, height)
@@ -1683,41 +1723,77 @@ if HAS_UI:
             return frames
 
         def _thumb_float_screen_frames(self, width, height):
-            """Citibike column top-left; transit on center line — top rows aligned."""
+            """Primary stack (From/To/HBLR + Cbike); secondary on center line.
+
+            LHD: primary left of center. RHD: mirrored (primary right of center).
+            """
             left, top, right, bottom = self._layout_insets()
             usable_h = height - top - bottom
             tab_w, btn_h = self._thumb_float_sizes(width, height)
-            cbike_center, transit_center = compute_thumb_float_column_centers(
-                width, tab_w, left, right
+            left_center, right_center = compute_thumb_float_column_centers(
+                width,
+                tab_w,
+                left,
+                right,
+                handedness=getattr(self, "_thumb_float_handedness", "lhd"),
             )
-            transit_buttons = self._thumb_float_transit_buttons()
-            stack_top_y = compute_thumb_float_stack_top_y(
-                top, usable_h, btn_h, len(transit_buttons)
-            )
+            left_buttons = self._thumb_float_left_buttons()
+            right_buttons = self._thumb_float_right_buttons()
+            # Keep pills below title + "Tap a tab…" status band.
+            header_h = 64 + top
+            status_band = header_h + 4 + 16 + 10  # status_top + label + gap
+            gap = THUMB_FLOAT_BTN_GAP
+            min_pad = max(8, status_band - top)
+
+            def _stack_h(count):
+                return count * btn_h + max(0, count - 1) * gap
+
+            left_h = _stack_h(len(left_buttons))
+            right_h = _stack_h(len(right_buttons))
+            # Center the taller column; bottom-align the shorter to fill void.
+            if left_h >= right_h:
+                left_top_y = compute_thumb_float_stack_top_y(
+                    top,
+                    usable_h,
+                    btn_h,
+                    len(left_buttons),
+                    min_top_pad=min_pad,
+                )
+                right_top_y = left_top_y + left_h - right_h
+            else:
+                right_top_y = compute_thumb_float_stack_top_y(
+                    top,
+                    usable_h,
+                    btn_h,
+                    len(right_buttons),
+                    min_top_pad=min_pad,
+                )
+                left_top_y = right_top_y + right_h - left_h
             frames = {}
             frames.update(
                 self._thumb_float_stack_frames(
-                    self._thumb_float_cbike_buttons(),
+                    left_buttons,
                     width,
                     height,
                     tab_w,
                     btn_h,
-                    cbike_center,
-                    stack_top_y=stack_top_y,
+                    left_center,
+                    stack_top_y=left_top_y,
                 )
             )
             frames.update(
                 self._thumb_float_stack_frames(
-                    transit_buttons,
+                    right_buttons,
                     width,
                     height,
                     tab_w,
                     btn_h,
-                    transit_center,
-                    stack_top_y=stack_top_y,
+                    right_center,
+                    stack_top_y=right_top_y,
                 )
             )
             return frames
+
 
         def _thumb_float_frames(self, width, height):
             layer_x, layer_y, layer_w, layer_h = self._float_layer_frame(width, height)
@@ -1727,6 +1803,41 @@ if HAS_UI:
                     width, height
                 ).items()
             }
+
+        def _sync_handedness_btn(self):
+            from lib.ui_prefs import HANDEDNESS_RHD
+
+            handed = getattr(self, "_thumb_float_handedness", "lhd")
+            self.handedness_btn.title = (
+                "RHD" if handed == HANDEDNESS_RHD else "LHD"
+            )
+
+        def _handedness_tapped(self, sender):
+            from lib.ui_prefs import toggle_thumb_float_handedness
+
+            if not self._thumb_float_active:
+                return
+            try:
+                _haptic_pill_press()
+            except Exception:
+                pass
+            self._thumb_float_handedness = toggle_thumb_float_handedness()
+            self._sync_handedness_btn()
+            self._layout_thumb_float()
+            self._style_tabs()
+            self._float_layer.bring_to_front()
+            self.status_label.bring_to_front()
+            self.handedness_btn.bring_to_front()
+            log_event(
+                "thumb float handedness -> {}".format(self._thumb_float_handedness)
+            )
+
+        def _layout_handedness_btn(self, width, header_h, right_inset=0):
+            btn_w, btn_h = 56, 28
+            x = max(16, width - right_inset - 16 - btn_w)
+            y = header_h + 2
+            self.handedness_btn.frame = (x, y, btn_w, btn_h)
+            self._sync_handedness_btn()
 
         def _layout_thumb_float(self):
             if not self.width or not self.height:
@@ -1758,8 +1869,13 @@ if HAS_UI:
             self._move_tabs_to_float_layer()
             self._layout_thumb_float()
             self._style_tabs()
+            self.handedness_btn.hidden = False
+            self._sync_handedness_btn()
             self._float_layer.bring_to_front()
+            self.status_label.bring_to_front()
+            self.handedness_btn.bring_to_front()
             log_event("thumb float (tap section to dock)")
+
 
         def _exit_thumb_float(self, repaint=True):
             if not self._thumb_float_active:
@@ -1767,6 +1883,7 @@ if HAS_UI:
             self._thumb_float_active = False
             self._float_layer.hidden = True
             self._float_layer.touch_enabled = False
+            self.handedness_btn.hidden = True
             self._restore_docked_chrome()
             self.layout()
             if not repaint:
@@ -1776,6 +1893,7 @@ if HAS_UI:
             except Exception as exc:
                 log_event("Tab repaint after dock failed: {}".format(exc))
                 log_event(traceback.format_exc())
+
 
         def _dock_and_select_tab(self, tab):
             try:
@@ -1816,6 +1934,7 @@ if HAS_UI:
                 ("mt_to_jc", self.tab_mt_to_jc_btn),
                 ("njt_bus", self.tab_njt_bus_btn),
                 ("hob_mt", self.tab_hob_mt_btn),
+                ("whkn", self.tab_whkn_btn),
                 ("pabt_gates", self.tab_pabt_gates_btn),
             ):
                 if getattr(btn, "_pressed", False):
@@ -1904,6 +2023,9 @@ if HAS_UI:
         def _tab_hob_mt_tapped(self, sender):
             self._on_section_tap("hob_mt")
 
+        def _tab_whkn_tapped(self, sender):
+            self._on_section_tap("whkn")
+
         def _tab_pabt_gates_tapped(self, sender):
             self._on_section_tap("pabt_gates")
 
@@ -1938,25 +2060,45 @@ if HAS_UI:
                 tab_bar_h, tab_w, tab_frames = compute_docked_tab_layout(
                     width, len(tab_btns), gap=tab_gap, side=tab_side
                 )
-                status_top = tab_top + tab_bar_h + 2
+                # Thumb-float: park "Tap …" under the title (docked ribbon is hidden).
+                if self._thumb_float_active:
+                    status_top = header_h + 4
+                else:
+                    status_top = tab_top + tab_bar_h + 2
 
                 self.header.frame = (0, 0, width, header_h)
                 self.title_label.frame = (16, top + 8, width - 32, 28)
                 self.tab_bar.frame = (0, tab_top, width, tab_bar_h)
                 if self._thumb_float_active:
+                    self.tab_bar.hidden = True
                     self._float_layer.hidden = False
                     self._float_layer.touch_enabled = True
+                    self.handedness_btn.hidden = False
                     self._layout_thumb_float()
                     self._style_tabs()
+                    self._layout_handedness_btn(width, header_h, right)
                     self._float_layer.bring_to_front()
+                    self.status_label.bring_to_front()
+                    self.handedness_btn.bring_to_front()
                 else:
+                    self.tab_bar.hidden = False
                     self._float_layer.hidden = True
+                    self.handedness_btn.hidden = True
                     if self.tab_cbike_btn.superview is not self.tab_bar:
                         self._restore_docked_chrome()
                     for index, btn in enumerate(tab_btns):
                         btn.frame = tab_frames[index]
                         btn.font = ("<system>", 11)
-                self.status_label.frame = (16, status_top, width - 32, 16)
+                if self._thumb_float_active:
+                    # Leave room for LHD/RHD toggle on the trailing edge.
+                    self.status_label.frame = (
+                        16,
+                        status_top,
+                        max(80, width - 32 - 64),
+                        16,
+                    )
+                else:
+                    self.status_label.frame = (16, status_top, width - 32, 16)
                 scroll_bottom = max(bottom, 8)
                 self.scroll.frame = (
                     0,
@@ -1967,6 +2109,7 @@ if HAS_UI:
             except Exception as exc:
                 log_event("layout failed: {}".format(exc))
                 log_event(traceback.format_exc())
+
 
         def _apply_tab_refresh_payload(self, payload):
             from lib import app_state
@@ -2070,6 +2213,12 @@ if HAS_UI:
                         "HOBMT",
                         section.get("boards") or [],
                     )
+            elif tab == "whkn":
+                for section in payload.get("whkn_sections") or []:
+                    self._log_transit_boards(
+                        "WHKN",
+                        section.get("boards") or [],
+                    )
 
         def _finish_refresh(self, refresh_id):
             if refresh_id != self._refresh_gen:
@@ -2166,6 +2315,8 @@ if HAS_UI:
                 ui.delay(lambda: self._refresh_step_njt_bus(refresh_id), 0.05)
             elif tab == "hob_mt":
                 ui.delay(lambda: self._refresh_step_hob_mt(refresh_id), 0.05)
+            elif tab == "whkn":
+                ui.delay(lambda: self._refresh_step_whkn(refresh_id), 0.05)
             elif tab == "pabt_gates":
                 ui.delay(lambda: self._refresh_step_pabt_gates(refresh_id), 0.05)
             else:
@@ -2508,6 +2659,8 @@ if HAS_UI:
                     y = self._paint_njt_bus(pad, inner_w, card_width, partial=partial)
                 elif self._active_tab == "hob_mt":
                     y = self._paint_hob_mt(pad, inner_w, card_width, partial=partial)
+                elif self._active_tab == "whkn":
+                    y = self._paint_whkn(pad, inner_w, card_width, partial=partial)
                 elif self._active_tab == "pabt_gates":
                     y = self._paint_pabt_gates(pad, inner_w, card_width, partial=partial)
                 else:
@@ -2527,8 +2680,9 @@ if HAS_UI:
                         "hblr_path": "JC HBLR ↔ PATH",
                         "mt_to_jc": "MT to JC",
                         "tunnels": "Tunnels",
-                        "njt_bus": "NJTb",
+                        "njt_bus": "JC NJTb",
                         "hob_mt": "HOB↔MT",
+                        "whkn": "Whkn",
                         "pabt_gates": "PABT",
                     }
                     if self._active_tab == "pabt_gates":
@@ -2929,6 +3083,37 @@ if HAS_UI:
             log_event("PABT Gates: scrape refresh requested")
             self.refresh_tab("pabt_gates")
 
+        def _refresh_step_whkn(self, refresh_id):
+            if refresh_id != self._refresh_gen:
+                return
+            if not self._busy:
+                return
+            payload = {
+                "refresh_id": refresh_id,
+                "tab": "whkn",
+                "error": None,
+                "whkn_sections": [],
+            }
+            try:
+                from lib.whkn_bus import build_whkn_sections
+
+                log_event("step: Whkn fetch")
+                payload["whkn_sections"] = build_whkn_sections()
+                log_event(
+                    "step: Whkn ok ({})".format(len(payload["whkn_sections"] or []))
+                )
+            except Exception as exc:
+                payload["error"] = str(exc)
+                log_event("Whkn fetch failed: {}".format(exc))
+                log_event(traceback.format_exc())
+            if refresh_id != self._refresh_gen:
+                self._finish_refresh(refresh_id)
+                return
+            try:
+                self._apply_tab_refresh_payload(payload)
+            finally:
+                self._finish_refresh(refresh_id)
+
         def _refresh_step_pabt_gates(self, refresh_id):
             if refresh_id != self._refresh_gen:
                 return
@@ -2967,6 +3152,29 @@ if HAS_UI:
                 self._apply_tab_refresh_payload(payload)
             finally:
                 self._finish_refresh(refresh_id)
+
+        def _paint_whkn(self, pad, inner_w, card_width, partial=False):
+            if partial:
+                return pad
+            y = pad
+            for section in self._cache.get("whkn_sections") or []:
+                title = section.get("title") or "Whkn"
+                header = SectionHeader(title)
+                header.frame = (pad, y, inner_w, SECTION_HEADER_HEIGHT)
+                self.scroll.add_subview(header)
+                y += SECTION_HEADER_HEIGHT + CARD_GAP
+                boards = section.get("boards") or []
+                if not boards:
+                    boards = [{"label": title, "trains": [], "note": "No data"}]
+                tiles = []
+                for index, board in enumerate(boards):
+                    tag = "NJ" if index else "NYC"
+                    tiles.append((board, tag, "No buses", False))
+                y = self._append_tile_row(
+                    y, pad, inner_w, card_width, tiles, wrap_text=False
+                )
+                y += SECTION_GAP
+            return y + pad
 
         def _paint_pabt_gates(self, pad, inner_w, card_width, partial=False):
             if partial:

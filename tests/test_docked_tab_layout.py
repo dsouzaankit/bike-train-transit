@@ -11,22 +11,25 @@ import bike_train_transit as btt  # noqa: E402
 
 
 class DockedTabLayoutTests(unittest.TestCase):
-    def test_twelve_tabs_use_three_rows(self):
-        bar_h, tab_w, frames = btt.compute_docked_tab_layout(390, 12)
-        self.assertEqual(len(frames), 12)
+    def test_thirteen_tabs_use_four_rows(self):
+        bar_h, tab_w, frames = btt.compute_docked_tab_layout(390, 13)
+        self.assertEqual(len(frames), 13)
         self.assertEqual(frames[0][1], 0)
         self.assertEqual(frames[3][1], 0)
         self.assertGreater(frames[4][1], 0)
         self.assertEqual(frames[4][1], frames[7][1])
         self.assertGreater(frames[8][1], frames[4][1])
         self.assertEqual(frames[8][1], frames[11][1])
+        self.assertGreater(frames[12][1], frames[8][1])
         row0_ys = {frame[1] for frame in frames[:4]}
         row1_ys = {frame[1] for frame in frames[4:8]}
-        row2_ys = {frame[1] for frame in frames[8:]}
+        row2_ys = {frame[1] for frame in frames[8:12]}
+        row3_ys = {frame[1] for frame in frames[12:]}
         self.assertEqual(len(row0_ys), 1)
         self.assertEqual(len(row1_ys), 1)
         self.assertEqual(len(row2_ys), 1)
-        self.assertGreater(bar_h, btt.TAB_BAR_ROW_HEIGHT * 2)
+        self.assertEqual(len(row3_ys), 1)
+        self.assertGreater(bar_h, btt.TAB_BAR_ROW_HEIGHT * 3)
 
     def test_four_tabs_stay_on_one_row(self):
         bar_h, _tab_w, frames = btt.compute_docked_tab_layout(390, 4)

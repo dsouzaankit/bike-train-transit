@@ -184,6 +184,28 @@ class PabtGatesTests(unittest.TestCase):
             "2026-08-03T05:31:00",
         )
 
+    def test_routes_include_whkn_buses(self):
+        self.assertEqual(
+            pabt_gates.PABT_GATE_ROUTES,
+            ("119", "123", "126", "156", "158", "159"),
+        )
+        data = pabt_gates.builtin_schedule_payload()
+        for route in ("156", "158", "159"):
+            self.assertTrue(data["routes"].get(route))
+
+    def test_resolve_156_local_vs_express(self):
+        now = datetime.datetime(2026, 8, 4, 12, 0)
+        data = pabt_gates.builtin_schedule_payload()
+        local = pabt_gates.resolve_gate_for_departure(
+            "156", "Englewood Cliffs via Park Ave", now=now, data=data
+        )
+        express = pabt_gates.resolve_gate_for_departure(
+            "156", "New York Express", now=now, data=data
+        )
+        self.assertEqual(local["gate"], "200")
+        self.assertEqual(express["gate"], "201")
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
