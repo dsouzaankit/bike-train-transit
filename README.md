@@ -8,7 +8,7 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 
 - **Thirteen tabs** — **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, **JC NJTb**, **HOB↔MT**, **Whkn**, and **PABT**
 - **iPhone app** — compact 2-column Citibike grids; **each Citibike tab refreshes its own GBFS station set** (JC 15 / S JC 9 / HOB 6 / NYC 5)
-- **HOB↔MT tab** — NJT Willow→NYC + PABT **departures** (side-by-side; destinations annotated with current gate), subway catchable after **LincTnl +4** (+5 for 7, +8 for 6), NY Waterway + MTA M42/M50 (+15) side-by-side; Transit App for bus/ferry
+- **HOB↔MT tab** — NJT Willow→NYC + PABT **departures** (side-by-side; destinations annotated with current gate), subway catchable after **LincTnl +3** (E/C @ PABT) / **+9** (F) / **+6** (7) / **7+3** (GC 6); **50/51/33 St** current ETAs (not walkable from PABT); NY Waterway + MTA M42/M50 (+15) side-by-side; Transit App for bus/ferry
 - **Whkn tab** — Lincoln Harbor **21831** buses **156 / 158 / 159** → NYC + **PABT → Fort Lee** (same routes; gate annotated) side-by-side via Transit App
 - **PABT tab** — gate windows for **119 / 123 / 126 / 156 / 158 / 159** at the current time (from [portauthoritygate.com](https://portauthoritygate.com/)); **Gates now · \<resolve time\>**; status **Updated \<scrape time\> · PABT** (no HTTP cache suffix); in-tab **Refresh** pill (**Ref: portauthoritygate.com**) scrapes and updates `pabt_gates_data.json`
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
@@ -66,12 +66,12 @@ Hoboken ↔ Midtown transfers. Sections paint in order:
 | Section | Cards | Source / offsets |
 |---------|-------|------------------|
 | **NJT bus · PABT dep** | **32084** Willow→NYC (119/126) · **PABT dep** (119/123/126 leaving terminal toward NJ; gate annotated from schedule) | Transit App (`NJTB:…`); side-by-side |
-| **Subway catchable** | **LincTnl → NYC** + catchable subway | Lincoln minutes from Tunnels cache / PANYNJ `crossingtimesapi.json` (JSON **array** via `fetch_transit_payload`). Note **`LincTnl +4`** (walk); **7** = +9; **6** = +12. **E** Queens + **C** north at 42 St-PABT; **A** @ 50 St; **6** @ Grand Central; **4/5** @ 51 St / 33 St |
+| **Subway catchable** | **LincTnl → NYC** + catchable subway | Lincoln minutes from Tunnels cache / PANYNJ `crossingtimesapi.json` (JSON **array** via `fetch_transit_payload`). Note **`LincTnl +3`** for **E/C** @ 42 St-PABT; **F** Queens @ Bryant Pk = +9 (wkdys 6a–9:30p); **7** = +6; **6** @ Grand Central chained from catchable **7 +3**. **50 St** / **51 St** / **33 St** show **current** ETAs (not walkable from PABT after LincTnl). |
 | **NY Waterway · MTA bus** | Hoboken 14th St · 12 Av / W 42 St M42/M50 | Transit `NYW:596` (Connexionz fallback); MTA `MTAMNT:…` chained **NYW +15** |
 
 Empty catchable cards show **`None catchable · <lines>`** when line specs are known. Plan notes: `ai/hob-mt-tab-plan.md` (local; `ai/` is gitignored).
 
-Log markers: `build=hob-mt-v109`, `step: HOB↔MT ok`.
+Log markers: `build=hob-mt-v118`, `step: HOB↔MT ok`.
 
 ### Whkn tab
 
@@ -163,7 +163,7 @@ Most **From JC** subway cards use API `direction` + line specs only — **no hea
 | **To JC** | WTC **E** | None on direct fetch; Canal St fallback | WTC-bound only | — |
 | **HBLR↔PATH** | WTC Cortlandt ↑ / WTC ↑ | Deny **downtown/Brooklyn** headsigns (uptown filter) | Uptown **1** / **A/C/E** | Brooklyn/downtown-signed trains |
 
-**MT→JC F line:** shown Mon–Fri **6:00 AM–9:30 PM** only (`f_line_active`); outside those hours F is removed from row cards with note **`F wkdys 6a–9:30p`** when the API had F arrivals.
+**MT→JC F line:** shown Mon–Fri **6:00 AM–9:30 PM** only (`f_line_active`); outside those hours F is removed from row cards with note **`F wkdys 6a–9:30p`** when the API had F arrivals. **HOB↔MT** Queens-bound **F** @ Bryant Pk uses the same window (card shows that note when inactive).
 
 ### Startup thumb float (~6" screens)
 
@@ -704,7 +704,7 @@ Live PATH fetching in `lib/path_trains.py` does not filter by PATH line color; N
 |------|-----------|
 | `path_trains.py` | PATH stations; PANYNJ `ridepath.json`; **9 St overnight closure** (~11:59 PM–5 AM ET schedule + optional Everbridge overlay); `_is_jsq_destination()` for **14 St → JSQ** (To JC); `_is_mt_to_jc_path_destination()` (Nwk/JSQ/Hoboken); `get_path_transit_board()` for transfer retry (`PATH:554` Exchange, `PATH:520` Newport, `PATH:553` WTC, `PATH:552` Chris St, `PATH:551` 9 St) |
 | `mt_to_jc.py` | MT→JC five uptown rows + **50 St (2)/(A/C)**; per-row downtown gates (**Chris St** 1 vs 2); chained offsets; empty hints list lines |
-| `hob_mt.py` | HOB↔MT: Willow/PABT Transit stops; subway catchable after **LincTnl +4/+9/+12**; NY Waterway + MTA +15; side-by-side section layouts; PABT dep gate annotation |
+| `hob_mt.py` | HOB↔MT: Willow/PABT Transit stops; subway catchable after **LincTnl +3** (E/C @ PABT), **F +9** (wkdys 6a–9:30p), **7 +6**, Grand Central **7 +3**; **50/51/33 St** current ETAs; NY Waterway + MTA +15; side-by-side section layouts; PABT dep gate annotation |
 | `pabt_gates.py` | **PABT** tab: 119/123/126 gate windows; scrape [portauthoritygate.com](https://portauthoritygate.com/); annotate live PABT dep destinations |
 | `citibike_stations.py` | Station names/labels/grids per Citibike tab; `CBIKE_TAB_CONFIG` |
 | `njt_bus.py` | NJTb four bus stops; Transit `NJTB:…` fetch; route **81** (local, no **Express**) or **1**+Exchange/Newark filters; address button opens `sms:69287` compose (user confirms Send) |

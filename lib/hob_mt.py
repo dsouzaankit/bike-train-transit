@@ -5,7 +5,11 @@ Offset model (subway catchable):
   Primary = LincTnl → NYC (minutes from Tunnels tab; 0 if unknown).
   Plan notation ``+4+<NY-Lincoln-eta>`` means chain from LincTnl with walk +4
   (card note: ``LincTnl +4``), not a synthetic now-offset of 4+lincoln.
-  E/C/A/4/5 use +4; 7 uses +4+5; 6 uses +4+8.
+  E/C @ 42 St-PABT use +3 (``LincTnl +3``); F uses +4+5 (``LincTnl +9``,
+  weekdays 6a–9:30p); 7 uses +4+2 (``LincTnl +6``); Grand Central 6 chains
+  from first catchable 7 +3 (``7 +3``).
+  50 St / 51 St / 33 St are not walkable from PABT after LincTnl — current
+  ETAs only (no LincTnl note).
   MTA bus M42/M50 is chained from NY Waterway +15.
   fallback_current=True when catchable filter misses.
 """
@@ -14,9 +18,9 @@ from __future__ import annotations
 
 from lib.hblr_path import (
     HBLR_PATH_MAX_TRAINS,
-    apply_transfer_filter,
     resolve_transfer_board,
 )
+from lib.mt_to_jc import f_line_active
 from lib.subway_trains import (
     FIFTY_FIRST_LINE_SPECS,
     FIFTY_ST_LINE_SPECS,
@@ -36,11 +40,14 @@ from lib.tunnel_crossings import get_tunnel_boards
 
 # --- Offsets (exported for tests) ---
 HOB_MT_WALK_OFFSET = 4
-HOB_MT_SEVEN_EXTRA = 5
-HOB_MT_SIX_EXTRA = 8
+HOB_MT_PABT_EC_OFFSET = 3  # LincTnl +3 for C/E @ 42 St-PABT
+HOB_MT_F_EXTRA = 5  # LincTnl +9
+HOB_MT_SEVEN_EXTRA = 2  # LincTnl +6
+HOB_MT_GC_FROM_SEVEN_OFFSET = 3  # first catchable 7 +3
 HOB_MT_MTA_BUS_OFFSET = 15
 HOB_MT_MAX_TRAINS = HBLR_PATH_MAX_TRAINS
 TRANSIT_RAW_POOL = 12
+F_INACTIVE_NOTE = "F wkdys 6a–9:30p"
 
 # --- Section titles (order) ---
 SECTION_NJT_BUS = "NJT bus → NYC"
@@ -101,6 +108,15 @@ PABT_EC_LINE_SPECS = (
     ("C", SUBWAY_DIRECTION_NORTH),
 )
 
+# 42 St-Bryant Park — Queens-bound F (IND 6 Av north).
+# subwayinfo.nyc id D16 (D14 is 7 Av B/D/E on that feed, not Bryant).
+SUBWAY_BRYANT_F = {
+    "station_id": "D16",
+    "label": "42 St-Bryant Pk (F)",
+    "direction": SUBWAY_DIRECTION_NORTH,
+}
+BRYANT_F_LINE_SPECS = (("F", SUBWAY_DIRECTION_NORTH),)
+
 SUBWAY_TIMES_SQ_7 = {
     "station_id": "725",
     "label": "Times Sq-42 St (7)",
@@ -156,16 +172,36 @@ MTA_BUS_TRANSIT_FALLBACK_STOP_IDS = (
 
 
 def subway_base_offset(lincoln_nyc_minutes: int | None = None) -> int:
-    """Walk after LincTnl (Lincoln ETA lives on the primary board, not here)."""
+    """Walk after LincTnl used to derive F (+9) / 7 (+6); not applied to Lex/50 St."""
     return HOB_MT_WALK_OFFSET
+
+
+def pabt_ec_transfer_offset() -> int:
+    """C/E @ 42 St-PABT — shorter walk than general subway base."""
+    return HOB_MT_PABT_EC_OFFSET
+
+
+def f_transfer_offset(base_offset: int) -> int:
+    return int(base_offset) + HOB_MT_F_EXTRA
 
 
 def seven_transfer_offset(base_offset: int) -> int:
     return int(base_offset) + HOB_MT_SEVEN_EXTRA
 
 
-def six_transfer_offset(base_offset: int) -> int:
-    return int(base_offset) + HOB_MT_SIX_EXTRA
+def gc_from_seven_offset() -> int:
+    return HOB_MT_GC_FROM_SEVEN_OFFSET
+
+
+def _catchable_primary_board(board, short_label: str) -> dict:
+    """Primary for chaining: catchable trains only (exclude 'current' fallback)."""
+    note = (board or {}).get("note") or ""
+    if board and board.get("trains") and "current " not in note:
+        return board
+    return {
+        "label": (board or {}).get("label") or short_label,
+        "trains": [],
+    }
 
 
 def extract_lincoln_nyc_minutes(tunnel_boards) -> int | None:
@@ -536,7 +572,7 @@ def _filter_catchable(
 
 
 def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None) -> list[dict]:
-    """LincTnl primary + catchable subway boards after +4 / +4+5 / +4+8."""
+    """LincTnl primary + catchable E/C/F/7/GC; current ETAs at 50/51/33 St."""
     base = subway_base_offset()
     fallback_current = True
     lincoln_primary = make_lincoln_primary_board(lincoln_nyc_minutes)
@@ -555,7 +591,7 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
             _filter_catchable(
                 lincoln_primary,
                 e_c_raw,
-                base,
+                pabt_ec_transfer_offset(),
                 e_c_raw.get("label") or "42 St-PABT",
                 fallback_current=fallback_current,
             )
@@ -563,6 +599,33 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
     except Exception as exc:
         boards.append(_empty_board("42 St-PABT", error=str(exc)))
 
+    # Queens-bound F @ Bryant Pk — weekdays 6:00–9:30 only (same window as MT→JC).
+    f_label = SUBWAY_BRYANT_F["label"]
+    if f_line_active():
+        try:
+            f_raw = _load_line_board(
+                SUBWAY_BRYANT_F,
+                fetch_json,
+                line_specs=BRYANT_F_LINE_SPECS,
+                headsign_filter=_is_queens_bound_headsign,
+                fetch_limit=SUBWAY_FETCH_LIMIT,
+                per_line=1,
+            )
+            boards.append(
+                _filter_catchable(
+                    lincoln_primary,
+                    f_raw,
+                    f_transfer_offset(base),
+                    f_raw.get("label") or f_label,
+                    fallback_current=fallback_current,
+                )
+            )
+        except Exception as exc:
+            boards.append(_empty_board(f_label, error=str(exc)))
+    else:
+        boards.append(_empty_board(f_label, note=F_INACTIVE_NOTE))
+
+    seven_board = None
     try:
         seven_raw = _load_line_board(
             SUBWAY_TIMES_SQ_7,
@@ -572,18 +635,19 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
             fetch_limit=SUBWAY_FETCH_LIMIT,
             per_line=1,
         )
-        boards.append(
-            _filter_catchable(
-                lincoln_primary,
-                seven_raw,
-                seven_transfer_offset(base),
-                seven_raw.get("label") or "7",
-                fallback_current=fallback_current,
-            )
+        seven_board = _filter_catchable(
+            lincoln_primary,
+            seven_raw,
+            seven_transfer_offset(base),
+            seven_raw.get("label") or "7",
+            fallback_current=fallback_current,
         )
+        boards.append(seven_board)
     except Exception as exc:
-        boards.append(_empty_board("Times Sq-42 St (7)", error=str(exc)))
+        seven_board = _empty_board("Times Sq-42 St (7)", error=str(exc))
+        boards.append(seven_board)
 
+    # 50 / 51 / 33 St — not walkable from PABT after LincTnl; current ETAs only.
     try:
         a_raw = _load_express_local_board(
             SUBWAY_FIFTY_ST,
@@ -591,28 +655,24 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
             line_specs=FIFTY_ST_LINE_SPECS,
             fetch_limit=SUBWAY_FETCH_LIMIT,
         )
-        # Prefer uptown/north A only (station already direction N).
-        boards.append(
-            _filter_catchable(
-                lincoln_primary,
-                a_raw,
-                base,
-                a_raw.get("label") or "50 St",
-                fallback_current=fallback_current,
-            )
-        )
+        boards.append(a_raw)
     except Exception as exc:
         boards.append(_empty_board("50 St", error=str(exc)))
 
     try:
         six_raw = _load_grand_central_6_board(fetch_json)
+        seven_primary = _catchable_primary_board(
+            seven_board, seven_board.get("label") if seven_board else "7"
+        )
         boards.append(
-            _filter_catchable(
-                lincoln_primary,
+            resolve_transfer_board(
+                seven_primary,
                 six_raw,
-                six_transfer_offset(base),
+                gc_from_seven_offset(),
+                "7",
                 six_raw.get("label") or "Grand Central",
                 fallback_current=fallback_current,
+                fallback_suffix="subway",
             )
         )
     except Exception as exc:
@@ -625,15 +685,7 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
             line_specs=FIFTY_FIRST_LINE_SPECS,
             fetch_limit=SUBWAY_FETCH_LIMIT,
         )
-        boards.append(
-            _filter_catchable(
-                lincoln_primary,
-                lex51,
-                base,
-                lex51.get("label") or "51 St",
-                fallback_current=fallback_current,
-            )
-        )
+        boards.append(lex51)
     except Exception as exc:
         boards.append(_empty_board("51 St", error=str(exc)))
 
@@ -645,15 +697,7 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
             fetch_limit=SUBWAY_FETCH_LIMIT,
             per_line=1,
         )
-        boards.append(
-            _filter_catchable(
-                lincoln_primary,
-                lex33,
-                base,
-                lex33.get("label") or "33 St",
-                fallback_current=fallback_current,
-            )
-        )
+        boards.append(lex33)
     except Exception as exc:
         boards.append(_empty_board("33 St", error=str(exc)))
 
