@@ -5,11 +5,11 @@ Offset model (subway catchable):
   Primary = LincTnl → NYC (minutes from Tunnels tab; 0 if unknown).
   Plan notation ``+4+<NY-Lincoln-eta>`` means chain from LincTnl with walk +4
   (card note: ``LincTnl +4``), not a synthetic now-offset of 4+lincoln.
-  E/C @ 42 St-PABT use +3 (``LincTnl +3``); F uses +4+5 (``LincTnl +9``,
+  E @ 42 St-PABT use +3 (``LincTnl +3``); F uses +4+5 (``LincTnl +9``,
   weekdays 6a–9:30p); 7 uses +4+2 (``LincTnl +6``); Grand Central 6 chains
   from first catchable 7 +3 (``7 +3``).
-  50 St / 51 St / 33 St are not walkable from PABT after LincTnl — current
-  ETAs only (no LincTnl note).
+  50 St (A/C) / 51 St / 33 St are not walkable from PABT after LincTnl —
+  current ETAs only (no LincTnl note). C is on 50 St, not 42 St-PABT.
   MTA bus M42/M50 is chained from NY Waterway +15.
   fallback_current=True when catchable filter misses.
 """
@@ -23,13 +23,11 @@ from lib.hblr_path import (
 from lib.mt_to_jc import f_line_active
 from lib.subway_trains import (
     FIFTY_FIRST_LINE_SPECS,
-    FIFTY_ST_LINE_SPECS,
     SUBWAY_DIRECTION_NORTH,
     SUBWAY_DIRECTION_SOUTH,
     SUBWAY_FETCH_LIMIT,
     SUBWAY_FIFTY_FIRST,
     SUBWAY_FIFTY_ST,
-    _is_uptown_subway_headsign,
     _load_express_local_board,
     _load_line_board,
     _trains_per_line,
@@ -40,7 +38,7 @@ from lib.tunnel_crossings import get_tunnel_boards
 
 # --- Offsets (exported for tests) ---
 HOB_MT_WALK_OFFSET = 4
-HOB_MT_PABT_EC_OFFSET = 3  # LincTnl +3 for C/E @ 42 St-PABT
+HOB_MT_PABT_EC_OFFSET = 3  # LincTnl +3 for E @ 42 St-PABT
 HOB_MT_F_EXTRA = 5  # LincTnl +9
 HOB_MT_SEVEN_EXTRA = 2  # LincTnl +6
 HOB_MT_GC_FROM_SEVEN_OFFSET = 3  # first catchable 7 +3
@@ -103,8 +101,12 @@ SUBWAY_PABT_ACE = {
     "label": "42 St-PABT",
     "direction": SUBWAY_DIRECTION_NORTH,
 }
-PABT_EC_LINE_SPECS = (
-    ("E", SUBWAY_DIRECTION_NORTH),
+# Queens-bound E only — C lives on the 50 St card with A.
+PABT_E_LINE_SPECS = (("E", SUBWAY_DIRECTION_NORTH),)
+
+# 50 St (8 Av) — northbound A (when stopping) + C; current ETAs, not LincTnl-chained.
+FIFTY_ST_AC_LINE_SPECS = (
+    ("A", SUBWAY_DIRECTION_NORTH),
     ("C", SUBWAY_DIRECTION_NORTH),
 )
 
@@ -177,7 +179,7 @@ def subway_base_offset(lincoln_nyc_minutes: int | None = None) -> int:
 
 
 def pabt_ec_transfer_offset() -> int:
-    """C/E @ 42 St-PABT — shorter walk than general subway base."""
+    """E @ 42 St-PABT — shorter walk than general subway base."""
     return HOB_MT_PABT_EC_OFFSET
 
 
@@ -273,13 +275,6 @@ def _is_queens_bound_headsign(headsign) -> bool:
         "main st",
     )
     return any(hint in text for hint in queens_hints)
-
-
-def _is_pabt_e_or_c_headsign(headsign) -> bool:
-    """E toward Queens or C northbound/uptown."""
-    if _is_queens_bound_headsign(headsign):
-        return True
-    return _is_uptown_subway_headsign(headsign)
 
 
 def _is_nyc_bus_headsign(headsign) -> bool:
@@ -572,27 +567,27 @@ def _filter_catchable(
 
 
 def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None) -> list[dict]:
-    """LincTnl primary + catchable E/C/F/7/GC; current ETAs at 50/51/33 St."""
+    """LincTnl primary + catchable E/F/7/GC; current A/C @ 50 St and 51/33 St."""
     base = subway_base_offset()
     fallback_current = True
     lincoln_primary = make_lincoln_primary_board(lincoln_nyc_minutes)
     boards = [lincoln_primary]
 
     try:
-        e_c_raw = _load_line_board(
+        e_raw = _load_line_board(
             SUBWAY_PABT_ACE,
             fetch_json,
-            line_specs=PABT_EC_LINE_SPECS,
-            headsign_filter=_is_pabt_e_or_c_headsign,
+            line_specs=PABT_E_LINE_SPECS,
+            headsign_filter=_is_queens_bound_headsign,
             fetch_limit=SUBWAY_FETCH_LIMIT,
             per_line=1,
         )
         boards.append(
             _filter_catchable(
                 lincoln_primary,
-                e_c_raw,
+                e_raw,
                 pabt_ec_transfer_offset(),
-                e_c_raw.get("label") or "42 St-PABT",
+                e_raw.get("label") or "42 St-PABT",
                 fallback_current=fallback_current,
             )
         )
@@ -647,15 +642,16 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
         seven_board = _empty_board("Times Sq-42 St (7)", error=str(exc))
         boards.append(seven_board)
 
-    # 50 / 51 / 33 St — not walkable from PABT after LincTnl; current ETAs only.
+    # 50 St A/C + 51/33 St — not walkable from PABT after LincTnl; current ETAs only.
     try:
-        a_raw = _load_express_local_board(
+        ac_raw = _load_line_board(
             SUBWAY_FIFTY_ST,
             fetch_json,
-            line_specs=FIFTY_ST_LINE_SPECS,
+            line_specs=FIFTY_ST_AC_LINE_SPECS,
             fetch_limit=SUBWAY_FETCH_LIMIT,
+            per_line=1,
         )
-        boards.append(a_raw)
+        boards.append(ac_raw)
     except Exception as exc:
         boards.append(_empty_board("50 St", error=str(exc)))
 

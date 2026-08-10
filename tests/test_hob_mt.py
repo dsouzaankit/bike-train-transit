@@ -209,14 +209,14 @@ class TransferOffsetTests(unittest.TestCase):
         subway = _board(
             "42 St-PABT",
             [5, 8],
-            _line_specs=(("E", "N"), ("A", "N")),
+            _line_specs=(("E", "N"),),
             source="subwayapi",
         )
         out = apply_transfer_filter(
             lincoln, subway, pabt_ec_transfer_offset(), "LincTnl", "42 St-PABT"
         )
         self.assertEqual(_mins(out), [])
-        self.assertEqual(out.get("empty_hint"), "None catchable · A/E")
+        self.assertEqual(out.get("empty_hint"), "None catchable · E")
 
     def test_f_inactive_note_constant(self):
         self.assertEqual(F_INACTIVE_NOTE, "F wkdys 6a–9:30p")
@@ -461,6 +461,14 @@ class SubwayCatchableBoardTests(unittest.TestCase):
                     "source": "subwayapi",
                     "error": None,
                 }
+            if "50 St" in label:
+                return {
+                    "label": "50 St",
+                    "trains": [],
+                    "_raw_trains": [],
+                    "source": "subwayapi",
+                    "error": None,
+                }
             return {"label": label or "?", "trains": [], "_raw_trains": [], "error": None}
 
         with mock.patch("lib.hob_mt.f_line_active", return_value=True), mock.patch(
@@ -468,7 +476,7 @@ class SubwayCatchableBoardTests(unittest.TestCase):
         ), mock.patch(
             "lib.hob_mt._load_express_local_board",
             return_value={
-                "label": "50 St",
+                "label": "51 St",
                 "trains": [],
                 "_raw_trains": [],
                 "source": "subwayapi",
@@ -502,12 +510,19 @@ class SubwayCatchableBoardTests(unittest.TestCase):
                     "destination": "Inwood",
                     "line": "A",
                     "direction": "N",
-                }
+                },
+                {
+                    "minutes": 7,
+                    "eta": "7m",
+                    "destination": "168 St",
+                    "line": "C",
+                    "direction": "N",
+                },
             ],
             "_raw_trains": [],
             "source": "subwayapi",
             "error": None,
-            "note": "Express local stop",
+            "_line_specs": (("A", "N"), ("C", "N")),
         }
         fifty_first = {
             "label": "51 St",
@@ -543,6 +558,8 @@ class SubwayCatchableBoardTests(unittest.TestCase):
 
         def fake_line_board(station, *_args, **_kwargs):
             label = (station or {}).get("label") or ""
+            if "50 St" in label:
+                return dict(fifty)
             if "33 St" in label:
                 return dict(thirty_third)
             return {
@@ -555,8 +572,6 @@ class SubwayCatchableBoardTests(unittest.TestCase):
 
         def fake_express(station, *_args, **_kwargs):
             label = (station or {}).get("label") or ""
-            if "50 St" in label:
-                return dict(fifty)
             if "51 St" in label:
                 return dict(fifty_first)
             return {"label": label or "?", "trains": [], "_raw_trains": [], "error": None}
@@ -575,12 +590,58 @@ class SubwayCatchableBoardTests(unittest.TestCase):
         for label in ("50 St", "51 St", "33 St"):
             note = by_label[label].get("note") or ""
             self.assertNotIn("LincTnl", note, label)
-        self.assertEqual(_mins(by_label["50 St"]), [5])
+        self.assertEqual(_mins(by_label["50 St"]), [5, 7])
+        self.assertEqual(
+            [t.get("line") for t in by_label["50 St"].get("trains") or []],
+            ["A", "C"],
+        )
         self.assertEqual(_mins(by_label["51 St"]), [8])
         self.assertEqual(_mins(by_label["33 St"]), [3])
-        # Express-local annotation may remain; must not be replaced by LincTnl +N.
-        self.assertEqual(by_label["50 St"].get("note"), "Express local stop")
         self.assertEqual(by_label["51 St"].get("note"), "Express local stop")
+
+    def test_pabt_card_is_e_only_fifty_st_has_ac(self):
+        """42 St-PABT is E-only; C (and A) live on 50 St."""
+        from lib.hob_mt import (
+            FIFTY_ST_AC_LINE_SPECS,
+            PABT_E_LINE_SPECS,
+            build_subway_catchable_boards,
+        )
+
+        self.assertEqual(PABT_E_LINE_SPECS, (("E", "N"),))
+        self.assertEqual(
+            FIFTY_ST_AC_LINE_SPECS,
+            (("A", "N"), ("C", "N")),
+        )
+
+        calls = []
+
+        def fake_line_board(station, *_args, **kwargs):
+            label = (station or {}).get("label") or ""
+            specs = kwargs.get("line_specs")
+            calls.append((label, specs))
+            return {
+                "label": label or "?",
+                "trains": [],
+                "_raw_trains": [],
+                "source": "subwayapi",
+                "error": None,
+                "_line_specs": specs,
+            }
+
+        with mock.patch("lib.hob_mt.f_line_active", return_value=False), mock.patch(
+            "lib.hob_mt._load_line_board", side_effect=fake_line_board
+        ), mock.patch(
+            "lib.hob_mt._load_express_local_board",
+            return_value={"label": "51 St", "trains": [], "error": None},
+        ), mock.patch(
+            "lib.hob_mt._load_grand_central_6_board",
+            return_value={"label": "Grand Central-42 St", "trains": [], "error": None},
+        ):
+            build_subway_catchable_boards(lambda _u: None, lincoln_nyc_minutes=5)
+
+        by_label = {label: specs for label, specs in calls}
+        self.assertEqual(by_label.get("42 St-PABT"), PABT_E_LINE_SPECS)
+        self.assertEqual(by_label.get("50 St"), FIFTY_ST_AC_LINE_SPECS)
 
 
 if __name__ == "__main__":
