@@ -67,7 +67,7 @@ class EbikeSnapshotTests(unittest.TestCase):
             with patch.object(btt, "fetch_json", return_value=fake_status()):
                 snapshots = btt.get_snapshots_for_tab("cbike_hob")
 
-        self.assertEqual(len(snapshots), 9)
+        self.assertEqual(len(snapshots), 11)
         self.assertEqual(snapshots[0]["region"], "HOB")
 
 
