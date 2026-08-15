@@ -7,7 +7,7 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 ## Features
 
 - **Thirteen tabs** — **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, **JC NJTb**, **HOB↔MT**, **Whkn**, and **PABT**
-- **iPhone app** — compact 2-column Citibike grids; **each Citibike tab refreshes its own GBFS station set** (JC 15 / S JC 9 / HOB 6 / NYC 5)
+- **iPhone app** — compact 2-column Citibike grids; **each Citibike tab refreshes its own GBFS station set** (JC 15 / S JC 9 / HOB 9 / NYC 5)
 - **HOB↔MT tab** — NJT Willow→NYC + PABT **departures** (side-by-side; destinations annotated with current gate), subway catchable after **LincTnl +3** (E @ PABT) / **+9** (F) / **+6** (7) / **7+3** (GC 6); **50 St** current **A/C**, **51/33 St** current ETAs (not walkable from PABT); NY Waterway + MTA M42/M50 (+15) side-by-side; Transit App for bus/ferry
 - **Whkn tab** — Lincoln Harbor **21831** buses **156 / 158 / 159** → NYC + **PABT → River Rd** (same routes **that stop at Lincoln Harbor**; gate annotated) side-by-side via Transit App
 - **PABT tab** — gate windows for **119 / 123 / 126 / 156 / 158 / 159** at the current time (from [portauthoritygate.com](https://portauthoritygate.com/)); **Gates now · \<resolve time\>**; status **Updated \<scrape time\> · PABT** (no HTTP cache suffix); in-tab **Refresh** pill (**Ref: portauthoritygate.com**) scrapes and updates `pabt_gates_data.json`
@@ -54,6 +54,20 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 | MLK Dr & Bramhall | Astor Place |
 
 All stations are tagged `[JC]` in logs and the **Cbike JC** / **Cbike S JC** tabs.
+
+## Hoboken stations (`HOB`)
+
+**Cbike HOB** (9 stations):
+
+| | |
+|---|---|
+| Madison St & 10 St | Adams St & 12 St |
+| Grand St & 14 St | Willow Ave & 12 St |
+| 14 St Ferry | 12 St & Sinatra Dr N |
+| Newark St & Washington St | River St & 1 St |
+| South Waterfront Walkway - Sinatra Dr & 1 St | |
+
+Stations are tagged `[HOB]` in logs and the **Cbike HOB** tab.
 
 ## App tabs
 

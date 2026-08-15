@@ -97,7 +97,7 @@ GBFS_BASE = "https://gbfs.citibikenyc.com/gbfs/en"
 _debug_started = False
 _debug_port_in_use = LAN_DEBUG_PORT
 TRANSIT_FETCH_TIMEOUT = 12
-BUILD_TAG = "whkn-tab-v121"
+BUILD_TAG = "cbike-hob-v122"
 
 TAB_TRANSIT_JOBS = {
     "from_jc": ("pathAll", "subway"),

@@ -91,6 +91,9 @@ STATIONS_HOB = [
     "Willow Ave & 12 St",
     "14 St Ferry - 14 St & Shipyard Ln",
     "12 St & Sinatra Dr N",
+    "Newark St & Washington St",
+    "River St & 1 St",
+    "South Waterfront Walkway - Sinatra Dr & 1 St",
 ]
 LABELS_HOB = [
     "Madison\n& 10 St",
@@ -99,11 +102,15 @@ LABELS_HOB = [
     "Willow\n& 12 St",
     "14 St Ferry",
     "Sinatra\nDr N",
+    "Newark\n& Washington",
+    "River St\n& 1 St",
+    "Waterfront\n& 1 St",
 ]
 GRID_GROUPS_HOB = [
     [(0, 1)],
     [(2, 3)],
     [(4, 5)],
+    [(6, 7), (8, None)],
 ]
 
 # --- Cbike NYC (Hudson Yards / 11 Av) ---
