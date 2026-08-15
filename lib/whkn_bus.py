@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Whkn tab — Lincoln Harbor 156/158/159 → NYC + PABT Fort Lee departures."""
+"""Whkn tab — Lincoln Harbor 156/158/159 → NYC + PABT River Rd departures."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ TRANSIT_RAW_POOL = 12
 
 SECTION_WHKN = "Whkn · 156/158/159"
 WHKN_NYC_DISPLAY = "Lincoln Harbor"
-PABT_FORT_LEE_DISPLAY = "PABT → Fort Lee"
+PABT_RIVER_RD_DISPLAY = "PABT → River Rd"
 
 
 def _empty_board(label: str, *, note: str | None = None, error: str | None = None) -> dict:
@@ -68,18 +68,45 @@ def _is_fort_lee_bound_headsign(headsign) -> bool:
     return any(hint in text for hint in hints)
 
 
+def _skips_lincoln_harbor_headsign(headsign) -> bool:
+    """Park Ave / Blvd East variants do not serve Lincoln Harbor (21831)."""
+    text = str(headsign or "").casefold()
+    skip_hints = (
+        "park ave",
+        "blvd east",
+        "boulevard east",
+        "bergenline",
+    )
+    return any(hint in text for hint in skip_hints)
+
+
+def _serves_lincoln_harbor(line, headsign) -> bool:
+    """PABT→NJ trip that stops at Lincoln Harbor (River Road / 158)."""
+    if not _is_fort_lee_bound_headsign(headsign):
+        return False
+    if _skips_lincoln_harbor_headsign(headsign):
+        return False
+    text = str(headsign or "").casefold()
+    if "river road" in text or "lincoln harbor" in text:
+        return True
+    # 158 is the River Road local; headsigns often omit "via River Road".
+    return _route_in_set(line, frozenset({"158"}))
+
+
 def _filter_trains(
     trains,
     *,
     routes: frozenset[str],
     headsign_ok,
     max_trains: int,
+    trip_ok=None,
 ) -> list[dict]:
     filtered = [
         train
         for train in trains or []
         if _route_in_set(train.get("line"), routes)
         and headsign_ok(train.get("destination"))
+        and (trip_ok is None or trip_ok(train))
     ]
     return filtered[:max_trains]
 
@@ -91,6 +118,7 @@ def _fetch_filtered_board(
     headsign_ok,
     max_trains: int = WHKN_MAX_TRAINS,
     raw_pool: int = TRANSIT_RAW_POOL,
+    trip_ok=None,
 ) -> dict:
     from . import transit_app
 
@@ -117,6 +145,7 @@ def _fetch_filtered_board(
             routes=WHKN_ROUTES,
             headsign_ok=headsign_ok,
             max_trains=max_trains,
+            trip_ok=trip_ok,
         )
         if trains:
             return {
@@ -144,12 +173,15 @@ def fetch_whkn_nyc_board(*, max_trains: int = WHKN_MAX_TRAINS) -> dict:
 
 
 def fetch_pabt_fort_lee_board(*, max_trains: int = WHKN_MAX_TRAINS) -> dict:
-    """156/158/159 leaving PABT toward Fort Lee / Englewood corridor."""
+    """156/158/159 leaving PABT that stop at Lincoln Harbor (21831)."""
     board = _fetch_filtered_board(
-        label=PABT_FORT_LEE_DISPLAY,
+        label=PABT_RIVER_RD_DISPLAY,
         transit_stop_ids=(PABT_TRANSIT_STOP_ID,),
         headsign_ok=_is_fort_lee_bound_headsign,
         max_trains=max_trains,
+        trip_ok=lambda train: _serves_lincoln_harbor(
+            train.get("line"), train.get("destination")
+        ),
     )
     try:
         from .pabt_gates import annotate_pabt_board_with_gates

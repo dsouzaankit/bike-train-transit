@@ -9,7 +9,7 @@ Uses the public [Citibike GBFS API](https://gbfs.citibikenyc.com/gbfs/en/) — n
 - **Thirteen tabs** — **Cbike JC**, **Cbike S JC**, **Cbike HOB**, **Cbike NYC**, **From JC**, **To JC**, **HBLR↔PATH**, **Tunnels**, **MT→JC**, **JC NJTb**, **HOB↔MT**, **Whkn**, and **PABT**
 - **iPhone app** — compact 2-column Citibike grids; **each Citibike tab refreshes its own GBFS station set** (JC 15 / S JC 9 / HOB 6 / NYC 5)
 - **HOB↔MT tab** — NJT Willow→NYC + PABT **departures** (side-by-side; destinations annotated with current gate), subway catchable after **LincTnl +3** (E @ PABT) / **+9** (F) / **+6** (7) / **7+3** (GC 6); **50 St** current **A/C**, **51/33 St** current ETAs (not walkable from PABT); NY Waterway + MTA M42/M50 (+15) side-by-side; Transit App for bus/ferry
-- **Whkn tab** — Lincoln Harbor **21831** buses **156 / 158 / 159** → NYC + **PABT → Fort Lee** (same routes; gate annotated) side-by-side via Transit App
+- **Whkn tab** — Lincoln Harbor **21831** buses **156 / 158 / 159** → NYC + **PABT → River Rd** (same routes **that stop at Lincoln Harbor**; gate annotated) side-by-side via Transit App
 - **PABT tab** — gate windows for **119 / 123 / 126 / 156 / 158 / 159** at the current time (from [portauthoritygate.com](https://portauthoritygate.com/)); **Gates now · \<resolve time\>**; status **Updated \<scrape time\> · PABT** (no HTTP cache suffix); in-tab **Refresh** pill (**Ref: portauthoritygate.com**) scrapes and updates `pabt_gates_data.json`
 - **Subway line badges** — MTA official line colors; cards show **one ETA per line** when data is available (taller cards fit all lines)
 - **Empty-state line hints** — **None catchable · E/A** (MT→JC / HOB↔MT / From JC transfer cards) and **Express not stopping · 4/5** (From JC express-local) name the missing lines
@@ -80,13 +80,13 @@ Weehawken Lincoln Harbor ↔ PABT for routes **156 / 158 / 159**.
 | Card | Data |
 |------|------|
 | **Lincoln Harbor** | NYC-bound ETAs at stop **21831** (Transit `NJTB:148700`) |
-| **PABT → Fort Lee** | Fort Lee / Englewood corridor departures from PABT (Transit `NJTB:162326`); destinations annotated with current gate |
+| **PABT → River Rd** | PABT departures that **stop at Lincoln Harbor** (Transit `NJTB:162326`); **158** and **via River Road** kept; Park Ave / Blvd East skipped; destinations annotated with current gate |
 
-Log markers: `build=whkn-tab-v113`, `step: Whkn ok`.
+Log markers: `build=whkn-tab-v121`, `step: Whkn ok`.
 
 ### PABT tab
 
-Port Authority Bus Terminal gate assignments for routes **119**, **123**, **126**, **156**, **158**, and **159** (**119/123/126** also annotate HOB↔MT **PABT dep**; **156/158/159** annotate Whkn **PABT → Fort Lee**).
+Port Authority Bus Terminal gate assignments for routes **119**, **123**, **126**, **156**, **158**, and **159** (**119/123/126** also annotate HOB↔MT **PABT dep**; **156/158/159** annotate Whkn **PABT → River Rd**).
 
 | Section | Cards | Source |
 |---------|-------|--------|
@@ -361,7 +361,7 @@ Requires `TRANSIT_API_KEY` or gitignored `transit_credentials.json`. Tabs that d
 | Tab / section | Card | Role |
 |---------------|------|------|
 | **HOB↔MT** | Willow **32084**, **PABT dep**, Hoboken 14th, M42/M50 | **Primary** Transit (`NJTB:…`, `NYW:596`, `MTAMNT:…`); NY Waterway falls back to Connexionz if Transit empty |
-| **Whkn** | **Lincoln Harbor** NYC + **PABT → Fort Lee** (156/158/159) | **Primary** Transit (`NJTB:148700`, `NJTB:162326`); Fort Lee card gate-annotated |
+| **Whkn** | **Lincoln Harbor** NYC + **PABT → River Rd** (156/158/159 stopping at Lincoln Harbor) | **Primary** Transit (`NJTB:148700`, `NJTB:162326`); River Rd card gate-annotated |
 | **PABT** | Gate windows (119/123/126/156/158/159) | Local `pabt_gates_data.json`; **Refresh** scrapes portauthoritygate.com (no Transit) |
 | **JC NJTb** | **20747**, **30492**, **20764**, **20647** | **Primary** live source (Transit `NJTB:…`); per-stop route filter (**81** local only — no **Express**; **1** + Exchange/Newark). Left button opens Messages to **MyBus (69287)** — user taps **Send** |
 | **HBLR → PATH** | **Garfield Avenue** HBLR | **Primary** live source (Transit `NJTR:3113` → PDF; PDF fallback = LSP − **3 min**) |
@@ -396,7 +396,7 @@ bike_train_transit/
     hblr_path.py                  # HBLR↔PATH tab: Garfield/LSP primary row + four transfer pairs + offset filter
     mt_to_jc.py                   # MT→JC tab: subway → PATH (Nwk/JSQ/Hoboken) → HBLR southbound chains
     hob_mt.py                     # HOB↔MT: Willow/PABT Transit, LincTnl+subway offsets, NYW/MTA chain
-    whkn_bus.py                   # Whkn tab: Lincoln Harbor 21831 NYC + PABT Fort Lee (156/158/159)
+    whkn_bus.py                   # Whkn tab: Lincoln Harbor 21831 NYC + PABT River Rd (158 / via River Road)
     pabt_gates.py                 # PABT tab: gate windows + scrape portauthoritygate.com; annotate PABT dep / Whkn
     pabt_gates_data.json          # Hardcoded 119/123/126 gate schedule snapshot
     citibike_stations.py          # Per-tab Citibike station lists / grids (JC, S JC, HOB, NYC)
