@@ -6,8 +6,9 @@ Offset model (subway catchable):
   Plan notation ``+4+<NY-Lincoln-eta>`` means chain from LincTnl with walk +4
   (card note: ``LincTnl +4``), not a synthetic now-offset of 4+lincoln.
   E @ 42 St-PABT use +3 (``LincTnl +3``); F uses +4+5 (``LincTnl +9``,
-  weekdays 6a–9:30p); 7 uses +4+2 (``LincTnl +6``); Grand Central 6 chains
-  from first catchable 7 +3 (``7 +3``).
+  weekdays 6a–9:30p); 7 and 42 St S shuttle use +4+2 (``LincTnl +6``);
+  Grand Central 6 chains from earlier of first catchable 7 or S +3
+  (``7 +3`` / ``S +3``).
   50 St (A/C) / 51 St / 33 St are not walkable from PABT after LincTnl —
   current ETAs only (no LincTnl note). C is on 50 St, not 42 St-PABT.
   MTA bus M42/M50 is chained from NY Waterway +15.
@@ -40,8 +41,8 @@ from lib.tunnel_crossings import get_tunnel_boards
 HOB_MT_WALK_OFFSET = 4
 HOB_MT_PABT_EC_OFFSET = 3  # LincTnl +3 for E @ 42 St-PABT
 HOB_MT_F_EXTRA = 5  # LincTnl +9
-HOB_MT_SEVEN_EXTRA = 2  # LincTnl +6
-HOB_MT_GC_FROM_SEVEN_OFFSET = 3  # first catchable 7 +3
+HOB_MT_SEVEN_EXTRA = 2  # LincTnl +6 (7 and Times Sq S shuttle)
+HOB_MT_GC_FROM_SEVEN_OFFSET = 3  # earlier of catchable 7/S +3
 HOB_MT_MTA_BUS_OFFSET = 15
 HOB_MT_MAX_TRAINS = HBLR_PATH_MAX_TRAINS
 TRANSIT_RAW_POOL = 12
@@ -126,6 +127,17 @@ SUBWAY_TIMES_SQ_7 = {
 }
 TIMES_SQ_7_LINE_SPECS = (("7", SUBWAY_DIRECTION_NORTH),)
 
+# 42 St Shuttle (S/GS) Times Sq → Grand Central. GTFS 901 = Times Sq-42 St.
+SUBWAY_TIMES_SQ_S = {
+    "station_id": "901",
+    "label": "Times Sq-42 St (S)",
+    "direction": SUBWAY_DIRECTION_NORTH,
+}
+TIMES_SQ_S_LINE_SPECS = (
+    ("S", SUBWAY_DIRECTION_NORTH),
+    ("GS", SUBWAY_DIRECTION_NORTH),
+)
+
 SUBWAY_GRAND_CENTRAL_6 = {
     "station_id": "631",
     "label": "Grand Central-42 St",
@@ -191,7 +203,13 @@ def seven_transfer_offset(base_offset: int) -> int:
     return int(base_offset) + HOB_MT_SEVEN_EXTRA
 
 
+def shuttle_transfer_offset(base_offset: int) -> int:
+    """42 St S @ Times Sq — same walk as the 7 (LincTnl +6)."""
+    return seven_transfer_offset(base_offset)
+
+
 def gc_from_seven_offset() -> int:
+    """Walk Grand Central after arriving via Times Sq 7 or S."""
     return HOB_MT_GC_FROM_SEVEN_OFFSET
 
 
@@ -204,6 +222,42 @@ def _catchable_primary_board(board, short_label: str) -> dict:
         "label": (board or {}).get("label") or short_label,
         "trains": [],
     }
+
+
+def _earliest_board_minutes(board) -> int | None:
+    earliest = None
+    for train in (board or {}).get("trains") or []:
+        minutes = train.get("minutes")
+        if minutes is None:
+            continue
+        try:
+            mins = int(minutes)
+        except (TypeError, ValueError):
+            continue
+        if earliest is None or mins < earliest:
+            earliest = mins
+    return earliest
+
+
+def earlier_times_sq_primary(seven_board, shuttle_board) -> tuple[dict, str]:
+    """Catchable primary for GC: earlier of Times Sq 7 or S (skip current fallback)."""
+    seven_primary = _catchable_primary_board(
+        seven_board, (seven_board or {}).get("label") or "7"
+    )
+    shuttle_primary = _catchable_primary_board(
+        shuttle_board, (shuttle_board or {}).get("label") or "S"
+    )
+    seven_min = _earliest_board_minutes(seven_primary)
+    shuttle_min = _earliest_board_minutes(shuttle_primary)
+    if seven_min is None and shuttle_min is None:
+        return {"label": "7/S", "trains": []}, "7/S"
+    if seven_min is None:
+        return shuttle_primary, "S"
+    if shuttle_min is None:
+        return seven_primary, "7"
+    if shuttle_min < seven_min:
+        return shuttle_primary, "S"
+    return seven_primary, "7"
 
 
 def extract_lincoln_nyc_minutes(tunnel_boards) -> int | None:
@@ -567,7 +621,7 @@ def _filter_catchable(
 
 
 def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None) -> list[dict]:
-    """LincTnl primary + catchable E/F/7/GC; current A/C @ 50 St and 51/33 St."""
+    """LincTnl primary + catchable E/F/7/S/GC; current A/C @ 50 St and 51/33 St."""
     base = subway_base_offset()
     fallback_current = True
     lincoln_primary = make_lincoln_primary_board(lincoln_nyc_minutes)
@@ -642,6 +696,28 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
         seven_board = _empty_board("Times Sq-42 St (7)", error=str(exc))
         boards.append(seven_board)
 
+    # 42 St S shuttle Times Sq → Grand Central (same LincTnl +6 as 7).
+    shuttle_board = None
+    try:
+        s_raw = _load_line_board(
+            SUBWAY_TIMES_SQ_S,
+            fetch_json,
+            line_specs=TIMES_SQ_S_LINE_SPECS,
+            fetch_limit=SUBWAY_FETCH_LIMIT,
+            per_line=1,
+        )
+        shuttle_board = _filter_catchable(
+            lincoln_primary,
+            s_raw,
+            shuttle_transfer_offset(base),
+            s_raw.get("label") or "S",
+            fallback_current=fallback_current,
+        )
+        boards.append(shuttle_board)
+    except Exception as exc:
+        shuttle_board = _empty_board("Times Sq-42 St (S)", error=str(exc))
+        boards.append(shuttle_board)
+
     # 50 St A/C + 51/33 St — not walkable from PABT after LincTnl; current ETAs only.
     try:
         ac_raw = _load_line_board(
@@ -657,15 +733,15 @@ def build_subway_catchable_boards(fetch_json, *, lincoln_nyc_minutes: int | None
 
     try:
         six_raw = _load_grand_central_6_board(fetch_json)
-        seven_primary = _catchable_primary_board(
-            seven_board, seven_board.get("label") if seven_board else "7"
+        transfer_primary, transfer_short = earlier_times_sq_primary(
+            seven_board, shuttle_board
         )
         boards.append(
             resolve_transfer_board(
-                seven_primary,
+                transfer_primary,
                 six_raw,
                 gc_from_seven_offset(),
-                "7",
+                transfer_short,
                 six_raw.get("label") or "Grand Central",
                 fallback_current=fallback_current,
                 fallback_suffix="subway",

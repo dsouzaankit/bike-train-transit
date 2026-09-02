@@ -26,11 +26,13 @@ from lib.hob_mt import (  # noqa: E402
     _is_nyc_bus_headsign,
     _is_pabt_departure_headsign,
     build_hob_mt_sections,
+    earlier_times_sq_primary,
     extract_lincoln_nyc_minutes,
     f_transfer_offset,
     gc_from_seven_offset,
     pabt_ec_transfer_offset,
     resolve_lincoln_nyc_minutes,
+    shuttle_transfer_offset,
     subway_base_offset,
     seven_transfer_offset,
 )
@@ -132,6 +134,7 @@ class TransferOffsetTests(unittest.TestCase):
         self.assertEqual(seven_transfer_offset(base), base + HOB_MT_SEVEN_EXTRA)
         self.assertEqual(f_transfer_offset(base), base + HOB_MT_F_EXTRA)
         self.assertEqual(seven_transfer_offset(base), 6)
+        self.assertEqual(shuttle_transfer_offset(base), 6)
         self.assertEqual(f_transfer_offset(base), 9)
         self.assertEqual(gc_from_seven_offset(), HOB_MT_GC_FROM_SEVEN_OFFSET)
         self.assertEqual(gc_from_seven_offset(), 3)
@@ -143,6 +146,19 @@ class TransferOffsetTests(unittest.TestCase):
             lincoln, seven, seven_transfer_offset(subway_base_offset()), "LincTnl", "7"
         )
         # threshold = 10 + 6 → keep >= 16
+        self.assertEqual(_mins(out), [18, 22])
+        self.assertEqual(out.get("note"), "LincTnl +6")
+
+    def test_shuttle_filter_matches_seven_offset(self):
+        lincoln = _board("LincTnl → NYC", [10], source="panynj-crossingtimes")
+        shuttle = _board("S", [12, 15, 18, 22], line="S")
+        out = apply_transfer_filter(
+            lincoln,
+            shuttle,
+            shuttle_transfer_offset(subway_base_offset()),
+            "LincTnl",
+            "S",
+        )
         self.assertEqual(_mins(out), [18, 22])
         self.assertEqual(out.get("note"), "LincTnl +6")
 
@@ -174,6 +190,52 @@ class TransferOffsetTests(unittest.TestCase):
         )
         self.assertEqual(_mins(out), [22, 25, 40])
         self.assertEqual(out.get("note"), "7 +3")
+
+    def test_gc_primary_picks_earlier_of_seven_or_shuttle(self):
+        seven = _board("Times Sq-42 St (7)", [22, 30], note="LincTnl +6")
+        shuttle = _board("Times Sq-42 St (S)", [18, 28], note="LincTnl +6", line="S")
+        primary, short = earlier_times_sq_primary(seven, shuttle)
+        self.assertEqual(short, "S")
+        self.assertEqual(_mins(primary)[0], 18)
+
+        seven_early = _board("Times Sq-42 St (7)", [16, 30], note="LincTnl +6")
+        primary, short = earlier_times_sq_primary(seven_early, shuttle)
+        self.assertEqual(short, "7")
+        self.assertEqual(_mins(primary)[0], 16)
+
+        six = _board("6", [18, 20, 22, 25])
+        out = apply_transfer_filter(
+            primary,
+            six,
+            gc_from_seven_offset(),
+            short,
+            "6",
+        )
+        # 16 + 3 = 19 → keep 20, 22, 25
+        self.assertEqual(_mins(out), [20, 22, 25])
+        self.assertEqual(out.get("note"), "7 +3")
+
+        out_s = apply_transfer_filter(
+            earlier_times_sq_primary(seven, shuttle)[0],
+            six,
+            gc_from_seven_offset(),
+            "S",
+            "6",
+        )
+        # S 18 + 3 = 21 → keep 22, 25
+        self.assertEqual(_mins(out_s), [22, 25])
+        self.assertEqual(out_s.get("note"), "S +3")
+
+    def test_gc_primary_ignores_current_fallback_boards(self):
+        seven = _board("7", [5, 8], note="LincTnl +6 · current subway")
+        shuttle = _board("S", [19, 28], note="LincTnl +6", line="S")
+        primary, short = earlier_times_sq_primary(seven, shuttle)
+        self.assertEqual(short, "S")
+        self.assertEqual(_mins(primary), [19, 28])
+
+        primary, short = earlier_times_sq_primary(seven, _board("S", [4], note="LincTnl +6 · current subway"))
+        self.assertEqual(short, "7/S")
+        self.assertEqual(primary.get("trains"), [])
 
     def test_gc_skips_seven_current_fallback(self):
         seven_fallback = _board("7", [5, 8], note="LincTnl +6 · current subway")
@@ -355,6 +417,8 @@ class SubwayCatchableBoardTests(unittest.TestCase):
         self.assertEqual(labels[2], "42 St-Bryant Pk (F)")
         self.assertEqual(boards[2].get("note"), F_INACTIVE_NOTE)
         self.assertEqual(boards[2].get("trains"), [])
+        self.assertEqual(labels[3], "Times Sq-42 St (7)")
+        self.assertEqual(labels[4], "Times Sq-42 St (S)")
 
     def test_f_card_active_uses_linctnl_plus_nine(self):
         from lib.hob_mt import build_subway_catchable_boards
@@ -412,6 +476,32 @@ class SubwayCatchableBoardTests(unittest.TestCase):
             "error": None,
             "_line_specs": (("7", "N"),),
         }
+        shuttle_raw = {
+            "label": "Times Sq-42 St (S)",
+            "trains": [
+                {
+                    "minutes": m,
+                    "eta": "%dm" % m,
+                    "destination": "Grand Central",
+                    "line": "S",
+                    "direction": "N",
+                }
+                for m in (14, 17, 28)
+            ],
+            "_raw_trains": [
+                {
+                    "minutes": m,
+                    "eta": "%dm" % m,
+                    "destination": "Grand Central",
+                    "line": "S",
+                    "direction": "N",
+                }
+                for m in (14, 17, 28)
+            ],
+            "source": "subwayapi",
+            "error": None,
+            "_line_specs": (("S", "N"), ("GS", "N")),
+        }
         six_raw = {
             "label": "Grand Central-42 St",
             "trains": [
@@ -441,10 +531,13 @@ class SubwayCatchableBoardTests(unittest.TestCase):
 
         def fake_line_board(station, *_args, **_kwargs):
             label = (station or {}).get("label") or ""
-            if "Bryant" in label or (station or {}).get("station_id") == "D16":
+            sid = (station or {}).get("station_id")
+            if "Bryant" in label or sid == "D16":
                 return dict(f_raw)
-            if "Times Sq" in label or (station or {}).get("station_id") == "725":
+            if sid == "725" or label.endswith("(7)"):
                 return dict(seven_raw)
+            if sid == "901" or label.endswith("(S)"):
+                return dict(shuttle_raw)
             if "PABT" in label:
                 return {
                     "label": "42 St-PABT",
@@ -493,9 +586,17 @@ class SubwayCatchableBoardTests(unittest.TestCase):
         self.assertEqual(by_label["Times Sq-42 St (7)"].get("note"), "LincTnl +6")
         # threshold 10+6=16 → catchable 18, 25; first catchable 18
         self.assertEqual(_mins(by_label["Times Sq-42 St (7)"]), [18, 25])
-        self.assertEqual(by_label["Grand Central-42 St"].get("note"), "7 +3")
-        # first catchable 7 = 18 → threshold 21 → keep 22, 30
+        self.assertEqual(by_label["Times Sq-42 St (S)"].get("note"), "LincTnl +6")
+        # threshold 10+6=16 → catchable 17, 28 (earlier than 7's 18)
+        self.assertEqual(_mins(by_label["Times Sq-42 St (S)"]), [17, 28])
+        self.assertEqual(by_label["Grand Central-42 St"].get("note"), "S +3")
+        # earlier Times Sq catchable = S 17 → threshold 20 → keep 22, 30
         self.assertEqual(_mins(by_label["Grand Central-42 St"]), [22, 30])
+        labels = [b["label"] for b in boards]
+        self.assertLess(
+            labels.index("Times Sq-42 St (7)"),
+            labels.index("Times Sq-42 St (S)"),
+        )
 
     def test_lex_and_50_st_are_current_not_linctnl_catchable(self):
         """50 / 51 / 33 St are not walkable from PABT — no LincTnl offset note."""
@@ -642,6 +743,9 @@ class SubwayCatchableBoardTests(unittest.TestCase):
         by_label = {label: specs for label, specs in calls}
         self.assertEqual(by_label.get("42 St-PABT"), PABT_E_LINE_SPECS)
         self.assertEqual(by_label.get("50 St"), FIFTY_ST_AC_LINE_SPECS)
+        from lib.hob_mt import TIMES_SQ_S_LINE_SPECS
+
+        self.assertEqual(by_label.get("Times Sq-42 St (S)"), TIMES_SQ_S_LINE_SPECS)
 
 
 if __name__ == "__main__":
