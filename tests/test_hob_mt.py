@@ -13,16 +13,21 @@ from lib.hob_mt import (  # noqa: E402
     F_INACTIVE_NOTE,
     HOB_MT_F_EXTRA,
     HOB_MT_GC_FROM_SEVEN_OFFSET,
+    HOB_MT_M50_FROM_CE_OFFSET,
     HOB_MT_MTA_BUS_OFFSET,
     HOB_MT_PABT_EC_OFFSET,
     HOB_MT_SECTION_TITLES,
     HOB_MT_SEVEN_EXTRA,
     HOB_MT_WALK_OFFSET,
+    M50_WB_DISPLAY,
+    PABT_CE_LINE_SPECS,
     SECTION_FERRY_BUS,
     SECTION_HOB_TERMINAL,
+    SECTION_M50_WB,
     SECTION_NJT_PABT,
     SECTION_SUBWAY,
     _catchable_primary_board,
+    _is_m50_westbound_headsign,
     _is_nyc_bus_headsign,
     _is_pabt_departure_headsign,
     build_hob_mt_sections,
@@ -30,6 +35,7 @@ from lib.hob_mt import (  # noqa: E402
     extract_lincoln_nyc_minutes,
     f_transfer_offset,
     gc_from_seven_offset,
+    m50_from_ce_offset,
     pabt_ec_transfer_offset,
     resolve_lincoln_nyc_minutes,
     shuttle_transfer_offset,
@@ -298,6 +304,36 @@ class TransferOffsetTests(unittest.TestCase):
         )
         self.assertEqual(_mins(out), [15, 20, 30])
 
+    def test_m50_wb_chains_from_earlier_ce_plus_three(self):
+        """M50 WB keeps departures >= earlier of C/E @ PABT +3 (C counts)."""
+        self.assertEqual(m50_from_ce_offset(), HOB_MT_M50_FROM_CE_OFFSET)
+        self.assertEqual(m50_from_ce_offset(), 3)
+        ce = {
+            "label": "42 St-PABT",
+            "trains": [
+                {"minutes": 8, "eta": "8m", "destination": "168 St", "line": "C"},
+                {"minutes": 12, "eta": "12m", "destination": "Jamaica", "line": "E"},
+            ],
+        }
+        m50 = _board(M50_WB_DISPLAY, [9, 11, 14, 20], line="M50")
+        out = apply_transfer_filter(
+            ce,
+            m50,
+            m50_from_ce_offset(),
+            "C/E",
+            M50_WB_DISPLAY,
+        )
+        # C 8 + 3 = 11 → keep 11, 14, 20
+        self.assertEqual(_mins(out), [11, 14, 20])
+        self.assertEqual(out.get("note"), "C/E +3")
+
+    def test_m50_westbound_headsign_filter(self):
+        self.assertTrue(_is_m50_westbound_headsign("West Side 42 St Pier Crosstown"))
+        self.assertTrue(_is_m50_westbound_headsign("Pier 83"))
+        self.assertFalse(_is_m50_westbound_headsign("East Side 49 St-1 Av Crosstown"))
+        self.assertFalse(_is_m50_westbound_headsign(""))
+        self.assertEqual(PABT_CE_LINE_SPECS, (("C", "N"), ("E", "N")))
+
 
 class SectionOrderTests(unittest.TestCase):
     def test_section_titles_constant_order(self):
@@ -307,6 +343,7 @@ class SectionOrderTests(unittest.TestCase):
                 SECTION_HOB_TERMINAL,
                 SECTION_NJT_PABT,
                 SECTION_SUBWAY,
+                SECTION_M50_WB,
                 SECTION_FERRY_BUS,
             ],
         )
@@ -378,6 +415,18 @@ class SectionOrderTests(unittest.TestCase):
                 "_raw_trains": [],
                 "source": "transit",
             },
+        ), mock.patch(
+            "lib.hob_mt._load_pabt_ce_uptown_board",
+            return_value={"label": "42 St-PABT", "trains": [], "error": None},
+        ), mock.patch(
+            "lib.hob_mt.fetch_m50_westbound_board",
+            return_value={
+                "label": M50_WB_DISPLAY,
+                "trains": [],
+                "error": None,
+                "_raw_trains": [],
+                "source": "transit",
+            },
         ):
             sections = build_hob_mt_sections(fetch_json)
 
@@ -386,6 +435,9 @@ class SectionOrderTests(unittest.TestCase):
         self.assertEqual(sections[0]["title"], SECTION_HOB_TERMINAL)
         self.assertEqual(len(sections[0]["boards"]), 2)
         self.assertEqual(len(sections[1]["boards"]), 2)
+        self.assertEqual(sections[-2]["title"], SECTION_M50_WB)
+        self.assertEqual(len(sections[-2]["boards"]), 1)
+        self.assertEqual(sections[-2]["boards"][0].get("label"), M50_WB_DISPLAY)
         self.assertEqual(len(sections[-1]["boards"]), 2)
         for section in sections:
             self.assertIn("boards", section)

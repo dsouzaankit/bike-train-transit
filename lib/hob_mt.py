@@ -10,8 +10,10 @@ Offset model (subway catchable):
   Grand Central 6 chains from earlier of first catchable 7 or S +3
   (``7 +3`` / ``S +3``).
   50 St (A/C) / 51 St / 33 St are not walkable from PABT after LincTnl —
-  current ETAs only (no LincTnl note). C is on 50 St, not 42 St-PABT.
-  MTA bus M42/M50 is chained from NY Waterway +15.
+  current ETAs only (no LincTnl note). C is on 50 St, not 42 St-PABT
+  (but C uptown @ PABT is still used to chain M50 WB).
+  MTA bus M42/M50 @ 12 Av is chained from NY Waterway +15.
+  M50 westbound @ W 49/8 Av chains from earlier C/E uptown @ PABT +3.
   fallback_current=True when catchable filter misses.
 """
 
@@ -44,6 +46,7 @@ HOB_MT_F_EXTRA = 5  # LincTnl +9
 HOB_MT_SEVEN_EXTRA = 2  # LincTnl +6 (7 and Times Sq S shuttle)
 HOB_MT_GC_FROM_SEVEN_OFFSET = 3  # earlier of catchable 7/S +3
 HOB_MT_MTA_BUS_OFFSET = 15
+HOB_MT_M50_FROM_CE_OFFSET = 3  # earlier C/E uptown @ PABT +3 → M50 WB
 HOB_MT_MAX_TRAINS = HBLR_PATH_MAX_TRAINS
 TRANSIT_RAW_POOL = 12
 F_INACTIVE_NOTE = "F wkdys 6a–9:30p"
@@ -58,12 +61,14 @@ SECTION_NJT_PABT = "NJT bus · PABT dep"
 SECTION_SUBWAY = "Subway catchable"
 SECTION_NYWATERWAY = "NY Waterway"
 SECTION_MTA_BUS = "MTA bus catchable"
+SECTION_M50_WB = "MT West"
 # Last ferry + bus boards share one section so they paint side-by-side.
 SECTION_FERRY_BUS = "NY Waterway · MTA bus"
 HOB_MT_SECTION_TITLES = (
     SECTION_HOB_TERMINAL,
     SECTION_NJT_PABT,
     SECTION_SUBWAY,
+    SECTION_M50_WB,
     SECTION_FERRY_BUS,
 )
 
@@ -102,8 +107,13 @@ SUBWAY_PABT_ACE = {
     "label": "42 St-PABT",
     "direction": SUBWAY_DIRECTION_NORTH,
 }
-# Queens-bound E only — C lives on the 50 St card with A.
+# Queens-bound E only on the PABT display card — C lives on 50 St with A.
 PABT_E_LINE_SPECS = (("E", SUBWAY_DIRECTION_NORTH),)
+# C+E uptown @ PABT for M50 WB chain (C not shown on the E card).
+PABT_CE_LINE_SPECS = (
+    ("C", SUBWAY_DIRECTION_NORTH),
+    ("E", SUBWAY_DIRECTION_NORTH),
+)
 
 # 50 St (8 Av) — northbound A (when stopping) + C; current ETAs, not LincTnl-chained.
 FIFTY_ST_AC_LINE_SPECS = (
@@ -184,6 +194,15 @@ MTA_BUS_TRANSIT_FALLBACK_STOP_IDS = (
     "MTAMNT:15329",
 )
 
+# --- M50 westbound near PABT (W 49 St / 8 Av → West Side Pier) ---
+M50_WB_DISPLAY = "W 49 St / 8 Av"
+M50_WB_ROUTES = frozenset({"M50"})
+# Transit nearby-stops probe ~40.7618,-73.9890:
+# - MTAMNT:12750 = W 49 St / 8 Av (stop_code 404948), westbound M50 only.
+# - MTAMNT:12751 = W 49 St / 9 Av (402194), same direction one block west.
+M50_WB_TRANSIT_STOP_ID = "MTAMNT:12750"
+M50_WB_TRANSIT_FALLBACK_STOP_IDS = ("MTAMNT:12751",)
+
 
 def subway_base_offset(lincoln_nyc_minutes: int | None = None) -> int:
     """Walk after LincTnl used to derive F (+9) / 7 (+6); not applied to Lex/50 St."""
@@ -193,6 +212,11 @@ def subway_base_offset(lincoln_nyc_minutes: int | None = None) -> int:
 def pabt_ec_transfer_offset() -> int:
     """E @ 42 St-PABT — shorter walk than general subway base."""
     return HOB_MT_PABT_EC_OFFSET
+
+
+def m50_from_ce_offset() -> int:
+    """Walk from 42 St-PABT C/E uptown to M50 westbound @ W 49/8 Av."""
+    return HOB_MT_M50_FROM_CE_OFFSET
 
 
 def f_transfer_offset(base_offset: int) -> int:
@@ -358,6 +382,16 @@ def _is_nyw_midtown_headsign(headsign) -> bool:
     if not text:
         return False
     return ("midtown" in text) or ("w. 39" in text) or ("w 39" in text)
+
+
+def _is_m50_westbound_headsign(headsign) -> bool:
+    """M50 toward West Side Pier — exclude East Side / 1 Av headsigns."""
+    text = str(headsign or "").casefold()
+    if not text.strip():
+        return False
+    if "east side" in text:
+        return False
+    return ("west side" in text) or ("pier" in text)
 
 
 def _filter_route_trains(trains, routes: frozenset[str], *, max_trains: int) -> list[dict]:
@@ -969,6 +1003,60 @@ def fetch_mta_bus_board(*, fetch_transit_json=None) -> dict:
     }
 
 
+def _load_pabt_ce_uptown_board(fetch_json) -> dict:
+    """C+E northbound @ 42 St-PABT — includes C even though the E card hides it."""
+    return _load_line_board(
+        SUBWAY_PABT_ACE,
+        fetch_json,
+        line_specs=PABT_CE_LINE_SPECS,
+        fetch_limit=SUBWAY_FETCH_LIMIT,
+        per_line=1,
+    )
+
+
+def fetch_m50_westbound_board(*, fetch_transit_json=None) -> dict:
+    """M50 westbound at W 49 St / 8 Av via Transit App."""
+    from . import transit_app
+
+    label = M50_WB_DISPLAY
+    if not transit_app.has_api_key():
+        return _empty_board(label, note="M50 · no Transit key")
+    stop_ids = (M50_WB_TRANSIT_STOP_ID,) + M50_WB_TRANSIT_FALLBACK_STOP_IDS
+    last_error = None
+    for stop_id in stop_ids:
+        try:
+            payload = transit_app.fetch_stop_departures(
+                stop_id,
+                max_departures=max(HOB_MT_MAX_TRAINS, TRANSIT_RAW_POOL),
+            )
+            raw = transit_app.parse_route_departures(
+                payload,
+                _is_m50_westbound_headsign,
+                max_trains=max(HOB_MT_MAX_TRAINS, TRANSIT_RAW_POOL),
+            )
+            trains_try = _filter_route_trains(
+                raw,
+                M50_WB_ROUTES,
+                max_trains=max(HOB_MT_MAX_TRAINS, TRANSIT_RAW_POOL),
+            )
+            if trains_try:
+                return {
+                    "label": label,
+                    "trains": trains_try,
+                    "error": None,
+                    "by_line": True,
+                    "source": "transit",
+                    "_raw_trains": trains_try,
+                    "note": None,
+                }
+        except Exception as exc:
+            last_error = str(exc)
+            continue
+    if last_error:
+        return _empty_board(label, note="M50 unavailable", error=last_error)
+    return _empty_board(label, note="no M50 WB")
+
+
 def build_hob_mt_sections(
     fetch_json,
     *,
@@ -1033,7 +1121,28 @@ def build_hob_mt_sections(
         ]
     sections.append({"title": SECTION_SUBWAY, "boards": subway_boards})
 
-    # 4. NY Waterway + MTA bus catchable (+15) — side-by-side in one section
+    # 4. M50 westbound @ W 49/8 Av — earlier of C/E uptown @ PABT +3 (C included).
+    try:
+        ce_primary = _load_pabt_ce_uptown_board(fetch_json)
+        m50_raw = fetch_m50_westbound_board(fetch_transit_json=fetch_transit_json)
+        if _has_minutes(ce_primary):
+            m50_board = resolve_transfer_board(
+                ce_primary,
+                m50_raw,
+                m50_from_ce_offset(),
+                "C/E",
+                m50_raw.get("label") or M50_WB_DISPLAY,
+                fallback_current=True,
+                fallback_suffix="bus",
+            )
+        else:
+            m50_board = dict(m50_raw)
+            m50_board["note"] = "no C/E yet · current bus"
+    except Exception as exc:
+        m50_board = _empty_board(M50_WB_DISPLAY, error=str(exc))
+    sections.append({"title": SECTION_M50_WB, "boards": [m50_board]})
+
+    # 5. NY Waterway + MTA bus catchable (+15) — side-by-side in one section
     try:
         nyw_board = fetch_nywaterway_board(fetch_json)
     except Exception as exc:
