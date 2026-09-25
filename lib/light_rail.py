@@ -44,6 +44,12 @@ LIBERTY_STATE_PARK_DESTINATIONS = (
     "liberty",
 )
 
+# From Lincoln Harbor: Hoboken Terminal is south; West Side through-runs continue past Hoboken.
+LINCOLN_HARBOR_SOUTH_DESTINATIONS = (
+    "west side",
+    "hoboken",
+)
+
 HBLR_STATIONS = {
     # Bayonne/JC branch terminals — PDF offline schedule only (not shown in UI).
     "8th Street": {
@@ -88,6 +94,13 @@ HBLR_STATIONS = {
         "transit_stop_id": "NJTR:3080",
         "phase": 0,
     },
+    # Weehawken Lincoln Harbor — Whkn tab southbound (West Side / Hoboken). No PDF column.
+    "Lincoln Harbor": {
+        "label": "HBLR",
+        "njt_stop": "Lincoln Harbor",
+        "transit_stop_id": "NJTR:3094",
+        "phase": 0,
+    },
 }
 
 HBLR_DIRECTIONS = {
@@ -98,6 +111,10 @@ HBLR_DIRECTIONS = {
     "to_liberty_state_park": {
         "dest_filter": "_is_towards_liberty_state_park",
         "schedule_key": "southbound",
+    },
+    "lincoln_harbor_south": {
+        "dest_filter": "_is_lincoln_harbor_southbound",
+        "schedule_key": None,
     },
 }
 
@@ -187,12 +204,19 @@ def _is_towards_liberty_state_park(name):
     return _is_southbound_destination(name)
 
 
+def _is_lincoln_harbor_southbound(name):
+    """West Side Avenue or Hoboken Terminal — exclude Tonnelle northbound."""
+    text = (name or "").casefold()
+    return any(token in text for token in LINCOLN_HARBOR_SOUTH_DESTINATIONS)
+
+
 def _destination_filter(direction):
     spec = HBLR_DIRECTIONS.get(direction, HBLR_DIRECTIONS["northbound"])
     name = spec["dest_filter"]
     return {
         "_is_northbound_destination": _is_northbound_destination,
         "_is_towards_liberty_state_park": _is_towards_liberty_state_park,
+        "_is_lincoln_harbor_southbound": _is_lincoln_harbor_southbound,
     }[name]
 
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Whkn tab — Lincoln Harbor 156/158/159 → NYC + PABT River Rd departures."""
+"""Whkn tab — Lincoln Harbor 156/158/159 → NYC + PABT River Rd + HBLR south."""
 
 from __future__ import annotations
 
@@ -20,6 +20,9 @@ TRANSIT_RAW_POOL = 12
 SECTION_WHKN = "Whkn · 156/158/159"
 WHKN_NYC_DISPLAY = "Lincoln Harbor"
 PABT_RIVER_RD_DISPLAY = "PABT → River Rd"
+WHKN_HBLR_STATION = "Lincoln Harbor"
+WHKN_HBLR_DISPLAY = "HBLR"
+WHKN_HBLR_DIRECTION = "lincoln_harbor_south"
 
 
 def _empty_board(label: str, *, note: str | None = None, error: str | None = None) -> dict:
@@ -125,17 +128,20 @@ def _fetch_filtered_board(
     if not transit_app.has_api_key():
         return _empty_board(label, note="no Transit key")
 
+    # PABT stop_departures mixes dozens of routes. Filter headsigns during parse
+    # so the max_trains slice is not filled by unrelated buses before Whkn filters.
+    pool = max(max_trains, raw_pool)
     last_error = None
     for stop_id in transit_stop_ids:
         try:
             payload = transit_app.fetch_stop_departures(
                 stop_id,
-                max_departures=max(max_trains, raw_pool),
+                max_departures=pool,
             )
             raw = transit_app.parse_route_departures(
                 payload,
-                lambda _headsign: True,
-                max_trains=max(max_trains, raw_pool),
+                headsign_ok,
+                max_trains=pool,
             )
         except Exception as exc:
             last_error = str(exc)
@@ -179,6 +185,8 @@ def fetch_pabt_fort_lee_board(*, max_trains: int = WHKN_MAX_TRAINS) -> dict:
         transit_stop_ids=(PABT_TRANSIT_STOP_ID,),
         headsign_ok=_is_fort_lee_bound_headsign,
         max_trains=max_trains,
+        # Busy terminal: keep a deeper Fort Lee-corridor pool before River Rd trip_ok.
+        raw_pool=max(TRANSIT_RAW_POOL, 40),
         trip_ok=lambda train: _serves_lincoln_harbor(
             train.get("line"), train.get("destination")
         ),
@@ -191,8 +199,36 @@ def fetch_pabt_fort_lee_board(*, max_trains: int = WHKN_MAX_TRAINS) -> dict:
         return board
 
 
+def fetch_lincoln_harbor_hblr_board(*, max_trains: int = WHKN_MAX_TRAINS) -> dict:
+    """HBLR at Lincoln Harbor toward West Side Avenue or Hoboken Terminal."""
+    from lib.light_rail import get_hblr_board
+
+    board = get_hblr_board(
+        WHKN_HBLR_STATION,
+        WHKN_HBLR_DIRECTION,
+        max_trains=max(max_trains, TRANSIT_RAW_POOL),
+        raw_pool=TRANSIT_RAW_POOL,
+    )
+    out = {
+        "label": WHKN_HBLR_DISPLAY,
+        "trains": list(board.get("trains") or [])[:max_trains],
+        "error": board.get("error"),
+        "by_line": True,
+        "source": board.get("source"),
+        "note": board.get("note"),
+    }
+    if board.get("estimated"):
+        out["estimated"] = True
+    if board.get("_raw_trains") is not None:
+        out["_raw_trains"] = board.get("_raw_trains")
+    if not out["trains"] and not out.get("error"):
+        out["note"] = out.get("note") or "no HBLR to West Side / Hoboken"
+    return out
+
+
 def build_whkn_sections() -> list[dict]:
     """Ordered UI sections for the Whkn tab."""
     nyc = fetch_whkn_nyc_board()
     pabt = fetch_pabt_fort_lee_board()
-    return [{"title": SECTION_WHKN, "boards": [nyc, pabt]}]
+    hblr = fetch_lincoln_harbor_hblr_board()
+    return [{"title": SECTION_WHKN, "boards": [nyc, pabt, hblr]}]
